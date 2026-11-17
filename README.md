@@ -141,7 +141,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
    The app mark beside the name on this page and in the signed-in header uses the same artwork as the favicon.
 
 2. **Enter your data** — with no grants yet, the dashboard shows **Get your stock in** with every way in on one screen, easiest first:
-   - **Let ChatGPT or Claude do it** — connect your assistant (Settings → AI Connections, with Equity editing ticked), then hand it your purchase agreement, loan statement, Eureka files or screenshots. It shows you exactly what it will add or change, in plain words, and saves only when you say yes. See [Connecting Your Own AI](#connecting-your-own-ai).
+   - **Let your AI assistant do it** — connect Claude, ChatGPT, Gemini or another assistant on the **Connect your AI** page (Settings → AI Connections → **Connect an assistant**, with Equity editing ticked), then hand it your purchase agreement, loan statement, Eureka files or screenshots. It shows you exactly what it will add or change, in plain words, and saves only when you say yes. See [Connecting Your Own AI](#connecting-your-own-ai).
    - **Import from Eureka** — upload **Data for Stock Workbook** and your latest **Stock Loan Statement** as they download. The app lists every change the files imply on one screen; untick anything you don't want, **Check**, then **Save**. See [Importing from Eureka](#importing-from-eureka).
    - **Enter it yourself** — add each grant on the **Grants** page. Give the first vesting date and number of yearly parts and the app splits the shares the way Epic's agreements do: each part rounded down, the rest on the last date.
    - **Restore a workbook** — upload a `Vesting.xlsx` exported from this app on the Import page.
@@ -512,9 +512,19 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 Contributing a fix? Connect your own account first: an AI coding agent can then reproduce the problem against your real figures and check its fix against the same account, without anyone pasting numbers into a chat.
 
-You can let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
+You can let Claude, ChatGPT, Gemini, Grok, Muse, Perplexity, Mistral Le Chat or Manus read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, and you can disconnect it at any time.
 
-**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI, Anthropic or Meta when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+**The Connect your AI page** (`/connect-ai`, linked from Settings → AI Connections and the Import page) has everything needed in one place:
+
+- the MCP server address (`https://YOUR-DOMAIN/mcp`; staging shows production's) with a **Copy** button — Streamable HTTP with OAuth sign-in, so there is no API key or client ID to enter;
+- a dropdown of supported assistants, each with its own short setup steps, plan or workspace limits, and a link to the provider's own instructions where one exists. Claude and ChatGPT also keep their no-address plugin downloads; Muse gets a setup request to paste into a chat;
+- **Request another assistant** and **… would not connect** buttons, which open the problem-report form tagged `request` so the maintainer sees what people want supported. Nothing about your account is attached unless you tick *include details*.
+
+The guides live in `frontend/src/scaffold/components/connectAiGuides.ts`. Supporting a new assistant is one entry there plus its OAuth callback in `DEFAULT_REDIRECT_RULES` (see [AI Connections (admin)](#ai-connections-admin)).
+
+![Connect your AI (Claude, light)](screenshots/connect-ai-claude-light-mobile.png)
+
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to the company behind the assistant (Anthropic, OpenAI, Google, xAI, Meta, Perplexity, Mistral AI or Manus) when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
 **Connecting grants every permission.** The assistant can read your data, add, correct and remove grants, prices, loans, sales and loan payments (`equity:write`), and update salary and retirement figures (`comp:write`). The app is not the source of truth for your equity — anything wrong can be corrected or re-imported. The connect screen says so up front; tick **Read only** there if you only want the assistant to look. Equity edits are always previewed first: the assistant shows you what will change and saves only after you agree. Disconnecting revokes access.
 
@@ -554,22 +564,22 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 | `set_retirement_accounts` | Sets the retirement simulator's starting balances: 401(k)/traditional IRA, Roth, taxable brokerage and its cost basis. Only the balances named are changed; the rest of your saved scenario is left alone |
 | `apply_changes` | Under `equity:write`, adds, corrects or removes any number of grants, loans, prices, sales and loan payments in one all-or-nothing step, through the same checks as the app's own forms. Without a confirm token it only previews; saving needs the token from the preview you agreed to. Corrections and removals need each row's current version |
 
-**In Claude** — from Settings → AI Connections, download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it targets production account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
+**In Claude** — add a custom connector with the server address, or from **Connect your AI → Claude** download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it targets production account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
 
 **In Muse** — ask for a custom connector in a chat. A [standalone Muse setup guide](docs/muse-connector.md) includes the same steps:
 
-1. In **Settings → AI Connections → Muse**, send the pre-filled setup request. It already includes the correct address for this site, so there is no URL to look up or edit:
+1. On **Connect your AI**, choose **Muse** and send the pre-filled setup request. It already includes the correct address for this site, so there is no URL to look up or edit:
 
    > Create a custom connector named Epic Stocks for the remote MCP server at https://YOUR-DOMAIN/mcp. It uses Streamable HTTP and OAuth with PKCE and dynamic client registration. Guide me through signing in to Epic Stocks and approving the connection. Then list its tools, use get_dashboard to check the connection, and save it for future chats.
 
 2. Follow Muse's sign-in link, sign in to Epic Stocks, and review the consent screen. Requested permissions start checked. In **Equity** and **Compensation**, check or uncheck individual permissions, or use **Select all / Clear all** for a section. Keep only the read permissions if you want answers without changes.
 3. Let Muse check the connection and save it for future chats. Ask “Use Epic Stocks to show what vests in the next six months.” Manage the custom connector under Muse's **Settings → Connectors**, or revoke it here in **Settings → AI Connections**.
 
-**If Muse registration is blocked:** this server initially allows ChatGPT and Claude OAuth callback hosts. Send the error naming the refused host to the site administrator. In **Admin → AI Connections**, the administrator must verify that host belongs to Muse's OAuth flow, add it with the label **Muse**, and enable it before you retry. Do not allow a broad parent domain or disable redirect validation. The server address is this site's `/mcp`; the callback host is where Muse receives the OAuth response, and is a different address. No API key or account session token is needed.
+**If registration is blocked:** Muse's callbacks (`agent.meta.ai` and `muse.ai`, `/api/hatch/oauth/callback`) are allowed by default. If any assistant reports that this server does not accept its redirect address, the refusal is already logged for the administrator under **Admin → AI Connections → Refused redirect addresses**; use **… would not connect** on Connect your AI to say which assistant it was. The server address is this site's `/mcp`; the callback is where the assistant receives the OAuth response, and is a different address. No API key or account session token is needed.
 
 Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
 
-**In ChatGPT** — download the ChatGPT ZIP from **Settings → AI Connections** on your phone, then open [Plugins](https://chatgpt.com/plugins) in the browser. Availability depends on your plan and workspace policy:
+**In ChatGPT** — create a custom connector in Developer mode with the server address (steps on Connect your AI), or download the ChatGPT ZIP from **Connect your AI → ChatGPT** on your phone, then open [Plugins](https://chatgpt.com/plugins) in the browser. Availability depends on your plan and workspace policy:
 
 1. Tap **+ → Upload plugin** and select the downloaded ZIP.
 2. Review the package's MCP connection, sign in to Epic Stocks, choose the permissions you want and install it. The address is embedded, but no credential is; you do not copy or paste either.
@@ -604,11 +614,9 @@ If your ChatGPT is provided by your employer, a workspace admin may need to enab
 
 **Recent activity.** The same section keeps a log of what each assistant asked for and when — tool names and times, so you can tell whether it read your salary or only your vesting dates. It records **no figures at all**: your share counts, prices and balances are never written to it, so it cannot leak them. Entries are kept for 90 days.
 
-| AI Connections (light) | ChatGPT walkthrough (dark) |
-|------------------------|----------------------------|
-| ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/settings-ai-connections-dark-mobile.png) |
-
-![Muse custom connector walkthrough](screenshots/settings-ai-connections-muse-light-mobile.png)
+| AI Connections in Settings (light) | Connect your AI — ChatGPT (dark) | Connect your AI — Muse |
+|------------------------|----------------------------|----|
+| ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/connect-ai-chatgpt-dark-mobile.png) | ![Muse walkthrough](screenshots/connect-ai-muse-light-mobile.png) |
 
 The section is hidden entirely if an administrator has switched AI connections off — instructions for something that cannot work are worse than no instructions.
 
@@ -803,7 +811,7 @@ Admin → **Cloudflare edge** shows sampled firewall action counts (blocked, cha
 
 ### AI Connections (admin)
 
-Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
+Admin → **AI Connections** controls whether people can connect an AI assistant to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
 
 ![Admin MCP download for the current site on mobile](screenshots/admin-ai-plugin-downloads-light-mobile.png)
 
@@ -817,21 +825,40 @@ Admin → **AI Connections** controls whether people can connect ChatGPT or Clau
 
 1. On your phone, open **staging's Admin → AI Connections** and tap **Download admin MCP**. The single ZIP contains both ChatGPT and Claude manifests. Upload it under **Plugins → + → Upload plugin** in ChatGPT or **Customize → Plugins** in Claude. Sign in to **staging** as an email in its `ADMIN_EMAIL` and approve the admin consent page. Only `admin:read` is requested; this connection has no equity tools.
 2. After the admin MCP is deployed to production, open **production's Admin → AI Connections** and download its **admin MCP** ZIP as a second plugin, signing in to production. Each site generates a package for its own configured `DOMAIN`; staging cannot issue a production diagnostics package. Keep personal account data in the separate production plugin from Settings; never use staging for personal data.
-3. Ask the assistant to call `admin_deployment_status`, `admin_host_diagnostics`, `admin_scheduler_history`, `admin_deploy_runs`, `admin_edge_summary`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
+3. Ask the assistant to call `admin_deployment_status`, `admin_host_diagnostics`, `admin_scheduler_history`, `admin_deploy_runs`, `admin_edge_summary`, `admin_system_metrics`, `admin_recent_errors`, `admin_ai_connections` or `admin_ai_usage` on each named diagnostic connection. `admin_ai_connections` returns the AI-connection switch, active connection count, redirect rules and recently refused redirect addresses — the refused addresses and client names come from anonymous registrations and are marked untrusted. `admin_ai_usage` returns call counts per window and per tool with no account identities. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
 4. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
 
 The admin MCP advertises only `admin:read`, has its own `/admin-oauth` issuer, and issues tokens bound to `/admin-mcp`. The account MCP never lists or calls admin tools; a token from either endpoint gets a 401 at the other. Previously granted diagnostic access on the shared `/mcp` flow must be reconnected at `/admin-mcp`.
 
-These tools have no write actions and do not return financial rows, user reports, request paths, exception messages, stack traces, or user identifiers. `admin_recent_errors` provides timestamps, methods, exception class names and opaque error references; open **Admin → Errors** on the corresponding site for the sensitive traceback. Metrics are limited to 96 samples and errors to 50 records per call. Host diagnostics report container state transitions, OOM/restarts, disk pressure, the scheduler service result and whether the nightly off-site backup succeeded in the last 26 hours, collected by a separate systemd unit every minute. The app receives only a read-only snapshot; it has no Docker socket or journal access. Host and scheduler failure/recovery histories retain at most 96 safe events for 72 hours. The collector reports gaps and becomes stale after three minutes; the scheduler history becomes stale after 35 minutes. Deployment summaries read the latest 20 public GitHub Deploy workflow runs for staging or main, correlate successful runs with the running API build, and link to detailed logs. Cloudflare summaries query sampled WAF action counts for the exact site's hostname in a 30-minute window ending two minutes ago, using a server-side read token. External summaries cache successes and failures for two minutes. Every source reports availability and collection time; missing credentials, denied access or a stopped collector never appear as healthy. Raw journal, Docker, Actions and request logs stay in their original systems. See [the diagnostic setup and smoke test](OPERATIONS.md#diagnostic-sources-and-staging-smoke-test). The existing MCP audit logs every admin tool call by name and outcome.
+These tools have no write actions — allowing or removing a redirect rule, and every other admin change, stays in the browser, because some of what the tools read is written by strangers and a model holding a write tool could be steered by it. They do not return financial rows, user reports, request paths, exception messages, stack traces, or user identifiers. `admin_recent_errors` provides timestamps, methods, exception class names and opaque error references; open **Admin → Errors** on the corresponding site for the sensitive traceback. Metrics are limited to 96 samples and errors to 50 records per call. Host diagnostics report container state transitions, OOM/restarts, disk pressure, the scheduler service result and whether the nightly off-site backup succeeded in the last 26 hours, collected by a separate systemd unit every minute. The app receives only a read-only snapshot; it has no Docker socket or journal access. Host and scheduler failure/recovery histories retain at most 96 safe events for 72 hours. The collector reports gaps and becomes stale after three minutes; the scheduler history becomes stale after 35 minutes. Deployment summaries read the latest 20 public GitHub Deploy workflow runs for staging or main, correlate successful runs with the running API build, and link to detailed logs. Cloudflare summaries query sampled WAF action counts for the exact site's hostname in a 30-minute window ending two minutes ago, using a server-side read token. External summaries cache successes and failures for two minutes. Every source reports availability and collection time; missing credentials, denied access or a stopped collector never appear as healthy. Raw journal, Docker, Actions and request logs stay in their original systems. See [the diagnostic setup and smoke test](OPERATIONS.md#diagnostic-sources-and-staging-smoke-test). The existing MCP audit logs every admin tool call by name and outcome.
 
 - **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every MCP call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
-- **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
+- **Providers** — the allowlist of redirect URIs an AI client may register and be sent back to after authorizing. Each rule has a match type: **exact** (the whole URI), **prefix** (must include a path; the host and port must be the prefix's own and dot segments are refused), **host** (any https path on that host or a subdomain) or **loopback** (http or https on `localhost`/`127.0.0.1`, any port, for locally run MCP clients). Seeded with:
+
+  | Assistant | Rule |
+  |---|---|
+  | Claude | exact `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` |
+  | ChatGPT | exact `https://chatgpt.com/connector_platform_oauth_redirect`; prefix `https://chatgpt.com/connector/oauth/` |
+  | Gemini | prefix `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-` |
+  | Grok | exact `https://grok.com/connectors-oauth-exchange-code/`, `https://grok.com/connectors/oauth/callback` |
+  | Muse | exact `https://agent.meta.ai/api/hatch/oauth/callback`, `https://muse.ai/api/hatch/oauth/callback` |
+  | Perplexity | exact `https://www.perplexity.ai/rest/connections/oauth_callback`, `https://enterprise.perplexity.ai/rest/connections/oauth_callback` |
+  | Mistral Le Chat | host `callback.mistral.ai` (the path is unpublished) |
+  | Manus | exact `https://manus.im/api/webhook/mcp/callback` |
+  | Local clients | loopback `localhost`, `127.0.0.1` — seeded **off** when `DOMAIN` is set (hosted assistants never use it, and on a real deployment an attacker's localhost is the victim's machine); on in development |
+
+  Rules are grouped by label so there is one thing per assistant to switch off. The list is `DEFAULT_REDIRECT_RULES` in `backend/scaffold/oauth/settings.py`: add a line there and the next boot seeds it once. Each default is recorded as seeded in `system_settings` (`oauth_default_redirects_seeded`), so one you delete or disable stays that way across deploys.
+- **Refused redirect addresses** — every redirect URI that dynamic registration turned away, with the client's name, attempt count and last time, newest first (also logged as a warning). **Allow exactly** adds it as an exact rule labelled by its hostname (never by the client's self-chosen name, so a registrant calling itself "Claude" cannot land in Claude's group), **Edit as rule** loads it into the form (as a prefix) to adjust first, **Dismiss** drops it. Registration is anonymous, so the list is bounded: one row per URI, clipped to 500 characters, at most 200 rows with the oldest dropped. Allow only addresses you can tie to the provider — this is where sign-in codes are sent.
+
+**Do you need the full callback, or is the host enough?** Dynamic registration lets each assistant register its own redirect URI, and authorize then requires that exact registered URI. The allowlist decides which URIs may be registered at all, so a host rule is enough to make an assistant work — but it lets anyone register a client sending codes to *any* path on that host (an open redirect or a user-content page there becomes a way to steal a code). Exact callbacks close that, which is why every provider with a published callback has one.
 
 This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
 
-Switching a provider off blocks new authorizations immediately and ends existing connections at their next token refresh, within the hour — not whenever their refresh token would have expired. Removing a host does the same permanently.
+Switching a provider's rules off blocks new authorizations immediately and ends existing connections at their next token refresh, within the hour — not whenever their refresh token would have expired. Removing them does the same permanently. Authorize and refresh check that some enabled rule still covers the client's redirect **host**, not its full URI, so connections registered before the rules were tightened keep working; the exact match applies to new registrations.
 
-Paste a URL or type a bare hostname; either is stored as the hostname.
+When adding a rule, a pasted URL is an **exact** callback and a bare hostname is a **host** rule unless you pick a match type.
+
+![Admin redirect rules and refused addresses](screenshots/admin-ai-redirects-light-mobile.png)
 
 **Usage.** The same panel reports calls in the last 24 hours, 7 and 30 days; failures and permission refusals over 7 days; a per-account table (assistants connected, last used, calls over 7/30 days); and the most-used tools. An account that has since disconnected still appears — hiding it would make the record vanish exactly when someone is looking into it. Counts and tool names only: the audit table holds no financial data, so this cannot show any.
 
@@ -1243,9 +1270,9 @@ epic-stocks/
 │   │   │   └── index.ts     # Selects the active implementation
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
-│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
+│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, ConnectAi (Connect your AI: MCP address + per-assistant setup), PrivacyPolicy, InviteLanding, Unsubscribe
 │   │   │   ├── pages/admin/ # Admin panels (DeploymentHealth, EdgeTraffic, Overview, SystemHealth, Users, DangerZone, …) plus dialogs
-│   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices), AiConnectionsSection + connectAiGuides.ts (the assistant setup guides)
 │   │   │   ├── components/ui/ # The shared primitives: Card (one card surface for the whole app — `pad` picks the inset, cardShell.ts has the classes for the few cards that are a button or a label), ChartCard, Segmented, icons, ConflictBanner (the 409 "changed elsewhere" notice), and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
@@ -1371,7 +1398,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | **AI connectors** | | |
 | GET | `/.well-known/oauth-protected-resource` | RFC 9728. How an MCP client discovers who issues tokens for `/mcp`. No auth |
 | GET | `/.well-known/oauth-authorization-server` | RFC 8414. What this authorization server supports. No auth |
-| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect hosts limited to the providers enabled in [AI Connections](#ai-connections-admin) |
+| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect URIs must match an enabled rule in [AI Connections](#ai-connections-admin); refusals are logged for the admin |
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
@@ -1381,6 +1408,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |
 | POST | `/admin-mcp` | Read-only admin diagnostic MCP. Separate OAuth issuer `/admin-oauth`, `admin:read` only; no account tools or resources |
 | GET | `/api/admin/mcp/usage` | Admin: connector usage per account and per tool, plus totals. Counts only |
+| DELETE | `/api/admin/mcp/rejected/{id}` | Admin: dismiss a refused redirect URI |
 | **Grant-program content** | | |
 | GET | `/api/content` | Global grant-program content blob — any logged-in user |
 | POST/PUT/DELETE | `/api/content/grant-templates[/{id}]` | CRUD grant templates (content admin) |

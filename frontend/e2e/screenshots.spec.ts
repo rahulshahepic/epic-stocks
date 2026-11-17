@@ -484,11 +484,10 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
-    await heading.scrollIntoViewIfNeeded()
-    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
-    await expect(page.getByRole('link', { name: 'Download ChatGPT plugin' })).toBeInViewport()
-    await page.evaluate(() => window.scrollBy(0, 240))
+    const link = page.getByRole('link', { name: 'Connect an assistant' })
+    await link.scrollIntoViewIfNeeded()
+    await expect(link).toBeInViewport()
+    await page.evaluate(() => window.scrollBy(0, 120))
     await shoot(page, 'settings-ai-connections-light-mobile')
   })
 
@@ -582,31 +581,42 @@ test.describe('Screenshots', () => {
     await shoot(page, 'admin-diagnostics-consent-light-mobile', { fullPage: true })
   })
 
-  test('settings ai connections - dark - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'dark')
-    await navigateTo(page, 'Settings')
+  for (const [theme, assistant] of [['light', 'claude'], ['dark', 'chatgpt']] as const) {
+    test(`connect your AI - ${assistant} - ${theme} - mobile`, async ({ page }) => {
+      await authedPage(page, MOBILE, theme)
+      await page.goto(`${BASE}/connect-ai`)
+      await page.waitForLoadState('networkidle')
+      await page.getByLabel('Your assistant').selectOption(assistant)
+      await expect(page.getByLabel('Server address')).toHaveValue(/\/mcp$/)
+      await shoot(page, `connect-ai-${assistant}-${theme}-mobile`)
+    })
+  }
+
+  test('connect your AI - muse - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/connect-ai`)
     await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(800)
-    const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
-    await heading.scrollIntoViewIfNeeded()
-    // Keep the ChatGPT package download visible in the README screenshot.
-    await page.getByRole('tab', { name: 'ChatGPT' }).click()
-    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
-    await page.evaluate(() => window.scrollBy(0, 240))
-    await page.waitForTimeout(300)
-    await shoot(page, 'settings-ai-connections-dark-mobile')
+    await page.getByLabel('Your assistant').selectOption('muse')
+    const request = page.getByText(/Create a custom connector named Epic Stocks/)
+    await request.scrollIntoViewIfNeeded()
+    await expect(request).toBeVisible()
+    await page.evaluate(() => window.scrollBy(0, 160))
+    await shoot(page, 'connect-ai-muse-light-mobile')
   })
 
-  test('settings ai connections Muse - light - mobile', async ({ page }) => {
+  test('admin AI redirect rules - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Settings')
+    // A registration from an assistant the allowlist does not know yet.
+    await page.request.post('http://localhost:8000/oauth/register', {
+      data: { client_name: 'Copilot', redirect_uris: ['https://copilot.microsoft.com/oauth/callback'] },
+    })
+    await navigateTo(page, 'Admin')
     await page.waitForLoadState('networkidle')
-    await page.getByRole('tab', { name: 'Muse' }).click()
-    const section = page.locator('#ai-connections')
-    await section.scrollIntoViewIfNeeded()
-    await expect(section).toContainText('Create a custom connector named Epic Stocks')
-    await expect(section).toContainText('OAuth callback host')
-    await shoot(page, 'settings-ai-connections-muse-light-mobile', { fullPage: true })
+    const refused = page.getByText('Refused redirect addresses', { exact: true })
+    await refused.scrollIntoViewIfNeeded()
+    await expect(page.getByText('https://copilot.microsoft.com/oauth/callback')).toBeVisible()
+    await page.evaluate(() => window.scrollBy(0, -80))
+    await shoot(page, 'admin-ai-redirects-light-mobile')
   })
 
   test('invite landing page - light - mobile', async ({ page }) => {

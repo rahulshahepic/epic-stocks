@@ -13,6 +13,10 @@ export interface ReportPrefill {
   message?: string
   /** Route to attribute the report to. Defaults to the current one. */
   path?: string
+  /** Dialog heading, label and placeholder, for requests that are not a fault. */
+  title?: string
+  prompt?: string
+  placeholder?: string
 }
 
 export interface ReportContextValue {

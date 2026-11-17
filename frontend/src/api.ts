@@ -48,16 +48,30 @@ export interface McpUsageReport {
   audit_rows: number
 }
 
+export type McpMatchType = 'exact' | 'prefix' | 'host' | 'loopback'
+
 export interface McpHost {
   id: number
   label: string
-  host: string
+  pattern: string
+  match_type: McpMatchType
   enabled: boolean
+}
+
+export interface McpRejectedRedirect {
+  id: number
+  redirect_uri: string
+  client_name: string | null
+  reason: string | null
+  attempts: number
+  first_seen: string | null
+  last_seen: string | null
 }
 
 export interface McpSettings {
   enabled: boolean
   hosts: McpHost[]
+  rejected: McpRejectedRedirect[]
   connections: number
 }
 
@@ -364,7 +378,7 @@ function del(path: string) {
 }
 
 /** Where a report was raised from. Shapes nothing but the admin's triage. */
-export type ReportSource = 'manual' | 'toast' | 'crash' | 'import'
+export type ReportSource = 'manual' | 'toast' | 'crash' | 'import' | 'request'
 
 export interface ReportPayload {
   message: string
@@ -660,8 +674,10 @@ export const api = {
   adminGetMcpUsage: () => apiFetch<McpUsageReport>('/api/admin/mcp/usage'),
   adminSetMcpEnabled: (enabled: boolean) =>
     post<McpSettings>('/api/admin/mcp', { enabled }),
-  adminAddMcpHost: (label: string, host: string) =>
-    post<McpSettings>('/api/admin/mcp/hosts', { label, host }),
+  adminAddMcpHost: (label: string, pattern: string, matchType?: McpMatchType) =>
+    post<McpSettings>('/api/admin/mcp/hosts', { label, pattern, match_type: matchType ?? null }),
+  adminDismissRejectedRedirect: (id: number) =>
+    apiFetch<McpSettings>(`/api/admin/mcp/rejected/${id}`, { method: 'DELETE' }),
   adminToggleMcpHost: (id: number, enabled: boolean) =>
     apiFetch<McpSettings>(`/api/admin/mcp/hosts/${id}`, {
       method: 'PATCH', body: JSON.stringify({ enabled }),

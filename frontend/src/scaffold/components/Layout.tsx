@@ -39,7 +39,7 @@ export default function Layout() {
 
   const mobilePrimaryItems = navItems.filter(item => ['/', '/events', '/retirement', '/grants'].includes(item.to))
   const recordsRoutes = ['/grants', '/loans', '/sales', '/prices', '/import']
-  const workshopRoutes = ['/settings', '/content', '/admin', '/import-diagnostics']
+  const workshopRoutes = ['/settings', '/connect-ai', '/content', '/admin', '/import-diagnostics']
   const isRecords = recordsRoutes.some(route => location.pathname.startsWith(route))
   const isWorkshop = workshopRoutes.some(route => location.pathname.startsWith(route))
   const isObservatory = location.pathname.startsWith('/retirement') || location.pathname.startsWith('/comp-calculator')

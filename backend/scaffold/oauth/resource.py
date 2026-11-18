@@ -75,7 +75,8 @@ def require_connector(request: Request, db: Session = Depends(get_db)) -> Connec
     if grant is None:
         # Disconnected. The row is the revocation.
         raise _unauthorized(request, "This connection has been disconnected")
-    if (grant.scope == "admin:read") != admin:
+    from .scopes import is_admin_scope
+    if is_admin_scope(grant.scope) != admin:
         raise _unauthorized(request, "This connection belongs to another MCP server")
 
     user = db.get(User, int(payload["sub"]))

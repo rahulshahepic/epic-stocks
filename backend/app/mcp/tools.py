@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from scaffold.oauth.resource import Connector
 from scaffold.auth import get_admin_emails
-from scaffold.oauth.scopes import ADMIN_READ
+from scaffold.oauth.scopes import ADMIN_SCOPES
 
 
 @dataclass
@@ -85,7 +85,7 @@ def visible_to(connector: Connector) -> list[Tool]:
     """
     admin = connector.user.email.lower() in get_admin_emails()
     return [t for t in REGISTRY.values()
-            if t.scope in connector.scopes and (t.scope != ADMIN_READ or admin)]
+            if t.scope in connector.scopes and (t.scope not in ADMIN_SCOPES or admin)]
 
 
 def as_result(payload: Any) -> dict:

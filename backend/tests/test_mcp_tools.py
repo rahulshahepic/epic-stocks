@@ -155,7 +155,7 @@ DESTRUCTIVE_TOOLS = {"remove_compensation", "apply_changes"}
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
     listed = {t["name"]: t for t in mcp.list_tools()}
-    assert set(listed) == {name for name, tool in REGISTRY.items() if tool.scope != "admin:read"}
+    assert set(listed) == {name for name, tool in REGISTRY.items() if tool.scope not in ("admin:read", "admin:write")}
     assert listed, "no tools registered"
     for name, tool in listed.items():
         assert tool["description"].strip(), name
@@ -526,7 +526,7 @@ def test_a_connector_cannot_reach_another_users_data(client, make_client):
 
 # ── nothing becomes a 500 ───────────────────────────────────────────────────
 
-@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope != "admin:read"))
+@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope not in ("admin:read", "admin:write")))
 def test_every_tool_survives_garbage_arguments(mcp, name):
     """Whatever a confused model sends, the answer is a tool result, not a crash."""
     for arguments in (
@@ -541,7 +541,7 @@ def test_every_tool_survives_garbage_arguments(mcp, name):
         assert isinstance(result["content"][0]["text"], str)
 
 
-@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope != "admin:read"))
+@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope not in ("admin:read", "admin:write")))
 def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
     """The payload is a JSON text block, so it has to actually parse."""
     required = {

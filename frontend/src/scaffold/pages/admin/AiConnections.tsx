@@ -57,6 +57,8 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   // card, not every card below it.
   const hosts = Array.isArray(settings?.hosts) ? settings.hosts : []
   const rejected = Array.isArray(settings?.rejected) ? settings.rejected : []
+  const requests = Array.isArray(settings?.requests) ? settings.requests : []
+  const history = Array.isArray(settings?.request_history) ? settings.request_history : []
   const groups = new Map<string, McpHost[]>()
   for (const entry of hosts) {
     groups.set(entry.label, [...(groups.get(entry.label) ?? []), entry])
@@ -201,6 +203,82 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           Add
         </button>
       </form>
+
+      {requests.length > 0 && (
+        <>
+          <hr className="my-4 border-cs-border" />
+          <h4 className="text-xs font-medium text-cs-text">
+            Requests from AI assistants <span className="text-cs-muted">({requests.length} waiting)</span>
+          </h4>
+          <p className="mt-0.5 text-xs text-cs-muted">
+            Changes an admin&apos;s assistant asked for that would let more assistants connect.
+            Nothing changes until you approve. Approve only what you asked for yourself.
+          </p>
+          <ul className="mt-2 space-y-2" aria-label="Pending requests from AI assistants">
+            {requests.map((entry) => (
+              <li key={entry.id} className="rounded-md border border-cs-border p-2.5">
+                <p className="text-xs font-medium text-cs-text">
+                  {entry.action === 'enable_redirect_rule' ? 'Switch a redirect rule back on' : 'Allow a new redirect address'}
+                </p>
+                <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
+                  {entry.label && (<><dt className="text-cs-muted">Name</dt><dd className="text-cs-text">{entry.label}</dd></>)}
+                  {entry.match_type && (<><dt className="text-cs-muted">Match</dt><dd className="text-cs-text">{MATCH_LABELS[entry.match_type as McpMatchType] ?? entry.match_type}</dd></>)}
+                  {entry.pattern && (<><dt className="text-cs-muted">Address</dt><dd><code className="break-all font-mono text-cs-text">{entry.pattern}</code></dd></>)}
+                </dl>
+                {entry.consequence && <p className="mt-1.5 text-xs text-cs-text-2">{entry.consequence}</p>}
+                {entry.reason && (
+                  <figure className="mt-1.5 rounded border border-dashed border-amber-400 bg-amber-50 px-2 py-1 dark:border-amber-500/50 dark:bg-amber-500/10">
+                    <figcaption className="text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                      Assistant&apos;s note — unverified
+                    </figcaption>
+                    <blockquote className="break-words text-xs text-cs-text-2">{entry.reason}</blockquote>
+                  </figure>
+                )}
+                <p className="mt-1.5 text-xs text-cs-muted">
+                  From {entry.client_name ?? 'an assistant'}{entry.client_name ? ' (name chosen by the app)' : ''}
+                  {entry.requested_at ? ` · ${new Date(entry.requested_at).toLocaleString()}` : ''}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={() => run(() => api.adminDecideMcpRequest(entry.id, true), 'Failed to approve')}
+                    aria-label={`Approve: ${entry.description}`}
+                    className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => run(() => api.adminDecideMcpRequest(entry.id, false), 'Failed to reject')}
+                    aria-label={`Reject: ${entry.description}`}
+                    className="rounded-md border border-cs-border px-3 py-1.5 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {history.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-cs-muted">Recent request decisions ({history.length})</summary>
+          <ul className="mt-1 divide-y divide-cs-border">
+            {history.map((entry) => (
+              <li key={entry.id} className="py-1.5 text-xs">
+                <p className="break-all text-cs-text-2">{entry.description}</p>
+                <p className="text-cs-muted">
+                  {entry.status}{entry.decided_by ? ` by ${entry.decided_by}` : ''}
+                  {entry.decided_at ? ` · ${new Date(entry.decided_at).toLocaleString()}` : ''}
+                  {entry.outcome ? ` — ${entry.outcome}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {rejected.length > 0 && (
         <>

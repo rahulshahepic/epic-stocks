@@ -129,7 +129,7 @@ export default function LifeEventsPlanner({
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-cs-text-2">Loan term (years; 0 = cash)
                   <input type="number" min="0" max="50" value={draft.loanYears ?? 0}
-                    onChange={e => set('loanYears', Math.max(0, Number(e.target.value)))}
+                    onChange={e => set('loanYears', Math.max(0, Math.floor(Number(e.target.value))))}
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-cs-text-2">Loan interest rate (%)
@@ -150,14 +150,14 @@ export default function LifeEventsPlanner({
                 {draft.resaleDate && money('resaleValueM', 'Future resale value before remaining debt')}
               </>
             )}
-            {draft.kind === 'vehicle' && (
+            {
               <>
-                <label className="flex flex-col gap-1 text-xs text-cs-text-2">Replace every N years (0 = never)
+                <label className="flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
                   <input type="number" min="0" max="50" value={draft.replacementEveryYears ?? 0}
                     onChange={e => set('replacementEveryYears', Math.max(0, Number(e.target.value)))}
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
                 </label>
-                {money('replacementCostM', 'Future replacement cost each time')}
+                {money('replacementCostM', 'Repeat cost each time (net of trade-in, if any)')}
               </>
             )}
           </div>

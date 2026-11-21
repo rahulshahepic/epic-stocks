@@ -91,7 +91,7 @@ def migrate_saved_params(saved):
 EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
 EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
 EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
-                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM"}
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate"}
 EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding"} | EVENT_NUMBERS
 
 
@@ -127,7 +127,7 @@ def validate_planned_events(events):
             value = event[key]
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f"{label}.{key} must be a finite number")
-            maximum = (1 if key in {"downPaymentPct", "loanRate"} else
+            maximum = (1 if key in {"downPaymentPct", "loanRate", "inflationRate"} else
                        50 if key in {"loanYears", "replacementEveryYears"} else 1000)
             if not 0 <= value <= maximum:
                 raise ValueError(f"{label}.{key} must be between 0 and {maximum}")

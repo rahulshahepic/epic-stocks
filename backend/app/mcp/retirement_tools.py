@@ -1,4 +1,4 @@
-"""Retirement MCP tools and ChatGPT MCP Apps entrypoint."""
+"""Retirement MCP tools and portable MCP Apps entrypoint."""
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
@@ -62,8 +62,11 @@ def _run(ctx: ToolContext, args: dict):
         raise ValueError("recalculate_exit must be true or false")
     if args.get("recalculate_exit") and EQUITY_READ not in ctx.connector.scopes:
         raise ValueError("Date-specific Epic exit projections require equity:read")
+    saved = owner.retirement_params or {}
+    missing_exit = "epicExit" not in saved and "epicExit" not in (args.get("overrides") or {})
+    implicit_exit = missing_exit and "recalculate_exit" not in args and EQUITY_READ in ctx.connector.scopes
     return run(owner, overrides=args.get("overrides"),
-               recalculate_exit=args.get("recalculate_exit", False))
+               recalculate_exit=args.get("recalculate_exit", implicit_exit))
 
 
 def _update(ctx: ToolContext, args: dict):
@@ -93,7 +96,11 @@ def _compare(ctx: ToolContext, args: dict):
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 60 or name in names:
             raise ValueError("Scenario names must be unique and 1-60 characters")
         names.add(name)
-        recalc = item.get("recalculate_exit", True)
+        recalc = item.get("recalculate_exit", EQUITY_READ in ctx.connector.scopes)
+        saved = owner.retirement_params or {}
+        if "recalculate_exit" not in item and EQUITY_READ in ctx.connector.scopes:
+            if "epicExit" not in saved and "epicExit" not in (item.get("overrides") or {}):
+                recalc = True
         if type(recalc) is not bool:
             raise ValueError("recalculate_exit must be true or false")
         if "overrides" in item and not isinstance(item["overrides"], dict):

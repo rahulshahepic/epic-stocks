@@ -507,6 +507,21 @@ describe('Retirement page', () => {
     expect(dateInput.disabled).toBe(false)
   })
 
+  it('runs with a warning when retirement moves beyond a conditional purchase', async () => {
+    mockApi({ savedParams: { retirementDate: '2030-06-15', epicExit: 5, paths: 10,
+      plannedEvents: [{ id: 'car', title: 'Car', kind: 'vehicle', date: '2037-01-01',
+        amountM: 0.2, condition: { requireFullSpending: true } }] } })
+    render(<MemoryRouter><Retirement /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByLabelText(/^Retirement date/)).toHaveValue('2030-06-15'))
+    fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2040-06-15' } })
+    const run = screen.getByRole('button', { name: /Simulate.*retirements/ })
+    await waitFor(() => expect(run).toBeEnabled())
+    fireEvent.click(run)
+    expect(await screen.findByText(/Car: conditional ownership periods before retirement are skipped/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(run).toBeEnabled()
+  })
+
   it('keeps result ages and purchasing-power year tied to the run until rerun', async () => {
     mockApi({ savedParams: {
       retirementDate: '2030-06-15', epicExit: 5, paths: 10, seed: 42,

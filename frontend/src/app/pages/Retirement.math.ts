@@ -2132,8 +2132,9 @@ export function simulate(params: SimParams): SimResult {
     let trdB = tradTotal * wB
     let rthS = rothTotal * wS
     let rthB = rothTotal * wB
-    let hadLiquidityShortfall = false
-    let hadExhaustion = planned.preRetirementNetM > Math.max(0, params.epicExit + params.taxableAdditional) + 1e-9
+    const preRetirementShortfall = planned.preRetirementNetM > Math.max(0, params.epicExit + params.taxableAdditional) + 1e-9
+    let hadLiquidityShortfall = preRetirementShortfall && (tradTotal + rothTotal > 1e-9)
+    let hadExhaustion = preRetirementShortfall && !(tradTotal + rothTotal > 1e-9)
     let taxArrears = 0
     let dataIdx = Math.floor(rand() * dataLen)
 
@@ -2152,7 +2153,7 @@ export function simulate(params: SimParams): SimResult {
     // pctRuin as its breakdown, so a path has to land in exactly one: judging
     // every shortfall separately let one path count as both and the two
     // percentages add up to more than the total they are splitting.
-    if (hadExhaustion) firstShortfallMonth[i] = 1  // unaffordable pre-retirement outlay
+    if (preRetirementShortfall) firstShortfallMonth[i] = 1  // unaffordable pre-retirement outlay
     const recordShortfall = (month: number) => {
       if (firstShortfallMonth[i]) return
       firstShortfallMonth[i] = month

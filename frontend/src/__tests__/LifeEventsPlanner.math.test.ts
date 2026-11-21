@@ -97,6 +97,30 @@ describe('hypothetical life-event cash flows', () => {
     expect(p.monthlyNeedM[37]).toBeCloseTo(0.05)
     expect(p.monthlyNeedM[73]).toBeCloseTo(0.05)
   })
+  it('reports an unfunded pre-retirement purchase without inventing a retirement-account withdrawal', () => {
+    const purchase: PlannedEvent = {
+      id: 'unfunded', title: 'Large house', kind: 'home',
+      date: '2030-01-01', amountM: 10, funding: 'epic',
+    }
+    for (const age of [45, 65]) {
+      const result = simulate({
+        ...base, currentAge: age, endAge: age + 10, paths: 10,
+        epicExit: 1, taxableAdditional: 0.2, traditional: 3, roth: 2,
+        plannedEvents: [purchase], asOfDate: '2029-01-01',
+      })
+      expect(result.preRetirementFundingGapM).toBeCloseTo(8.8)
+      expect(result.pctRuin).toBe(1)
+      // Assets may remain in retirement accounts, but cannot pay the unfunded
+      // pre-retirement purchase under this working-life approximation.
+      expect(result.startingTotal).toBeCloseTo(5)
+      expect(result.medianFinalM).toBeGreaterThan(0)
+    }
+    const affordable = simulate({
+      ...base, paths: 10, epicExit: 12, taxableAdditional: 0.2,
+      plannedEvents: [purchase], asOfDate: '2029-01-01',
+    })
+    expect(affordable.preRetirementFundingGapM).toBe(0)
+  })
   it('changes the real Monte Carlo outcomes without altering input objects', () => {
     const withEvents = { ...base, plannedEvents: [{ id: 'wedding', title: 'Wedding',
       kind: 'wedding' as const, date: '2035-05-01', amountM: 0.5 }] }

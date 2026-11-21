@@ -66,8 +66,10 @@ scratch. The app does not guess what the user wants.
   reserve or sell shares, mutate grants/loans/sales, or prove that vested shares
   will be available at a future price. Use the read-only `estimate_sale` for
   share-count and tax estimates; review vesting and loans separately.
-- Repeated purchases stop at the optional end date, including vehicle
-  replacement and recurring vacations.
+- The optional end date stops incremental annual costs. It does not cancel
+  scheduled vehicle replacements or recurring one-time purchases; a modeled
+  resale date stops later replacements. Change the replacement cadence to zero
+  to model a single purchase.
 - Home equity is excluded from liquid retirement assets until a modeled sale.
   Resale proceeds are reduced by modeled outstanding loan principal; selling
   costs and taxes must be included in the entered proceeds/value assumptions.

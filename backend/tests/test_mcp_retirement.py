@@ -321,3 +321,38 @@ def test_historical_epic_purchase_is_not_a_future_sale(mcp, monkeypatch):
     result = mcp.call("plan_life_events", events=[event], recalculate_exit=False)
     assert result["hypotheticalEpicSales"] == []
     assert any("historical purchase" in warning for warning in result["modelWarnings"])
+
+
+def test_epic_sale_month_boundaries_match_cash_flow_engine(mcp, monkeypatch):
+    from datetime import date
+    from app.mcp import retirement_tools
+    retirement_date = f"{date.today().year + 5}-01-20"
+
+    def fake_run(owner, **kwargs):
+        events = kwargs["overrides"].get("plannedEvents", [])
+        return {
+            "retirementDate": retirement_date,
+            "result": {"pctFundingShortfall": 0.01,
+                       "medianFinalM": 9, "p10FinalM": 3,
+                       "planned": {"preRetirementEpicNeedM": 0.1 if events else 0,
+                                   "warnings": []}},
+            "saved": False,
+        }
+
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    this_month = date.today().replace(day=1).isoformat()
+    event = {"id": "same-month", "title": "This month's purchase",
+             "kind": "home", "date": this_month, "amountM": 0.1,
+             "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event],
+                      recalculate_exit=False)
+    assert result["preRetirementEpicNetCashTargetM"] == pytest.approx(0.1)
+    assert len(result["hypotheticalEpicSales"]) == 1
+    assert not any("historical purchase" in w for w in result["modelWarnings"])
+
+    retirement_month = {**event, "id": "retirement-month",
+                        "date": retirement_date[:7] + "-05"}
+    result = mcp.call("plan_life_events", events=[retirement_month],
+                      recalculate_exit=False)
+    assert result["hypotheticalEpicSales"] == []
+    assert any("post-exit portfolio" in w for w in result["modelWarnings"])

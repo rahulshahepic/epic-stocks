@@ -31,7 +31,7 @@ describe('life event editor saves backend-compatible shapes', () => {
       id: 'car', title: 'Future car', kind: 'vehicle', date: '2030-01-01',
       amountM: 0.08, funding: 'epic',
     }]} retirementDate="2032-01-01" onChange={vi.fn()}
-      comparison={null} onRun={vi.fn()} running={false} />)
+    comparison={null} onRun={vi.fn()} running={false} />)
     expect(screen.getByRole('note').textContent).toContain('$80,000')
     expect(screen.getByRole('note').textContent).toContain('not a share count or an executed sale')
   })

@@ -798,6 +798,17 @@ test.describe('Screenshots', () => {
       const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
         .withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      // The sticky site header and fixed mobile navigation are outside this
+      // component. Hide only that chrome for a focused component screenshot;
+      // otherwise they cover the planner when Playwright scrolls to it.
+      await page.evaluate(() => {
+        const planner = document.querySelector('[aria-label="Life events and major purchases"]')
+        for (const element of document.querySelectorAll<HTMLElement>('body *')) {
+          if (planner?.contains(element)) continue
+          const position = getComputedStyle(element).position
+          if (position === 'fixed' || position === 'sticky') element.style.visibility = 'hidden'
+        }
+      })
       await page.locator('[aria-label="Life events and major purchases"]')
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
     })

@@ -49,6 +49,7 @@ import {
   type SimResult,
 } from './Retirement.math.ts'
 import { fmt$M, fmtPct } from '../format.ts'
+import LifeEventsPlanner from './LifeEventsPlanner.tsx'
 
 const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
 // .year is yyyymm — extract just the calendar year for display.
@@ -431,6 +432,7 @@ function RetirementAccount() {
     retirementDate: string
     spouseDOB: string | null
   } | null>(null)
+  const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
   const resultDollarYear = completedRun?.retirementDate.slice(0, 4)
@@ -447,7 +449,9 @@ function RetirementAccount() {
     completedRun.spouseDOB !== spouseDOB ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState('')
+  const saveRequestRef = useRef(0)
   const [showRuinTable, setShowRuinTable] = useState(false)
 
   const vid = viewing?.invitationId
@@ -475,6 +479,7 @@ function RetirementAccount() {
     setParamsLoaded(false)
     setParamsError(false)
     setCompletedRun(null)
+    setLifeEventComparison(null)
     setHasRun(false)
     setRunning(false)
     if (runTimer.current) clearTimeout(runTimer.current)
@@ -622,15 +627,23 @@ function RetirementAccount() {
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
+    const request = ++saveRequestRef.current
     setSaveStatus('saving')
+    setSaveError('')
     const t = setTimeout(() => {
       api.saveRetirementParams({
         ...(params as unknown as Record<string, unknown>),
         retirementDate,
         spouseDOB,
       })
-        .then(() => setSaveStatus('saved'))
-        .catch(() => setSaveStatus('idle'))
+        .then(() => {
+          if (request === saveRequestRef.current) setSaveStatus('saved')
+        })
+        .catch((err: unknown) => {
+          if (request !== saveRequestRef.current) return
+          setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
+          setSaveStatus('error')
+        })
     }, 500)
     return () => clearTimeout(t)
   }, [params, retirementDate, spouseDOB, vid])
@@ -665,8 +678,13 @@ function RetirementAccount() {
     setRunning(true)
     runTimer.current = setTimeout(() => {
       try {
+        const simulated = simulate(runParams)
+        const baseline = runParams.plannedEvents?.length
+          ? simulate({ ...runParams, plannedEvents: [] })
+          : null
+        setLifeEventComparison(baseline ? { baseline, withEvents: simulated } : null)
         setCompletedRun({
-          result: simulate(runParams),
+          result: simulated,
           params: { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) },
           retirementDate,
           spouseDOB,
@@ -708,9 +726,17 @@ function RetirementAccount() {
               ? 'Saving…'
               : saveStatus === 'saved'
                 ? 'All inputs saved'
-                : 'Inputs save automatically'}
+                : saveStatus === 'error'
+                  ? 'Save failed'
+                  : 'Inputs save automatically'}
         </span>
       </div>
+
+      {saveStatus === 'error' && !vid && (
+        <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
+          Retirement changes were NOT saved: {saveError}. Fix the invalid event or try again.
+        </p>
+      )}
 
       <div className="rounded-xl border border-cs-border bg-cs-raised ">
         <button
@@ -750,6 +776,19 @@ function RetirementAccount() {
           </div>
         )}
       </div>
+
+      <LifeEventsPlanner
+        events={params.plannedEvents ?? []}
+        retirementDate={retirementDate}
+        onChange={events => {
+          update('plannedEvents', events)
+          setLifeEventComparison(null)
+        }}
+        comparison={lifeEventComparison}
+        onRun={run}
+        running={running}
+        readonly={false}
+      />
 
       {/* Card 1: Who & when */}
       <Card pad="md">

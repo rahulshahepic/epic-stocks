@@ -985,6 +985,7 @@ function CompCalculatorAccount() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
   const [exitDate, setExitDate] = useState<string | null>(null)
+  const [exitSaveError, setExitSaveError] = useState('')
   const [compEvents, setCompEvents] = useState<CompEvent[]>([])
   const compEventsDirtyRef = useRef(false)
   const retirementParamsRef = useRef<Record<string, unknown>>({})
@@ -1043,7 +1044,10 @@ function CompCalculatorAccount() {
         delete merged.retirementDate
       }
       retirementParamsRef.current = merged
-      api.saveRetirementParams(merged).catch(() => {})
+      setExitSaveError('')
+      api.saveRetirementParams(merged).catch((err: unknown) => {
+        setExitSaveError(err instanceof Error ? err.message : 'Unable to save planned exit date')
+      })
     }
   }
 
@@ -1156,6 +1160,7 @@ function CompCalculatorAccount() {
             Clear
           </button>
         )}
+        {exitSaveError && <p role="alert" className="text-xs text-red-600">Exit date not saved: {exitSaveError}</p>}
         <p className="text-[10px] text-cs-muted">
           {exitDate
             ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'

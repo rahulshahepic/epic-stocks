@@ -37,17 +37,17 @@ ENUMS = {
     "rebalance": {"none", "tax-advantaged", "all"},
 }
 SIDE_CARS = {"retirementDate", "spouseDOB"}
-EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints"} | SIDE_CARS
+EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints", "plannedEvents"} | SIDE_CARS
 
 
-def _date(value, label, *, birth=False):
+def _date(value, label, *, birth=False, historical=False):
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a YYYY-MM-DD date")
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
         raise ValueError(f"{label} must be a valid YYYY-MM-DD date") from None
-    if not (1900 if birth else 2020) <= parsed.year <= (2100 if not birth else 2099):
+    if not (1900 if birth or historical else 2020) <= parsed.year <= (2100 if not birth else 2099):
         raise ValueError(f"{label} is outside the supported date range")
     return parsed
 
@@ -87,6 +87,62 @@ def migrate_saved_params(saved):
     return migrated
 
 
+
+EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
+EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
+EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate"}
+EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding"} | EVENT_NUMBERS
+
+
+def validate_planned_events(events):
+    """Strict input boundary shared by MCP what-ifs and saved scenarios."""
+    if not isinstance(events, list) or len(events) > 20:
+        raise ValueError("plannedEvents must be a list of at most 20 hypothetical events")
+    ids = set()
+    for index, event in enumerate(events):
+        label = f"plannedEvents[{index}]"
+        if not isinstance(event, dict) or set(event) - EVENT_FIELDS:
+            raise ValueError(f"{label} has unknown fields")
+        for key in ("id", "title", "kind", "date", "amountM"):
+            if key not in event:
+                raise ValueError(f"{label} requires {key}")
+        if any(not isinstance(event[k], str) or not event[k].strip() or len(event[k]) > 100
+               for k in ("id", "title")):
+            raise ValueError(f"{label} id/title must be nonempty strings (max 100)")
+        if event["id"] in ids:
+            raise ValueError("planned event IDs must be unique")
+        ids.add(event["id"])
+        if not isinstance(event["kind"], str) or event["kind"] not in EVENT_KINDS:
+            raise ValueError(f"{label} has an unsupported kind")
+        if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
+            raise ValueError(f"{label} has an unsupported funding source")
+        when = _date(event["date"], f"{label}.date", historical=True)
+        for key in ("endDate", "resaleDate"):
+            if key in event and event[key] is not None:
+                other = _date(event[key], f"{label}.{key}", historical=True)
+                if other < when:
+                    raise ValueError(f"{label}.{key} must not precede the event")
+        for key in EVENT_NUMBERS & set(event):
+            value = event[key]
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError(f"{label}.{key} must be a finite number")
+            maximum = (1 if key in {"downPaymentPct", "loanRate", "inflationRate"} else
+                       50 if key in {"loanYears", "replacementEveryYears"} else 1000)
+            if not 0 <= value <= maximum:
+                raise ValueError(f"{label}.{key} must be between 0 and {maximum}")
+        if any(key in event and not float(event[key]).is_integer() for key in ("loanYears", "replacementEveryYears")):
+            raise ValueError(f"{label} loan and replacement terms must be whole years")
+        if event.get("loanYears", 0) and "downPaymentPct" not in event:
+            raise ValueError(f"{label} financed purchases require downPaymentPct")
+        # Cash purchases may carry redundant loan fields from a web form.
+        # planCashFlows creates debt only for a positive financed balance.
+        if event.get("replacementEveryYears", 0) and not (event.get("replacementCostM", 0) or event["amountM"]):
+            raise ValueError(f"{label} needs a replacement cost")
+        # A missing resaleValueM means zero, as in the shared simulator.
+    return events
+
+
 def validate_changes(changes):
     """Validate a *partial* named-field patch, never replace a saved blob."""
     if not isinstance(changes, dict) or not changes:
@@ -116,6 +172,8 @@ def validate_changes(changes):
                 raise ValueError(f"{key} is outside the supported range")
             if key in INTEGERS and not isinstance(value, int):
                 raise ValueError(f"{key} must be an integer")
+        elif key == "plannedEvents":
+            validate_planned_events(value)
         elif key == "glidePoints":
             if not isinstance(value, list) or len(value) > 20:
                 raise ValueError("glidePoints must be a list of at most 20 entries")
@@ -142,6 +200,8 @@ def validate_combined(params):
         raise ValueError("Stocks and bonds cannot exceed 100% together")
     if params.get("additionalBasis", 0) > params.get("taxableAdditional", 0):
         raise ValueError("Taxable cost basis cannot exceed the taxable balance")
+    if "plannedEvents" in params:
+        validate_planned_events(params["plannedEvents"])
     if params.get("endAge", 91) <= params.get("currentAge", 50):
         raise ValueError("End age must be later than retirement age")
 
@@ -207,6 +267,7 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     # Sidecar fields are not part of the TypeScript engine.
     engine = {k: v for k, v in params.items() if k not in SIDE_CARS}
     engine["simulationStartDate"] = retirement_date.isoformat()
+    engine["asOfDate"] = date.today().isoformat()
     if spouse_dob:
         engine["spouseBirthDate"] = spouse_dob
     return engine, retirement_date, "projected_exit" if recalculate_exit else "saved_exit"
@@ -240,7 +301,7 @@ def run(owner, *, overrides=None, recalculate_exit=False):
         "assumptions": {k: params.get(k) for k in (
             "epicExit", "taxableAdditional", "traditional", "roth",
             "defaultSpend", "minSpend", "healthInsurance", "scenario",
-            "stockPct", "bondPct", "currentAge", "endAge", "paths", "seed",
+            "stockPct", "bondPct", "currentAge", "endAge", "paths", "seed", "plannedEvents",
         )},
         "result": summary,
         "saved": False,

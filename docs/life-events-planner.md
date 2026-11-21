@@ -11,7 +11,9 @@ The same dated `plannedEvents` schema handles:
   net proceeds from an existing home, incremental property tax / insurance /
   maintenance, optional later resale (net of remaining modeled loan).
 - Vehicle purchase: cash or financed purchase, trade-in proceeds, incremental
-  ownership costs, resale and periodic replacement.
+  ownership costs, resale and periodic replacement. Repeated vacations and
+  other recurring one-time expenses use the same cadence; the original amount
+  repeats unless a different repeat cost is provided.
 - College / tuition, childcare, eldercare, health expenses: one-time and/or
   annual costs with optional end date.
 - Wedding, vacation / Disney, renovations, gifts and custom events: one-time

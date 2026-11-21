@@ -111,6 +111,10 @@ def test_card_resource_scoped_and_static(mcp, client):
     assert "show_retirement" in {t["name"] for t in mcp.list_tools()}
     assert "refresh_retirement_view" in {t["name"] for t in mcp.list_tools()}
     assert "access_token" not in resource["text"]
+    assert 'id="compareDate"' in resource["text"]
+    assert "Compare retirement dates" in resource["text"]
+    assert "Compare Oct 2031" not in resource["text"]
+    assert "recalculate_exit:projected" in resource["text"]
     reader = Mcp(client, scope="equity:read")
     assert RETIREMENT_RESOURCE_URI not in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
     assert "error" in reader.rpc("resources/read", {"uri": RETIREMENT_RESOURCE_URI})

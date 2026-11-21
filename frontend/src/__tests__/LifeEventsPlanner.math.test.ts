@@ -28,6 +28,16 @@ describe('hypothetical life-event cash flows', () => {
     expect(p.warnings.join(' ')).toContain('pre-retirement')
     expect(p.monthlyNeedM[1]).toBeGreaterThan(0)
   })
+  it('does not drop pre-retirement college tuition or recurring replacements', () => {
+    const p = planCashFlows([
+      { id: 'tuition', title: 'College', kind: 'education', date: '2029-01-01',
+        amountM: 0, annualCostM: 0.06, endDate: '2031-12-01' },
+      { id: 'car', title: 'Car', kind: 'vehicle', date: '2028-01-01',
+        amountM: 0.05, replacementEveryYears: 2, replacementCostM: 0.05 },
+    ], '2032-01-01', 120)
+    // Three years of tuition, initial car and a replacement in 2030.
+    expect(p.preRetirementNetM).toBeCloseTo(0.18 + 0.05 + 0.05)
+  })
   it('stops ongoing costs at end date and handles a resale net of remaining debt', () => {
     const p = planCashFlows([{ ...home, endDate: '2033-01-01',
       resaleDate: '2034-01-01', resaleValueM: 1.4 }], '2032-01-01', 120)

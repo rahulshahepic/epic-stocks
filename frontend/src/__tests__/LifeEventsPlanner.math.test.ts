@@ -44,8 +44,8 @@ describe('hypothetical life-event cash flows', () => {
     ], '2032-01-01', 180)
     expect(p.monthlyNeedM[1]).toBeCloseTo(0.08)
     expect(p.monthlyNeedM[25]).toBeCloseTo(0.05 / 12)
-    expect(p.monthlyNeedM[61]).toBeCloseTo(0.09)
-    expect(p.monthlyNeedM[73]).toBeCloseTo(0.05 / 12)
+    expect(p.monthlyNeedM[61]).toBeCloseTo(0.09 + 0.05 / 12)
+    expect(p.monthlyNeedM[73]).toBe(0)
   })
   it('changes the real Monte Carlo outcomes without altering input objects', () => {
     const withEvents = { ...base, plannedEvents: [{ id: 'wedding', title: 'Wedding',

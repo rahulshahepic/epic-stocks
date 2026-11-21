@@ -244,13 +244,13 @@ export default function LifeEventsPlanner({
               comparison is valid until you fund this gap.
             </p>
           ) : <div className="grid grid-cols-2 gap-3 text-xs text-cs-text">
-            <div><p className="text-cs-muted">Without events</p>
-              <p className="text-lg font-bold">{pct(1 - comparison.baseline.pctRuin)}</p>
-              <p>Median ending: {dollar(comparison.baseline.medianFinalM * 1_000_000)}</p></div>
-            <div><p className="text-cs-muted">With events</p>
-              <p className="text-lg font-bold">{pct(1 - comparison.withEvents.pctRuin)}</p>
-              <p>Median ending: {dollar(comparison.withEvents.medianFinalM * 1_000_000)}</p></div>
-          </div>}
+              <div><p className="text-cs-muted">Without events</p>
+                <p className="text-lg font-bold">{pct(1 - comparison.baseline.pctRuin)}</p>
+                <p>Median ending: {dollar(comparison.baseline.medianFinalM * 1_000_000)}</p></div>
+              <div><p className="text-cs-muted">With events</p>
+                <p className="text-lg font-bold">{pct(1 - comparison.withEvents.pctRuin)}</p>
+                <p>Median ending: {dollar(comparison.withEvents.medianFinalM * 1_000_000)}</p></div>
+            </div>}
           <p className="text-xs text-cs-muted">Illustrative projections, not a guarantee or a verified ability to finance a purchase.</p>
         </div>
       )}

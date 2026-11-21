@@ -50,3 +50,23 @@ for(const theme of ['light','dark'] as const){
     expect(audit.violations).toEqual([])
   })
 }
+
+
+test('life events in MCP card are read-only and passed to the planner', async ({page}) => {
+  const card=await retirementHost(page)
+  await card.getByLabel('Type', {exact:true}).selectOption('travel')
+  await card.getByLabel('Name', {exact:true}).fill('Disney vacation')
+  await card.getByLabel('Date', {exact:true}).fill('2034-07-01')
+  await card.getByLabel('Purchase / one-time cost ($)').fill('25000')
+  await card.getByRole('button',{name:'Add planned event'}).click()
+  await expect(card.getByText('Disney vacation', {exact:false})).toBeVisible()
+  await card.getByRole('button',{name:'Compare with / without events'}).click()
+  await expect(card.getByRole('status')).toContainText('No real sales or transactions created')
+  const calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{
+    method:string;params:{name?:string;arguments?:{events?:{title:string;amountM:number}[]}}
+  }[]}).pluginCalls)
+  const plan=calls.find(c=>c.params.name==='plan_life_events')
+  expect(plan?.params.arguments?.events?.[0].title).toBe('Disney vacation')
+  expect(plan?.params.arguments?.events?.[0].amountM).toBe(0.025)
+  expect(calls.some(c=>c.params.name==='update_retirement_params'||c.params.name==='apply_changes')).toBe(false)
+})

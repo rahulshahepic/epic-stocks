@@ -76,8 +76,10 @@ run:
    commit, and never fixes the failure by pushing directly to `staging` or
    `main`. A fix goes through a feature PR to `staging` like any other change.
 
-Merging to `main` deploys to production, so the conditions above are the gate.
-They are not a formality to work around.
+Merging to `main` does not by itself release to production. The deploy job runs in
+the `production` environment, which waits for Rahul's approval in the CD
+pipeline. An agent never approves, re-runs or otherwise pushes that deployment
+along; leaving it for Rahul is the expected end state of a promotion.
 
 ## What GitHub can enforce
 

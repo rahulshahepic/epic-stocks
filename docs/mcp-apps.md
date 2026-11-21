@@ -10,7 +10,7 @@ Epic Stocks exposes **one OAuth-protected Streamable HTTP MCP server** at `https
 | --- | --- | --- | --- |
 | **Portfolio** | “Show my Epic Stocks portfolio” / `show_equity` | Summary, grants, loans, upcoming events, event-date filters, refresh and display-mode requests | `equity:read` |
 | **Retirement planner** | “Show my retirement plan” / `show_retirement` | Actual retirement Monte Carlo results, funded-path and exhaustion risks, percentile wealth chart, date/spending/allocation/insurance what-if controls | `comp:read` |
-| **Compare retirement dates** | Retirement card **Compare** button / `compare_retirement_scenarios` | Compare two or three runs on consistent random seeds; the card offers October 2031 vs January 2032 | `comp:read`; also `equity:read` for date-specific Epic exit projections |
+| **Compare retirement dates** | Retirement card **Compare** button / `compare_retirement_scenarios` | Compare two or three runs on consistent random seeds; the card compares the chosen retirement date against a second user-selected date (three months later by default) | `comp:read`; also `equity:read` for date-specific Epic exit projections |
 | **Save retirement assumptions** | Retirement card **Save these inputs** / `update_retirement_params` | Save only named fields; exploratory simulations and comparisons never write saved settings | `comp:write` |
 | **Import equity documents** | Conversation plus the portfolio/import workflow | Assistant interprets attachments, previews proposed changes, then applies only after explicit confirmation | Corresponding import and `equity:write` permissions |
 

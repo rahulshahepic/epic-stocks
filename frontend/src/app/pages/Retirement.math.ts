@@ -2024,7 +2024,7 @@ export function simulate(params: SimParams): SimResult {
   const rothTotal = Math.max(0, params.roth)
   // Epic exit always carries full basis (just sold). Pre-existing taxable
   // additional carries user-supplied basis (capped to its value).
-  const baselineBasis = Math.min(taxableTotal, Math.max(0, params.epicExit) +
+  const baselineBasis = Math.min(taxableTotal, Math.max(0, params.epicExit - planned.preRetirementNetM) +
     Math.min(Math.max(0, params.additionalBasis), Math.max(0, params.taxableAdditional)))
   const totalPortfolio = taxableTotal + tradTotal + rothTotal
 

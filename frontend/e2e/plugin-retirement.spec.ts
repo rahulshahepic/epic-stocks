@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { retirementHost } from './plugin-host'
+import { retirementHost, retirementSnapshot } from './plugin-host'
 
 test('retirement card shows distinct shortfall and exhaustion risks', async ({page}) => {
   const card=await retirementHost(page)
@@ -70,4 +70,35 @@ test('life events in MCP card are read-only and passed to the planner', async ({
   expect(plan?.params.arguments?.events?.[0].title).toBe('Disney vacation')
   expect(plan?.params.arguments?.events?.[0].amountM).toBe(0.025)
   expect(calls.some(c=>c.params.name==='update_retirement_params'||c.params.name==='apply_changes')).toBe(false)
+})
+
+
+test('MCP card with unfunded pre-retirement purchase hides misleading odds and wealth', async ({page}) => {
+  const card = await retirementHost(page)
+  await page.evaluate((initial) => {
+    const frame = document.querySelector('iframe')
+    frame?.contentWindow?.postMessage({
+      jsonrpc: '2.0', method: 'ui/notifications/tool-result',
+      params: { structuredContent: { ...initial, result: {
+        ...initial.result, modelFeasible: false, preRetirementFundingGapM: 2,
+      } } },
+    }, '*')
+  }, retirementSnapshot)
+  await expect(card.getByRole('alert')).toContainText('Unfunded pre-retirement cash gap')
+  await expect(card.locator('#success')).toHaveText('Not fundable')
+  await expect(card.locator('#ending')).toHaveText('Not valid')
+  await expect(card.locator('#chart')).toBeHidden()
+})
+
+test('MCP card converts a current sticker price without recording a sale', async ({page}) => {
+  const card = await retirementHost(page)
+  await card.locator('#lifeEventsDetails summary').click()
+  await card.locator('#eventTodayPrice').fill('100000')
+  await card.locator('#eventInflation').fill('0')
+  await card.getByRole('button', { name: 'Convert to retirement-year dollars' }).click()
+  await expect(card.locator('#eventAmount')).toHaveValue('100000')
+  const calls = await page.evaluate(() => (window as unknown as {pluginCalls:{
+    params:{name?:string}
+  }[]}).pluginCalls)
+  expect(calls.some(c => c.params.name === 'update_retirement_params' || c.params.name === 'apply_changes')).toBe(false)
 })

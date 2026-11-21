@@ -1078,6 +1078,7 @@ function makeSyntheticResult(finalValues: number[], startingTotal: number) {
     startingEquity: 0,
     startingCash: 0,
     startingTotal,
+    preRetirementFundingGapM: 0,
     years: 0,
     pctAboveStart: 0,
     pctRuin: 0,

@@ -212,15 +212,17 @@ def _plan_life_events(ctx: ToolContext, args: dict):
     # The shared JS cash-flow engine schedules by calendar month, not day.
     current_month = date.today().isoformat()[:7]
     retirement_month = (after.get("retirementDate") or "")[:7]
+    feasible = a.get("modelFeasible", True) and b.get("modelFeasible", True)
     return {
         "baseline": before, "withEvents": after,
         "impact": {
-            "fundingShortfallDelta": b["pctFundingShortfall"] - a["pctFundingShortfall"],
-            "medianFinalDeltaM": b["medianFinalM"] - a["medianFinalM"],
-            "p10FinalDeltaM": b["p10FinalM"] - a["p10FinalM"],
+            "fundingShortfallDelta": b["pctFundingShortfall"] - a["pctFundingShortfall"] if feasible else None,
+            "medianFinalDeltaM": b["medianFinalM"] - a["medianFinalM"] if feasible else None,
+            "p10FinalDeltaM": b["p10FinalM"] - a["p10FinalM"] if feasible else None,
         },
         "preRetirementEpicNetCashTargetM": b.get("planned", {}).get("preRetirementEpicNeedM", 0),
-        "modelWarnings": b.get("planned", {}).get("warnings", []) + [
+        "modelWarnings": ([b["modelWarning"]] if b.get("modelWarning") else []) +
+                         b.get("planned", {}).get("warnings", []) + [
             f"{e['title']}: the historical purchase is not a future Epic sale."
             for e in events if e.get("funding") == "epic" and
             e["date"][:7] < current_month

@@ -85,3 +85,40 @@ describe('life event editor saves backend-compatible shapes', () => {
     expect(event.replacementEveryYears).toBe(50)
   })
 })
+
+it('saves causal rules and car lifetime with nominal depreciation', () => {
+  const onChange = mount()
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
+  fireEvent.change(screen.getByLabelText('Purchase / start date'), { target: { value: '2037-01-01' } })
+  fireEvent.click(screen.getByLabelText('Buy only when conditions hold'))
+  fireEvent.change(screen.getByLabelText(/Minimum portfolio before purchase/), { target: { value: '5000000' } })
+  fireEvent.change(screen.getByLabelText(/Minimum portfolio as %/), { target: { value: '120' } })
+  fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '15' } })
+  fireEvent.change(screen.getByLabelText('Annual depreciation (% nominal; 0 = flat price)'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  const event = onChange.mock.calls[0][0][0]
+  expect(event.condition).toEqual({ requireFullSpending: true, minPortfolioM: 5, minStartingWealthRatio: 1.2 })
+  expect(event.lifetimeYears).toBe(15)
+  expect(event.depreciationRate).toBe(0)
+  expect(event.inflationRate).toBe(0.025)
+  expect(event.resaleDate).toBeUndefined()
+})
+
+it('allows optional thresholds to be cleared', () => {
+  const onChange = mount()
+  fireEvent.click(screen.getByLabelText('Buy only when conditions hold'))
+  const threshold = screen.getByLabelText(/Minimum portfolio before purchase/)
+  fireEvent.change(threshold, { target: { value: '5000000' } })
+  fireEvent.change(threshold, { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(onChange.mock.calls[0][0][0].condition).toEqual({ requireFullSpending: true })
+})
+
+it('rejects a zero vehicle lifetime before autosave', () => {
+  const onChange = mount()
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
+  fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('Vehicle lifetime must be 1–50')
+  expect(onChange).not.toHaveBeenCalled()
+})

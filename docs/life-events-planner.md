@@ -25,6 +25,58 @@ labels that year on each amount and offers a current-sticker-price conversion
 using the stated annual inflation assumption (2.5% by default). Annual costs
 must be **additional to baseline spending**. They must not be entered twice.
 
+## Causal purchase rules
+
+Optional `condition` rules are combined with AND and checked on the scheduled
+purchase month, after that month's market return and before withdrawals. They
+never inspect future returns, terminal outcomes or eventual scenario ranks:
+
+- `requireFullSpending`: buy only when the existing regular-spending ramp is
+  at its full budget. If minimum equals default spending, this rule alone
+  does not require portfolio growth; add a wealth threshold for that.
+- `minPortfolioM`: current net portfolio must be at least this amount in
+  retirement-year $M.
+- `minStartingWealthRatio`: current net portfolio divided by initial retirement
+  wealth. `1.2` means at least 120% of starting purchasing power. This is a
+  real wealth threshold, **not** a simulation percentile or investment return.
+
+Known unpaid taxes and earlier scheduled same-month event commitments reduce
+wealth used for decisions. No rule guarantees the purchase is affordable after
+future bills or taxes. A path with an earlier funding shortfall cannot initiate
+another conditional purchase. Rules are supported only at/after retirement;
+working-life market paths are not modeled. Conditions are evaluated once, with
+no deferral or retry. A skipped initial asset generates no purchase, proceeds
+from selling the old home/trade-in, loan payments, ownership costs or resale.
+Each later scheduled replacement gets a fresh rule check, even if the first
+purchase was skipped. Without a lifetime, replacements are cash purchases;
+existing debt continues and no loan for a skipped initial purchase is created.
+Skipping a replacement does not cancel existing bills.
+
+Results report each conditional event's probability of buying at least once,
+never buying, and average purchase count. Purchases outside the simulation
+horizon are excluded from the outcome summary. Read risk reductions alongside purchase
+probabilities: never buying the optional item is different from funding it.
+
+## Vehicle lifetime and depreciation
+
+`lifetimeYears` (1–50 whole years) creates an automatic sale after that ownership
+period. `depreciationRate` is annual **nominal** depreciation, from 0 to 1. For a
+purchase cost P and lifetime L, real sale proceeds are
+`P * ((1 - depreciationRate) / (1 + inflationRate)) ** L`, with 2.5% inflation
+by default. Zero depreciation retains the nominal purchase price, not its real
+purchasing power. This is an assumption, not a prediction of collectible prices.
+Allow for selling fees in the depreciation assumption.
+
+Sale proceeds pay remaining modeled loan principal and stop annual costs. The
+sale month includes its final ownership cost and loan payment, matching explicit
+resale handling. Do not combine lifetime with explicit resale date/value.
+With a repeat interval (at least as long as the lifetime), each replacement has
+its own purchase decision, loan, ownership period and sale. Replacements do not
+reuse the original trade-in offset. A skipped cycle cannot produce resale cash;
+a later scheduled cycle can still pass its own conditions. `endDate` remains an
+absolute stop date for annual costs across cycles. Replacements are optional:
+lifetime alone means buy once, use, then sell.
+
 ## What the app must calculate (deterministic and auditable)
 
 1. Date-ordered event cash flows, mortgage/loan amortization and remaining debt.

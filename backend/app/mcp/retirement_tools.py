@@ -30,6 +30,17 @@ _EVENT_SCHEMA = {
         "replacementEveryYears": {"type": "number"},
         "replacementCostM": {"type": "number", "description": "Optional repeat cost; 0 or omitted means repeat original amount"},
         "funding": {"type": "string", "enum": ["epic", "brokerage", "cash", "mixed"]},
+        "lifetimeYears": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Vehicle ownership years before automatic sale; cannot combine with explicit resale. Each replacement starts a new ownership period."},
+        "depreciationRate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Annual nominal depreciation during lifetime; 0 retains nominal price. Resale is deflated by inflationRate (default 2.5%)."},
+        "condition": {
+            "type": "object", "additionalProperties": False, "minProperties": 1,
+            "description": "All rules must hold immediately before the dated purchase, using only current portfolio state. Otherwise skip it, with no ownership costs or resale proceeds. Replacements are checked again; existing ownership costs and debt continue.",
+            "properties": {
+                "requireFullSpending": {"type": "boolean", "description": "Only buy when the normal spending ramp is not cutting regular spending"},
+                "minPortfolioM": {"type": "number", "minimum": 0, "maximum": 1000, "description": "Minimum current portfolio net of unpaid taxes, in retirement-year $M"},
+                "minStartingWealthRatio": {"type": "number", "minimum": 0, "maximum": 100, "description": "Minimum current net portfolio divided by starting retirement wealth; 1.2 means 20% above starting wealth in real terms"},
+            },
+        },
     },
     "required": ["id", "title", "kind", "date", "amountM"],
 }
@@ -258,7 +269,9 @@ register(Tool(
         "Read-only retirement what-if for a house, vehicle, wedding, college, vacation, "
         "childcare, eldercare, renovation, gifts or any other expense. Supports "
         "down payments, amortizing mortgages/loans, existing-home sale offsets, "
-        "recurring ownership costs, resale and vehicle replacement. Compare the "
+        "recurring ownership costs, resale, vehicle lifetime, nominal depreciation and replacement. "
+        "Optional current-state purchase conditions skip unaffordable-market purchases "
+        "without future knowledge; results report purchase probabilities. Compare the "
         "actual Monte Carlo results with/without events using the same seed. "
         "Can suggest a hypothetical Epic stock sale target, but NEVER creates "
         "a sale or changes any saved settings. Use estimate_sale separately "

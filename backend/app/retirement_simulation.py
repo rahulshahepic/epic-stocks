@@ -91,8 +91,8 @@ def migrate_saved_params(saved):
 EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
 EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
 EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
-                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate"}
-EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding"} | EVENT_NUMBERS
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate"}
+EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding", "condition"} | EVENT_NUMBERS
 
 
 def validate_planned_events(events):
@@ -118,6 +118,20 @@ def validate_planned_events(events):
         if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
             raise ValueError(f"{label} has an unsupported funding source")
         when = _date(event["date"], f"{label}.date", historical=True)
+        if "condition" in event:
+            condition = event["condition"]
+            if not isinstance(condition, dict) or not condition or set(condition) - {
+                "requireFullSpending", "minPortfolioM", "minStartingWealthRatio",
+            }:
+                raise ValueError(f"{label}.condition needs supported current-state rules")
+            if "requireFullSpending" in condition and type(condition["requireFullSpending"]) is not bool:
+                raise ValueError(f"{label}.condition.requireFullSpending must be true or false")
+            for key in ("minPortfolioM", "minStartingWealthRatio"):
+                if key in condition:
+                    value = condition[key]
+                    maximum = 1000 if key == "minPortfolioM" else 100
+                    if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= maximum:
+                        raise ValueError(f"{label}.condition.{key} must be a finite number between 0 and {maximum}")
         for key in ("endDate", "resaleDate"):
             if key in event and event[key] is not None:
                 other = _date(event[key], f"{label}.{key}", historical=True)
@@ -127,8 +141,8 @@ def validate_planned_events(events):
             value = event[key]
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f"{label}.{key} must be a finite number")
-            maximum = (1 if key in {"downPaymentPct", "loanRate", "inflationRate"} else
-                       50 if key in {"loanYears", "replacementEveryYears"} else 1000)
+            maximum = (1 if key in {"downPaymentPct", "loanRate", "inflationRate", "depreciationRate"} else
+                       50 if key in {"loanYears", "replacementEveryYears", "lifetimeYears"} else 1000)
             if not 0 <= value <= maximum:
                 raise ValueError(f"{label}.{key} must be between 0 and {maximum}")
         if any(key in event and not float(event[key]).is_integer() for key in ("loanYears", "replacementEveryYears")):
@@ -139,6 +153,16 @@ def validate_planned_events(events):
         # planCashFlows creates debt only for a positive financed balance.
         if event.get("replacementEveryYears", 0) and not (event.get("replacementCostM", 0) or event["amountM"]):
             raise ValueError(f"{label} needs a replacement cost")
+        if "lifetimeYears" in event:
+            lifetime = event["lifetimeYears"]
+            if event["kind"] != "vehicle" or lifetime < 1 or not float(lifetime).is_integer():
+                raise ValueError(f"{label} lifetime must be a whole number from 1 to 50 for a vehicle")
+            if event.get("resaleDate") or "resaleValueM" in event:
+                raise ValueError(f"{label} choose lifetime or explicit resale, not both")
+            if event.get("replacementEveryYears", 0) and event["replacementEveryYears"] < lifetime:
+                raise ValueError(f"{label} replacement interval cannot be shorter than lifetime")
+        elif "depreciationRate" in event:
+            raise ValueError(f"{label} depreciation requires a vehicle lifetime")
         # A missing resaleValueM means zero, as in the shared simulator.
     return events
 
@@ -202,6 +226,10 @@ def validate_combined(params):
         raise ValueError("Taxable cost basis cannot exceed the taxable balance")
     if "plannedEvents" in params:
         validate_planned_events(params["plannedEvents"])
+        retirement = params.get("retirementDate")
+        if retirement and any(e.get("condition") and e["date"][:7] < retirement[:7]
+                              for e in params["plannedEvents"]):
+            raise ValueError("Conditional purchases must start at or after retirement; working-life portfolio paths are not simulated")
     if params.get("endAge", 91) <= params.get("currentAge", 50):
         raise ValueError("End age must be later than retirement age")
 

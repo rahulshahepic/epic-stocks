@@ -131,3 +131,102 @@ describe('hypothetical life-event cash flows', () => {
     expect(baseline.startingTotal).toBeCloseTo(changed.startingTotal)
   })
 })
+
+describe('causal purchase conditions', () => {
+  const car: PlannedEvent = { id: 'conditional-car', title: 'Optional car', kind: 'vehicle',
+    date: '2037-01-01', amountM: 0.2, annualCostM: 0.01,
+    resaleDate: '2042-01-01', resaleValueM: 0.1,
+    condition: { minPortfolioM: 1000 } }
+  it('skips the whole unpurchased asset, including debt, costs and resale proceeds', () => {
+    const baseline = simulate(base)
+    const skipped = simulate({ ...base, plannedEvents: [{ ...car,
+      downPaymentPct: 0.2, loanYears: 10, loanRate: 0.05 }] })
+    expect(skipped.finalWealth).toEqual(baseline.finalWealth)
+    expect(skipped.eventOutcomes?.[0].purchaseProbability).toBe(0)
+    expect(skipped.eventOutcomes?.[0].skippedProbability).toBe(1)
+  })
+  it('preserves unconditional results when the condition always passes', () => {
+    const held = { ...car, replacementEveryYears: 5, replacementCostM: 0.15 }
+    const unconditional = simulate({ ...base, plannedEvents: [{ ...held, condition: undefined }] })
+    const conditional = simulate({ ...base, plannedEvents: [{ ...held, condition: { minPortfolioM: 0 } }] })
+    expect(conditional.finalWealth).toEqual(unconditional.finalWealth)
+    expect(conditional.eventOutcomes?.[0].purchaseProbability).toBe(1)
+  })
+  it('uses current wealth and the same spending ramp, without knowing later returns', () => {
+    const full = simulate({ ...base, plannedEvents: [{ ...car,
+      condition: { requireFullSpending: true, minStartingWealthRatio: 1 } }] })
+    expect(full.eventOutcomes?.[0].purchaseProbability).toBeGreaterThan(0)
+    expect(full.eventOutcomes?.[0].purchaseProbability).toBeLessThan(1)
+    // Match the same first path's history with a shorter horizon. Future
+    // random draws and final outcomes cannot change the purchase decision.
+    const one = { ...base, paths: 1, plannedEvents: [{ ...car,
+      condition: { requireFullSpending: true, minStartingWealthRatio: 1 } }] }
+    expect(simulate({ ...one, endAge: 52 }).eventOutcomes)
+      .toEqual(simulate(one).eventOutcomes)
+  })
+  it('does not treat full spending as a wealth test when the user disabled spending cuts', () => {
+    const result = simulate({ ...base, minSpend: base.defaultSpend,
+      plannedEvents: [{ ...car, condition: { requireFullSpending: true } }] })
+    expect(result.eventOutcomes?.[0].purchaseProbability).toBe(1)
+  })
+  it('rechecks replacements while continuing costs and debt already committed', () => {
+    const result = simulate({ ...base, paths: 1, stockPct: 0, bondPct: 0,
+      traditional: 0, roth: 0, epicExit: 1, taxableAdditional: 0,
+      defaultSpend: 0, minSpend: 0, healthInsurance: 0, zeroHIPost65: false, ssMonthly: 0,
+      plannedEvents: [{ ...car, date: '2032-01-01', amountM: 0.4,
+        annualCostM: 0.012, resaleDate: undefined, replacementEveryYears: 2,
+        condition: { minPortfolioM: 0.8 } }] })
+    expect(result.eventOutcomes?.[0].purchaseProbability).toBe(1)
+    expect(result.eventOutcomes?.[0].meanPurchases).toBe(1)
+    // Only the first purchase, then 30 years' ownership costs (no stopped bills).
+    expect(result.finalWealth[0]).toBeCloseTo(0.24, 6)
+  })
+  it('refuses conditional pre-retirement purchases rather than silently applying them', () => {
+    expect(() => simulate({ ...base, plannedEvents: [{ ...car, date: '2030-01-01' }] }))
+      .toThrow(/at or after retirement/)
+  })
+})
+
+describe('vehicle lifetime, depreciation and disposal', () => {
+  const car: PlannedEvent = { id: 'collectible', title: 'Collectible car', kind: 'vehicle',
+    date: '2032-01-01', amountM: 0.2, annualCostM: 0.012,
+    lifetimeYears: 10, depreciationRate: 0, inflationRate: 0.025 }
+  it('sells a zero-depreciation car for its nominal purchase price and stops ownership costs', () => {
+    const flows = planCashFlows([car], '2032-01-01', 240)
+    expect(flows.monthlyNeedM[121]).toBeCloseTo(0.001 - 0.2 / 1.025 ** 10)
+    expect(flows.monthlyNeedM[122]).toBe(0)
+  })
+  it('applies annual depreciation and repays debt on sale', () => {
+    const flows = planCashFlows([{ ...car, depreciationRate: 0.1,
+      downPaymentPct: 0.2, loanYears: 20, loanRate: 0 }], '2032-01-01', 240)
+    const payment = 0.16 / 240
+    const remaining = 0.16 - payment * 121
+    expect(flows.monthlyNeedM[121]).toBeCloseTo(
+      payment / 1.025 ** 10 + 0.001 - 0.2 * (0.9 / 1.025) ** 10 + remaining / 1.025 ** 10)
+    expect(flows.monthlyNeedM[122]).toBe(0)
+  })
+  it('gives each replacement its own lifetime and conditional purchase decision', () => {
+    const result = simulate({ ...base, paths: 10, plannedEvents: [{ ...car,
+      replacementEveryYears: 10, condition: { minPortfolioM: 1000 } }] })
+    expect(result.finalWealth).toEqual(simulate({ ...base, paths: 10 }).finalWealth)
+    expect(result.eventOutcomes).toHaveLength(1)
+    expect(result.eventOutcomes?.every(o => o.skippedProbability === 1)).toBe(true)
+    const flows = planCashFlows([{ ...car, replacementEveryYears: 10 }], '2032-01-01', 360)
+    expect(flows.monthlyNeedM[121]).toBeCloseTo(0.202 - 0.2 / 1.025 ** 10)
+    expect(flows.monthlyNeedM[241]).toBeCloseTo(0.202 - 0.2 / 1.025 ** 10)
+  })
+})
+
+it('can buy a later recurring opportunity after skipping the first, without inventing the initial loan', () => {
+  const result = simulate({ ...base, paths: 1, endAge: 51, stockPct: 0, bondPct: 0,
+    glidePoints: [], traditional: 0, roth: 0, epicExit: 1, taxableAdditional: 0,
+    defaultSpend: 0, minSpend: 0, healthInsurance: 0, zeroHIPost65: false,
+    ssMonthly: 0, plannedEvents: [
+      { id: 'cash', title: 'Cash proceeds', kind: 'other', date: '2033-01-01', amountM: 0, saleOffsetM: 0.5 },
+      { id: 'trip', title: 'Optional trip', kind: 'travel', date: '2032-01-01',
+        amountM: 0.1, replacementEveryYears: 2, condition: { minPortfolioM: 1.1 } },
+    ] })
+  expect(result.eventOutcomes?.[0].purchaseProbability).toBe(1)
+  expect(result.eventOutcomes?.[0].meanPurchases).toBe(2)
+  expect(result.finalWealth[0]).toBeCloseTo(1.3)
+})

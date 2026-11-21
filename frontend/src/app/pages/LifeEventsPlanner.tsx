@@ -40,7 +40,7 @@ export default function LifeEventsPlanner({
     (Number(retirementDate.slice(5, 7)) - today.getMonth() - 1) / 12
   const conversionRate = draft.inflationRate ?? 0.025
   const convertedPrice = Math.round((Number(todayPrice) || 0) * Math.pow(1 + conversionRate, yearsToRetirement))
-  const hypotheticalEpicTargetM = planCashFlows(events, retirementDate, 1).preRetirementEpicNeedM
+  const hypotheticalEpicTargetM = planCashFlows(events.filter(event => !event.condition), retirementDate, 1).preRetirementEpicNeedM
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
   }
@@ -74,10 +74,29 @@ export default function LifeEventsPlanner({
       if (!event.loanYears || (event.downPaymentPct ?? 1) >= 1 || !event.amountM) {
         delete event.loanYears
         delete event.loanRate
-        delete event.inflationRate
+        if (!event.lifetimeYears) delete event.inflationRate
         event.downPaymentPct = 1
       }
     }
+    if (event.condition) {
+      event.condition = Object.fromEntries(Object.entries(event.condition).filter(([, value]) => value !== undefined))
+      if (event.date.slice(0, 7) < retirementDate.slice(0, 7)) {
+        setError('Conditional purchases must start at or after retirement.'); return
+      }
+      if (Object.entries(event.condition).some(([key, value]) => key !== 'requireFullSpending' &&
+          (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > (key === 'minPortfolioM' ? 1000 : 100)))) {
+        setError('Enter valid nonnegative purchase thresholds.'); return
+      }
+    }
+    if (event.lifetimeYears != null) {
+      if (!Number.isInteger(event.lifetimeYears) || event.lifetimeYears < 1 || event.lifetimeYears > 50 ||
+          (event.replacementEveryYears && event.replacementEveryYears < event.lifetimeYears)) {
+        setError('Vehicle lifetime must be 1–50 whole years, no longer than the replacement interval.'); return
+      }
+      delete event.resaleDate; delete event.resaleValueM
+      event.depreciationRate = event.depreciationRate ?? 0
+      event.inflationRate = draft.inflationRate ?? 0.025
+    } else delete event.depreciationRate
     if (event.resaleDate) event.resaleValueM = event.resaleValueM ?? 0
     else delete event.resaleValueM
     if (event.replacementEveryYears && !(event.replacementCostM || event.amountM)) {
@@ -104,6 +123,12 @@ export default function LifeEventsPlanner({
                 <strong>{event.title}</strong> · {event.date} · {dollar(event.amountM * 1_000_000)}
                 {event.annualCostM ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
                 {event.loanYears ? <span className="text-cs-muted"> · financed over {event.loanYears} years</span> : null}
+                {event.condition && <span className="block text-cs-text-2">Buy only if: {[
+                  event.condition.requireFullSpending ? 'regular spending is not cut' : '',
+                  event.condition.minPortfolioM != null ? `portfolio ≥ ${dollar(event.condition.minPortfolioM * 1_000_000)}` : '',
+                  event.condition.minStartingWealthRatio != null ? `portfolio ≥ ${Math.round(event.condition.minStartingWealthRatio * 100)}% of starting wealth` : '',
+                ].filter(Boolean).join(' and ')}. Otherwise skip.</span>}
+                {event.lifetimeYears && <span className="block text-cs-text-2">Sell after {event.lifetimeYears} years · {((event.depreciationRate ?? 0) * 100).toFixed(1)}% annual nominal depreciation</span>}
                 {event.funding === 'epic' ? <span className="text-cs-muted"> · hypothetical Epic sale</span> : null}
               </div>
               <div className="flex gap-2">
@@ -153,6 +178,45 @@ export default function LifeEventsPlanner({
                 </button>
               </div>
             </div>
+            <fieldset className="sm:col-span-2 rounded-lg border border-cs-border p-3 space-y-3 text-xs text-cs-text-2">
+              <legend className="px-1 font-semibold">Purchase conditions</legend>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!draft.condition} onChange={e => set('condition', e.target.checked ? { requireFullSpending: true } : undefined)} />
+                Buy only when conditions hold
+              </label>
+              {draft.condition && <>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={draft.condition.requireFullSpending ?? false}
+                    onChange={e => set('condition', { ...draft.condition, requireFullSpending: e.target.checked })} />
+                  Only if regular spending is not being cut
+                </label>
+                <label className="flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear} $; optional)
+                  <input type="number" min="0" max="1000000000" step="10000" value={draft.condition.minPortfolioM == null ? '' : fromM(draft.condition.minPortfolioM)}
+                    onChange={e => set('condition', { ...draft.condition, minPortfolioM: e.target.value === '' ? undefined : Number(e.target.value) / 1_000_000 })}
+                    className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+                </label>
+                <label className="flex flex-col gap-1">Minimum portfolio as % of starting retirement wealth (optional)
+                  <input type="number" min="0" max="10000" step="5" value={draft.condition.minStartingWealthRatio == null ? '' : draft.condition.minStartingWealthRatio * 100}
+                    onChange={e => set('condition', { ...draft.condition, minStartingWealthRatio: e.target.value === '' ? undefined : Number(e.target.value) / 100 })}
+                    className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+                </label>
+                <p>All selected rules must hold on the purchase date. 120% means 20% above starting wealth after inflation. Otherwise skip, without retrying. Replacements get a fresh decision; existing bills continue. Future returns are never used.</p>
+              </>}
+            </fieldset>
+            {draft.kind === 'vehicle' && <fieldset className="sm:col-span-2 rounded-lg border border-cs-border p-3 space-y-3 text-xs text-cs-text-2">
+              <legend className="px-1 font-semibold">Ownership lifetime and sale</legend>
+              <label className="flex flex-col gap-1">Sell car after N years (optional)
+                <input type="number" min="1" max="50" step="1" value={draft.lifetimeYears ?? ''}
+                  onChange={e => setDraft(prev => ({ ...prev, lifetimeYears: e.target.value === '' ? undefined : Number(e.target.value), resaleDate: undefined, resaleValueM: undefined }))}
+                  className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+              </label>
+              {draft.lifetimeYears != null && <label className="flex flex-col gap-1">Annual depreciation (% nominal; 0 = flat price)
+                <input type="number" min="0" max="100" step="0.5" value={(draft.depreciationRate ?? 0) * 100}
+                  onChange={e => set('depreciationRate', Math.min(1, Math.max(0, Number(e.target.value) / 100)))}
+                  className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+              </label>}
+              <p>Sale proceeds pay off remaining modeled debt and stop ownership costs. Zero depreciation keeps the nominal sale price flat; inflation reduces its real value. Include selling fees in the depreciation assumption.</p>
+            </fieldset>}
             {money('annualCostM', 'Additional annual costs (not in base spending)')}
             <label className="flex flex-col gap-1 text-xs text-cs-text-2">Stop recurring costs (optional)
               <input type="date" value={draft.endDate ?? ''} onChange={e => set('endDate', e.target.value || undefined)}
@@ -188,10 +252,10 @@ export default function LifeEventsPlanner({
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
                 </label>
                 {money('saleOffsetM', 'Net existing-home sale proceeds / trade-in')}
-                <label className="flex flex-col gap-1 text-xs text-cs-text-2">Resale date (optional)
+                {!draft.lifetimeYears && <label className="flex flex-col gap-1 text-xs text-cs-text-2">Resale date (optional)
                   <input type="date" value={draft.resaleDate ?? ''} onChange={e => set('resaleDate', e.target.value || undefined)}
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
-                </label>
+                </label>}
                 {draft.resaleDate && money('resaleValueM', 'Future resale value before remaining debt')}
               </>
             )}
@@ -255,6 +319,10 @@ export default function LifeEventsPlanner({
                 <p>Median ending: {dollar(comparison.withEvents.medianFinalM * 1_000_000)}</p></div>
             </div>
           )}
+          {(comparison.withEvents.eventOutcomes ?? []).map(outcome => <p key={outcome.eventId} className="text-xs text-cs-text">
+            <strong>{outcome.title}:</strong> bought at least once in {pct(outcome.purchaseProbability)} of paths; never bought in {pct(outcome.skippedProbability)}.
+            {' '}Average purchases per path: {outcome.meanPurchases.toFixed(2)}.
+          </p>)}
           <p className="text-xs text-cs-muted">Illustrative projections, not a guarantee or a verified ability to finance a purchase.</p>
         </div>
       )}

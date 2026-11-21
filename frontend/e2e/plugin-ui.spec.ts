@@ -58,3 +58,27 @@ for (const theme of ['light','dark'] as const) {
     }
   })
 }
+
+test('retirement card sends causal purchase rules and car lifetime', async ({ page }) => {
+  const { retirementHost } = await import('./plugin-host')
+  const card = await retirementHost(page)
+  await card.locator('summary').filter({ hasText: 'Life events' }).click()
+  await card.locator('#eventKind').selectOption('vehicle')
+  await card.getByLabel('Date', { exact: true }).fill('2037-01-02')
+  await card.getByLabel('Purchase / one-time cost (retirement-year $)').fill('200000')
+  await card.getByLabel('Sell car after N years (optional)').fill('15')
+  await card.getByLabel('Annual nominal depreciation (%)').fill('0')
+  await card.locator('#eventRule').selectOption('conditional')
+  await card.getByLabel('Minimum portfolio as % of starting wealth (optional)').fill('120')
+  await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
+  await expect(card.getByText(/conditional purchase.*sell after 15 years/)).toBeVisible()
+  await card.getByRole('button', { name: 'Compare with / without events', exact: true }).click()
+  await expect(card.getByRole('status')).toContainText('Life-event comparison complete')
+  const calls = await page.evaluate(() => (window as unknown as {pluginCalls: {method:string;params: {name?:string;arguments?: {events?:unknown[]}}}[]}).pluginCalls)
+  const events = calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events
+  expect(events?.[0]).toMatchObject({ lifetimeYears: 15, depreciationRate: 0,
+    condition: { requireFullSpending: true, minStartingWealthRatio: 1.2 } })
+  expect(calls.some(c => c.params.name === 'update_retirement_params')).toBe(false)
+  const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+})

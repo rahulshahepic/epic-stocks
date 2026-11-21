@@ -296,6 +296,18 @@ The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `back
 
 ### Retirement Simulator
 
+**Conditional purchases and car ownership:** Major purchases can require normal
+spending (no spending cuts), a minimum current portfolio, and/or a minimum
+percentage of starting retirement wealth. The simulator decides using only
+state known on the purchase date, skips failed purchases, and reports how often
+you actually buy. Existing loan and ownership bills continue once committed.
+For cars, enter ownership lifetime and annual nominal depreciation (including
+zero for a flat nominal price): the model sells at the end, pays remaining debt,
+and stops ownership costs. Each scheduled replacement has its own lifetime and
+conditional decision. These controls are available in the web planner and the
+ChatGPT retirement card; read-only MCP tools accept the same fields. See
+[conditions and lifetimes](docs/life-events-planner.md).
+
 **Life events and major purchases:** The Retirement tab and MCP Apps card can
 compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
 eldercare, renovations, gifts and repeat vacations. Set dates, upfront and

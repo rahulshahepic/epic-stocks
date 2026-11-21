@@ -31,6 +31,7 @@ try {
     medianFinalM: result.medianFinalM,
     p10FinalM: result.p10FinalM,
     years: result.years,
+    eventOutcomes: result.eventOutcomes,
     finalPercentiles: finalPercentiles(result),
     wealthByAge: computeFanPercentiles(result),
   }

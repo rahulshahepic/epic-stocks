@@ -432,6 +432,7 @@ function RetirementAccount() {
     retirementDate: string
     spouseDOB: string | null
   } | null>(null)
+  const [runError, setRunError] = useState('')
   const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
@@ -675,6 +676,7 @@ function RetirementAccount() {
       spouseBirthDate: spouseDOB ?? undefined,
       glidePoints: params.glidePoints.map(point => ({ ...point })),
     }
+    setRunError('')
     setRunning(true)
     runTimer.current = setTimeout(() => {
       try {
@@ -690,6 +692,11 @@ function RetirementAccount() {
           spouseDOB,
         })
         setHasRun(true)
+      } catch (error) {
+        setCompletedRun(null)
+        setLifeEventComparison(null)
+        setHasRun(false)
+        setRunError(error instanceof Error ? error.message : 'Unable to run the retirement simulation.')
       } finally {
         setRunning(false)
         runTimer.current = null
@@ -777,6 +784,7 @@ function RetirementAccount() {
         )}
       </div>
 
+      {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
       <LifeEventsPlanner
         events={params.plannedEvents ?? []}
         retirementDate={retirementDate}

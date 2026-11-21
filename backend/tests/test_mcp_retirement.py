@@ -391,3 +391,42 @@ def test_unfunded_pre_retirement_gap_suppresses_misleading_comparison(mcp, monke
     assert result["withEvents"]["result"]["preRetirementFundingGapM"] == 2
     assert "Unfunded pre-retirement cash gap" in result["modelWarnings"]
     assert result["saved"] is False
+
+
+def test_causal_purchase_condition_validation():
+    from app.retirement_simulation import validate_planned_events, validate_combined
+    event = {"id": "car", "title": "Optional car", "kind": "vehicle",
+             "date": "2037-01-01", "amountM": 0.2,
+             "condition": {"requireFullSpending": True, "minPortfolioM": 5,
+                           "minStartingWealthRatio": 1.2}}
+    assert validate_planned_events([event]) == [event]
+    for condition in (None, {}, {"futureWinner": True}, {"requireFullSpending": 1},
+                      {"minPortfolioM": True}, {"minPortfolioM": float("nan")},
+                      {"minStartingWealthRatio": -1}):
+        with pytest.raises(ValueError):
+            validate_planned_events([{**event, "condition": condition}])
+    with pytest.raises(ValueError, match="at or after retirement"):
+        validate_combined({"retirementDate": "2038-01-01", "plannedEvents": [event]})
+
+
+def test_vehicle_lifetime_validation():
+    from app.retirement_simulation import validate_planned_events
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
+             "amountM": 0.2, "lifetimeYears": 15, "depreciationRate": 0}
+    assert validate_planned_events([event]) == [event]
+    for patch in ({"lifetimeYears": 0}, {"lifetimeYears": 51}, {"lifetimeYears": 1.5},
+                  {"kind": "home"}, {"depreciationRate": 1.1},
+                  {"resaleDate": "2050-01-01"}, {"replacementEveryYears": 10}):
+        with pytest.raises(ValueError):
+            validate_planned_events([{**event, **patch}])
+
+
+def test_web_rejects_conditional_purchase_before_retirement(mcp, client):
+    response = client.put("/api/retirement/params", json={"params": {
+        "retirementDate": "2040-01-01", "plannedEvents": [{
+            "id": "car", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
+            "amountM": 0.2, "condition": {"requireFullSpending": True},
+        }],
+    }})
+    assert response.status_code == 422
+    assert "at or after retirement" in response.json()["detail"]

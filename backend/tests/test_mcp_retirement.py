@@ -210,3 +210,49 @@ def test_lower_spend_what_if_clamps_floor(client, db_session):
         db_session.commit()
         params, _, _ = prepare(user, overrides={"defaultSpend": 90})
         assert params["defaultSpend"] == params["minSpend"] == 90
+
+
+def test_planned_event_validation_and_no_saved_equity_write():
+    from app.retirement_simulation import validate_planned_events
+    event = {
+        "id": "college", "title": "College tuition", "kind": "education",
+        "date": "2032-09-01", "amountM": 0, "annualCostM": 0.07,
+        "endDate": "2036-06-01",
+    }
+    assert validate_changes({"plannedEvents": [event]})
+    for bad in (
+        {**event, "amountM": float("nan")},
+        {**event, "kind": "casino"},
+        {**event, "date": "2032-02-30"},
+        {**event, "endDate": "2031-01-01"},
+        {**event, "loanYears": 30, "downPaymentPct": 0.2, "loanRate": 1.5},
+        {**event, "unexpected": "value"},
+    ):
+        with pytest.raises(ValueError):
+            validate_planned_events([bad])
+    with pytest.raises(ValueError):
+        validate_planned_events([event, event])
+
+
+def test_life_event_planner_compares_without_persisting(mcp, client, monkeypatch):
+    from app.mcp import retirement_tools
+    calls = []
+    def fake_run(owner, **kwargs):
+        calls.append(kwargs)
+        events = kwargs["overrides"].get("plannedEvents", [])
+        return {"result": {
+            "pctFundingShortfall": 0.01 + len(events) * 0.01,
+            "medianFinalM": 10 - len(events), "p10FinalM": 4 - len(events),
+        }, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    before = client.get("/api/retirement/params").json()["params"]
+    event = {"id": "wedding", "title": "Wedding", "kind": "wedding",
+             "date": "2032-06-01", "amountM": 0.1, "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event], recalculate_exit=False)
+    assert result["saved"] is False
+    assert result["impact"]["fundingShortfallDelta"] == pytest.approx(0.01)
+    assert result["hypotheticalEpicSales"][0]["netCashTargetM"] == pytest.approx(0.1)
+    assert calls[0]["overrides"]["plannedEvents"] == []
+    assert calls[1]["overrides"]["plannedEvents"] == [event]
+    assert client.get("/api/retirement/params").json()["params"] == before
+    assert "plan_life_events" in {t["name"] for t in mcp.list_tools()}

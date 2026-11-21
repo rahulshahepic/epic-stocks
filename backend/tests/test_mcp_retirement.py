@@ -1,7 +1,7 @@
 """Retirement simulation MCP permissions, parity, bounds and ChatGPT card."""
 import pytest
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 from tests.test_mcp_tools import Mcp
 from app.retirement_simulation import validate_changes, prepare
 from app.mcp.retirement_tools import RETIREMENT_RESOURCE_URI
@@ -120,19 +120,21 @@ def test_prepare_uses_saved_inputs_without_mutating_them(client, db_session):
     from scaffold.models import User
     register_user(client)
     user = db_session.query(User).first()
-    user.retirement_params = {
-        "retirementDate": "2032-01-02", "epicExit": 8,
-        "defaultSpend": 180, "minSpend": 100, "stockPct": 0.7, "bondPct": 0.2,
-        "spouseDOB": "1991-02-15", "includeSpouse": True,
-    }
-    db_session.commit()
-    original = dict(user.retirement_params)
-    params, on, source = prepare(user, overrides={"defaultSpend": 205})
-    assert params["defaultSpend"] == 205
-    assert params["spouseBirthDate"] == "1991-02-15"
-    assert on.isoformat() == "2032-01-02"
-    assert source == "saved_exit"
-    assert user.retirement_params == original
+    with user_key(user):
+        user.retirement_params = {
+            "retirementDate": "2032-01-02", "epicExit": 8,
+            "defaultSpend": 180, "minSpend": 100, "stockPct": 0.7, "bondPct": 0.2,
+            "spouseDOB": "1991-02-15", "includeSpouse": True,
+        }
+        db_session.commit()
+        original = dict(user.retirement_params)
+        params, on, source = prepare(user, overrides={"defaultSpend": 205})
+        assert params["defaultSpend"] == 205
+        assert params["spouseBirthDate"] == "1991-02-15"
+        assert on.isoformat() == "2032-01-02"
+        assert source == "saved_exit"
+        assert user.retirement_params == original
+
 
 def test_exit_projection_cannot_cross_equity_read_scope(client):
     register_user(client)

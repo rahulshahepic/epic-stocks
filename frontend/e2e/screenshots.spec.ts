@@ -781,6 +781,25 @@ test.describe('Screenshots', () => {
     await shoot(page, 'retirement-dark-mobile', { fullPage: true })
   })
 
+  for (const [label, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`life events planner - light - ${label}`, async ({ page }) => {
+      await authedPage(page, viewport, 'light')
+      await page.request.post(`${BASE}/api/auth/test-login`, {
+        data: { email: `life-events-${label}@screenshots.example.test`, name: 'Life Events Demo' },
+      })
+      await page.goto(`${BASE}/retirement`)
+      await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: /Add planned expense/ }).click()
+      await page.getByLabel(/Purchase price \(/).fill('1200000')
+      await expect(page.getByText(/Convert today's price to .* purchasing power/)).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
+        .withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      await shoot(page, `life-events-planner-light-${label}`, { fullPage: true })
+    })
+  }
+
   test('prices and tentative announcement - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Prices')

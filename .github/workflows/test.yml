@@ -275,6 +275,27 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:8000
           E2E_API_URL: http://127.0.0.1:8000
         run: cd frontend && time npx playwright test
+      - name: Capture MCP Apps retirement screenshots
+        # Uses the same synthetic Playwright MCP host as the E2E tests. This
+        # produces visual evidence on GitHub runners without a local browser,
+        # a live Claude/ChatGPT session, or real customer account data.
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8000
+          SCREENSHOT_EMAIL: synthetic-mcp-screenshots@example.test
+        run: |
+          cd frontend
+          npx playwright test --project=main e2e/screenshots.spec.ts \
+            --grep 'MCP Apps retirement card' --workers=1
+
+      - name: Upload MCP Apps retirement screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: mcp-apps-retirement-pr-${{ github.event.pull_request.number }}
+          path: screenshots/mcp-apps-retirement-*.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Dump backend logs on failure
         if: failure()
         run: |

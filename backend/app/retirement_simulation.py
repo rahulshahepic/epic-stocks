@@ -131,6 +131,8 @@ def validate_planned_events(events):
                        50 if key in {"loanYears", "replacementEveryYears"} else 1000)
             if not 0 <= value <= maximum:
                 raise ValueError(f"{label}.{key} must be between 0 and {maximum}")
+        if any(key in event and not float(event[key]).is_integer() for key in ("loanYears", "replacementEveryYears")):
+            raise ValueError(f"{label} loan and replacement terms must be whole years")
         if event.get("loanYears", 0) and "downPaymentPct" not in event:
             raise ValueError(f"{label} financed purchases require downPaymentPct")
         if event.get("loanYears", 0) and event.get("downPaymentPct", 1) == 1:

@@ -40,15 +40,15 @@ SIDE_CARS = {"retirementDate", "spouseDOB"}
 EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints"} | SIDE_CARS
 
 
-def _date(value, label):
+def _date(value, label, *, birth=False):
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a YYYY-MM-DD date")
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
         raise ValueError(f"{label} must be a valid YYYY-MM-DD date") from None
-    if not 2020 <= parsed.year <= 2100:
-        raise ValueError(f"{label} must be between 2020 and 2100")
+    if not (1900 if birth else 2020) <= parsed.year <= (2100 if not birth else 2099):
+        raise ValueError(f"{label} is outside the supported date range")
     return parsed
 
 
@@ -145,7 +145,7 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
         raise ValueError("Set your date of birth in Epic Stocks before comparing retirement dates")
     spouse_dob = params.get("spouseDOB")
     if params.get("includeSpouse") and spouse_dob:
-        params["spouseCurrentAge"] = _age(_date(spouse_dob, "spouseDOB"), retirement_date)
+        params["spouseCurrentAge"] = _age(_date(spouse_dob, "spouseDOB", birth=True), retirement_date)
     if recalculate_exit:
         params["epicExit"] = _projected_exit(owner, retirement_date)
     params["paths"] = params.get("paths", MAX_PATHS)

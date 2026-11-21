@@ -194,6 +194,14 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     if total_k > 0:
         params.setdefault("defaultSpend", math.floor(total_k * 0.03 + 0.5))
         params.setdefault("minSpend", math.floor(total_k * 0.02 + 0.5))
+    # Match the browser's TaxSettings refresh rather than stale saved values.
+    # An explicit what-if override remains an intentional scenario input.
+    if "stateLTCGRate" not in patch:
+        from app.tax_settings import tax_settings_or_defaults
+        with SessionLocal() as db:
+            tax = tax_settings_or_defaults(owner, db)
+        rate = getattr(tax, "state_lt_cg_rate", 0)
+        params["stateLTCGRate"] = rate if type(rate) in (int, float) and math.isfinite(rate) else 0
     params["paths"] = params.get("paths", MAX_PATHS)
     params["seed"] = params.get("seed", DEFAULT_SEED)
     validate_combined(params)

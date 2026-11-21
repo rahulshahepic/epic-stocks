@@ -256,3 +256,16 @@ def test_life_event_planner_compares_without_persisting(mcp, client, monkeypatch
     assert calls[1]["overrides"]["plannedEvents"] == [event]
     assert client.get("/api/retirement/params").json()["params"] == before
     assert "plan_life_events" in {t["name"] for t in mcp.list_tools()}
+
+
+def test_retirement_api_rejects_invalid_planned_events(client):
+    register_user(client)
+    invalid = {"id": "trip", "title": "Trip", "kind": "travel",
+               "date": "2033-01-01", "amountM": -1}
+    response = client.put("/api/retirement/params", json={"params": {
+        "epicExit": 5, "plannedEvents": [invalid],
+    }})
+    assert response.status_code == 422
+    assert client.get("/api/retirement/params").json()["params"] != {
+        "epicExit": 5, "plannedEvents": [invalid],
+    }

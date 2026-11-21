@@ -253,7 +253,7 @@ Port 22 is not behind Cloudflare (Cloudflare only proxies HTTP/S). The critical 
 
 ## 4. Deploy Pipeline (In this repo — applies to all deployments)
 
-The deploy pipeline lives in `.github/workflows/deploy.yml` and runs on every push to `main`.
+The deploy pipeline lives in `.github/workflows/deploy.yml` and runs on every push to `main` or `staging` (and on manual dispatch). `main` deploys production; every other ref deploys staging.
 
 **Production deploys wait for approval.** The deploy job selects the `production` environment for `main` and `staging` for every other ref. The `production` environment must have **Required reviewers: rahulshahepic**, **Prevent self-review** off, and deployment branches restricted to `main` (Settings → Environments → production). Agents merge `staging` into `main` automatically once CI and the staging deploy pass (REVIEW_POLICY.md → "Promoting staging to main"), so this rule is the only manual gate before production. It is a GitHub setting, not something in this repo: if a `main` Deploy run ever starts without showing **Waiting** for review, restore the rule before promoting again.
 

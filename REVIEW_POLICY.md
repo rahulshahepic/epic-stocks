@@ -66,14 +66,21 @@ that the paragraph above otherwise requires. It gives no permission to deploy.
 2. Subscribes to that PR's activity, so CI results and comments come back to
    the session instead of being polled for.
 3. Merges it with a merge commit (not squash or rebase, so `staging` and `main`
-   keep the same history) once **all** of these hold for its current head:
+   keep a common ancestry and later promotions don't conflict) once **all** of these hold for its current head:
    - every required check has passed (backend, frontend, e2e, caddy-validate,
      dependency-review, require-staging-source);
    - the `Deploy` workflow run for this exact `staging` head finished
      successfully. That run is the only thing that applies migrations and
      health-checks against a real database before production, so a run that is
      still in progress, failed or missing means wait or stop, not merge;
-   - it has no merge conflicts with `main`;
+   - it has no merge conflicts with `main`. Being `behind` `main` is normal and
+     does not block. Each promotion's merge commit lands only on `main`, so
+     `staging` is always at least one commit behind, and `main` deliberately
+     does not require branches to be up to date (Setup step 2). If GitHub
+     reports actual conflicts (`dirty`), stop and notify. The fix is a
+     history-only PR that merges `main` into `staging` with no tree change, as
+     #639 did, reviewed and merged with a merge commit like any other.
+     Promotion resumes after its staging `Deploy` run succeeds;
    - no review thread is unresolved, no `Waiting for Changes` label is set,
      and no comment from Rahul asks to hold the release;
    - every feature PR it carries was cleared by its assistant review. The
@@ -129,10 +136,14 @@ These files document the desired setup; merging them does not activate rulesets.
    Keep `main protection` and `staging protection` active with **no bypass
    actors**. Preserve their existing checks and up-to-date requirements:
    
-   | Branch | Required checks |
-   | --- | --- |
-   | staging | backend, frontend, e2e, caddy-validate, dependency-review |
-   | main | backend, frontend, e2e, caddy-validate, dependency-review, require-staging-source |
+   | Branch | Required checks | Require branches to be up to date |
+   | --- | --- | --- |
+   | staging | backend, frontend, e2e, caddy-validate, dependency-review | On |
+   | main | backend, frontend, e2e, caddy-validate, dependency-review, require-staging-source | **Off** |
+
+   Keep it off for `main`. Every promotion's merge commit exists only on `main`,
+   so the next promotion PR is always `behind`. With the requirement on, no
+   promotion could merge without a back-merge PR first.
 
 3. Select **New ruleset -> New branch ruleset**. Name it **Owner review**.
    Leave enforcement **Disabled** while configuring. Alternatively import

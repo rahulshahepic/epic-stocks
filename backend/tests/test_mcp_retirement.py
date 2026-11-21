@@ -391,3 +391,45 @@ def test_unfunded_pre_retirement_gap_suppresses_misleading_comparison(mcp, monke
     assert result["withEvents"]["result"]["preRetirementFundingGapM"] == 2
     assert "Unfunded pre-retirement cash gap" in result["modelWarnings"]
     assert result["saved"] is False
+
+
+def test_causal_purchase_condition_validation():
+    from app.retirement_simulation import validate_planned_events, validate_combined
+    event = {"id": "car", "title": "Optional car", "kind": "vehicle",
+             "date": "2037-01-01", "amountM": 0.2,
+             "condition": {"requireFullSpending": True, "minPortfolioM": 5,
+                           "minStartingWealthRatio": 1.2}}
+    assert validate_planned_events([event]) == [event]
+    for condition in (None, {}, {"futureWinner": True}, {"requireFullSpending": 1},
+                      {"minPortfolioM": True}, {"minPortfolioM": float("nan")},
+                      {"minStartingWealthRatio": -1}):
+        with pytest.raises(ValueError):
+            validate_planned_events([{**event, "condition": condition}])
+    validate_combined({"retirementDate": "2038-01-01", "plannedEvents": [event]})
+
+
+def test_vehicle_lifetime_validation():
+    from app.retirement_simulation import validate_planned_events
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
+             "amountM": 0.2, "lifetimeYears": 15, "depreciationRate": 0}
+    assert validate_planned_events([event]) == [event]
+    for patch in ({"lifetimeYears": 0}, {"lifetimeYears": 51}, {"lifetimeYears": 1.5},
+                  {"kind": "home"}, {"depreciationRate": 1.1},
+                  {"resaleDate": "2050-01-01"}, {"replacementEveryYears": 10}):
+        with pytest.raises(ValueError):
+            validate_planned_events([{**event, **patch}])
+
+
+def test_moving_retirement_past_conditional_purchase_does_not_block_saves(mcp, client):
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2035-01-01",
+             "amountM": 0.2, "condition": {"requireFullSpending": True}}
+    params = {"retirementDate": "2034-06-01", "epicExit": 5, "plannedEvents": [event]}
+    assert client.put("/api/retirement/params", json={"params": params}).status_code == 200
+    moved = {**params, "retirementDate": "2036-01-01", "defaultSpend": 200}
+    assert client.put("/api/retirement/params", json={"params": moved}).status_code == 200
+    assert mcp.call("update_retirement_params", changes={"defaultSpend": 210})["saved"] is True
+    assert mcp.call("update_retirement_params", changes={"retirementDate": "2037-01-01"})["saved"] is True
+    saved = client.get("/api/retirement/params").json()["params"]
+    assert saved["defaultSpend"] == 210
+    assert saved["plannedEvents"] == [event]
+    assert saved["retirementDate"] == "2037-01-01"

@@ -791,7 +791,12 @@ test.describe('Screenshots', () => {
       await page.waitForLoadState('networkidle')
       await page.getByLabel('Retirement date').fill('2032-01-02')
       await page.getByRole('button', { name: /Add planned expense/ }).click()
-      await page.getByLabel(/Purchase price \(/).fill('1200000')
+      await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
+      await page.getByLabel(/Purchase price \(/).fill('250000')
+      await page.getByLabel('Sell car after N years (optional)').fill('15')
+      await page.getByLabel('Annual depreciation (% nominal; 0 = flat price)').fill('0')
+      await page.getByLabel('Buy only when conditions hold').check()
+      await page.getByLabel(/Minimum portfolio as %/).fill('120')
       await page.getByRole('heading', { name: 'Life events & major purchases' }).click()
       await expect(page.getByText(/Convert today's price to .* purchasing power/)).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
@@ -813,6 +818,24 @@ test.describe('Screenshots', () => {
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
     })
   }
+
+  test('conditional purchase before changed retirement - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.request.post(`${BASE}/api/auth/test-login`, {
+      data: { email: 'conditional-warning@screenshots.example.test', name: 'Conditional Demo' },
+    })
+    const params = { retirementDate: '2034-06-01', epicExit: 5, paths: 10, seed: 1729,
+      plannedEvents: [{ id: 'car', title: 'Optional car', kind: 'vehicle',
+        date: '2035-01-01', amountM: 0.2, condition: { requireFullSpending: true } }] }
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...params, retirementDate: '2036-01-01' } } })).ok()).toBe(true)
+    await page.goto(`${BASE}/retirement`)
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+    const warning = page.getByText(/Optional car: conditional ownership periods before retirement are skipped/)
+    await expect(warning).toBeVisible()
+    await warning.screenshot({ path: `${OUT}/conditional-purchase-warning-light-mobile.png` })
+  })
 
   test('prices and tentative announcement - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

@@ -215,12 +215,14 @@ def _plan_life_events(ctx: ToolContext, args: dict):
             "medianFinalDeltaM": b["medianFinalM"] - a["medianFinalM"],
             "p10FinalDeltaM": b["p10FinalM"] - a["p10FinalM"],
         },
+        "preRetirementEpicNetCashTargetM": b.get("planned", {}).get("preRetirementEpicNeedM", 0),
+        "modelWarnings": b.get("planned", {}).get("warnings", []),
         "hypotheticalEpicSales": [
             {"eventId": e["id"], "date": e["date"],
              "netCashTargetM": max(0, e["amountM"] * (
                  e.get("downPaymentPct", 1) if e.get("loanYears", 0) else 1
              ) - e.get("saleOffsetM", 0)),
-             "nextStep": "Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
+             "nextStep": "This is the one-time net target only. Check preRetirementEpicNetCashTargetM for recurring and replacement costs. Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
             for e in events if e.get("funding") == "epic"
         ],
         "saved": False,

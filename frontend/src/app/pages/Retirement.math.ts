@@ -1708,7 +1708,10 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
         ? Math.max(0, loanPrincipal - payment * elapsed)
         : Math.max(0, loanPrincipal * Math.pow(1 + r, elapsed) -
           payment * (Math.pow(1 + r, elapsed) - 1) / r)
-      flows[resale] -= (event.resaleValueM ?? 0) - remaining
+      // Both the future sale value and debt payoff are expressed in real
+      // retirement-year dollars. Deflate the nominal loan balance too.
+      const remainingReal = remaining / Math.pow(1 + (event.inflationRate ?? 0.025), elapsed / 12)
+      flows[resale] -= (event.resaleValueM ?? 0) - remainingReal
     } else if (resale != null && resale <= 0) {
       warnings.push(event.title + ': resale before retirement is not separately modeled; enter net sale proceeds as saleOffsetM.')
     }

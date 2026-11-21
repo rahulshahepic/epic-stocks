@@ -1726,7 +1726,8 @@ export function planCashFlows(
     const repeatCost = event.replacementCostM || event.amountM
     if (event.replacementEveryYears && repeatCost) {
       const cadence = event.replacementEveryYears * 12
-      for (let m = purchase + cadence; m <= months && m <= end; m += cadence) {
+      // The recurring-cost endDate does not cancel separately scheduled replacements.
+      for (let m = purchase + cadence; m <= months; m += cadence) {
         if (resale != null && m > resale) continue
         if (m >= 1) flows[m] += repeatCost
         else if (m >= todayOffset) {

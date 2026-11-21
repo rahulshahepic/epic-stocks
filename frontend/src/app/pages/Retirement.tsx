@@ -787,7 +787,7 @@ function RetirementAccount() {
         comparison={resultsStale ? null : lifeEventComparison}
         onRun={run}
         running={running}
-       />
+      />
 
       {/* Card 1: Who & when */}
       <Card pad="md">
@@ -1462,6 +1462,11 @@ function RetirementAccount() {
         )}
       </div>
 
+      {result && resultsStale && (
+        <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Inputs changed. Re-run to update these results; the figures below belong to the previous run.
+        </p>
+      )}
       {result && result.preRetirementFundingGapM > 1e-9 && (
         <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
           <strong>Purchase plan cannot be funded as entered.</strong> The planned pre-retirement
@@ -1474,12 +1479,7 @@ function RetirementAccount() {
       )}
       {result && result.preRetirementFundingGapM <= 1e-9 && (
         <>
-          {resultsStale && (
-            <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-              Inputs changed. Re-run to update these results; the charts still show the previous run.
-            </p>
-          )}
-          {(() => {
+           {(() => {
             const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
             const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
             return (

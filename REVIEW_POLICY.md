@@ -20,6 +20,15 @@ current head SHA, relevant tests, and unresolved discussions, not just the PR
 description. Record the reviewer, head SHA, findings and validation in the PR.
 A new push requires checking the changed diff again.
 
+**Request the automated review with the `Needs Review` label.** Pushes do not
+start a review; the label does. Add `Needs Review` once your last commit for a
+batch is pushed: when you open the PR, and again after each round of fixes.
+Add it once per batch, after the final push, never per commit, so the reviewer
+sees the finished state. If you cannot add labels, say so in the PR; the daily
+review run still picks it up. Leave `Under Review`, `Waiting for Changes` and
+`Ready to merge` to the review session: `Under Review` means a review is in
+progress, and only the reviewer sets or clears it.
+
 Only `@rahulshahepic` is a code owner. When a collaborator merges a PR, it must
 have a current approving code-owner review from that account, following the
 assistant review. Collaborators must not treat their own or each other's

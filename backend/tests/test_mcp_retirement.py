@@ -240,7 +240,7 @@ def test_life_event_planner_compares_without_persisting(mcp, client, monkeypatch
     def fake_run(owner, **kwargs):
         calls.append(kwargs)
         events = kwargs["overrides"].get("plannedEvents", [])
-        return {"result": {
+        return {"retirementDate": "2033-01-02", "result": {
             "pctFundingShortfall": 0.01 + len(events) * 0.01,
             "medianFinalM": 10 - len(events), "p10FinalM": 4 - len(events),
         }, "saved": False}

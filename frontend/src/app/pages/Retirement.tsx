@@ -784,11 +784,10 @@ function RetirementAccount() {
           update('plannedEvents', events)
           setLifeEventComparison(null)
         }}
-        comparison={lifeEventComparison}
+        comparison={resultsStale ? null : lifeEventComparison}
         onRun={run}
         running={running}
-        readonly={false}
-      />
+       />
 
       {/* Card 1: Who & when */}
       <Card pad="md">
@@ -1463,7 +1462,17 @@ function RetirementAccount() {
         )}
       </div>
 
-      {result && (
+      {result && result.preRetirementFundingGapM > 1e-9 && (
+        <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          <strong>Purchase plan cannot be funded as entered.</strong> The planned pre-retirement
+          expenses exceed projected taxable funds by {fmt$M(result.preRetirementFundingGapM)}.
+          Retirement-account withdrawals, working-life wages and financing are not modeled.
+          No retirement probability, wealth chart or purchase affordability result is valid
+          until this gap is funded. Reduce the purchase or add a documented funding source,
+          then re-run the simulation.
+        </p>
+      )}
+      {result && result.preRetirementFundingGapM <= 1e-9 && (
         <>
           {resultsStale && (
             <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">

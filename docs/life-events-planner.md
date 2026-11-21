@@ -43,8 +43,12 @@ never inspect future returns, terminal outcomes or eventual scenario ranks:
 Known unpaid taxes and earlier scheduled same-month event commitments reduce
 wealth used for decisions. No rule guarantees the purchase is affordable after
 future bills or taxes. A path with an earlier funding shortfall cannot initiate
-another conditional purchase. Rules are supported only at/after retirement;
-working-life market paths are not modeled. Conditions are evaluated once, with
+another conditional purchase. Editors guide new conditional purchases to dates
+at/after retirement. Moving retirement later never invalidates an existing saved
+plan or blocks unrelated changes: conditional ownership periods now before
+retirement are skipped entirely, with a visible warning. Their later loan,
+ownership and resale flows are excluded too; working-life market paths are not
+modeled. Future independent lifetime replacement periods remain eligible. Conditions are evaluated once, with
 no deferral or retry. A skipped initial asset generates no purchase, proceeds
 from selling the old home/trade-in, loan payments, ownership costs or resale.
 Each later scheduled replacement gets a fresh rule check, even if the first
@@ -71,7 +75,9 @@ Sale proceeds pay remaining modeled loan principal and stop annual costs. The
 sale month includes its final ownership cost and loan payment, matching explicit
 resale handling. Do not combine lifetime with explicit resale date/value.
 With a repeat interval (at least as long as the lifetime), each replacement has
-its own purchase decision, loan, ownership period and sale. Replacements do not
+its own purchase decision, loan, ownership period and sale. Lifetime replacements
+inherit the original down-payment fraction and loan terms; legacy replacements
+without a lifetime remain cash outlays. Replacements do not
 reuse the original trade-in offset. A skipped cycle cannot produce resale cash;
 a later scheduled cycle can still pass its own conditions. `endDate` remains an
 absolute stop date for annual costs across cycles. Replacements are optional:

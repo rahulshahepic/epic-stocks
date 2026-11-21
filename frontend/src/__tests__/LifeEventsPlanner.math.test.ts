@@ -181,9 +181,26 @@ describe('causal purchase conditions', () => {
     // Only the first purchase, then 30 years' ownership costs (no stopped bills).
     expect(result.finalWealth[0]).toBeCloseTo(0.24, 6)
   })
-  it('refuses conditional pre-retirement purchases rather than silently applying them', () => {
-    expect(() => simulate({ ...base, plannedEvents: [{ ...car, date: '2030-01-01' }] }))
-      .toThrow(/at or after retirement/)
+  it('skips a conditional purchase moved before retirement with a warning and no phantom flows', () => {
+    const event = { ...car, date: '2030-01-01', annualCostM: 0.02,
+      downPaymentPct: 0.2, loanYears: 20, loanRate: 0.05, saleOffsetM: 0.1,
+      replacementEveryYears: 5 }
+    const result = simulate({ ...base, plannedEvents: [event] })
+    expect(result.finalWealth).toEqual(simulate(base).finalWealth)
+    expect(result.eventWarnings?.join(' ')).toContain('before retirement are skipped')
+    expect(result.eventOutcomes).toEqual([])
+    const planned = planCashFlows([event], base.simulationStartDate, 360)
+    expect(planned.preRetirementNetM).toBe(0)
+    expect([...planned.monthlyNeedM].every(value => value === 0)).toBe(true)
+    expect(planned.warnings).toHaveLength(1)
+  })
+  it('still considers future lifetime ownership periods after an earlier period is skipped', () => {
+    const result = simulate({ ...base, plannedEvents: [{ ...car, date: '2027-01-01',
+      lifetimeYears: 10, replacementEveryYears: 10, resaleDate: undefined,
+      resaleValueM: undefined, condition: { minPortfolioM: 0 } }] })
+    expect(result.eventWarnings).toHaveLength(1)
+    expect(result.eventOutcomes?.[0].purchaseProbability).toBe(1)
+    expect(result.eventOutcomes?.[0].meanPurchases).toBeGreaterThan(1)
   })
 })
 

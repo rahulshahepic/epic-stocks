@@ -784,6 +784,7 @@ function RetirementAccount() {
         )}
       </div>
 
+      {(result?.eventWarnings ?? []).map((warning, index) => <p key={index} role="note" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{warning}</p>)}
       {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
       <LifeEventsPlanner
         events={params.plannedEvents ?? []}

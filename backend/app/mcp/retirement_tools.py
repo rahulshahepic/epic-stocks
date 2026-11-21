@@ -34,7 +34,7 @@ _EVENT_SCHEMA = {
         "depreciationRate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Annual nominal depreciation during lifetime; 0 retains nominal price. Resale is deflated by inflationRate (default 2.5%)."},
         "condition": {
             "type": "object", "additionalProperties": False, "minProperties": 1,
-            "description": "All rules must hold immediately before the dated purchase, using only current portfolio state. Otherwise skip it, with no ownership costs or resale proceeds. Replacements are checked again; existing ownership costs and debt continue.",
+            "description": "All rules must hold immediately before the dated purchase, using only current portfolio state. Otherwise skip it, with no ownership costs or resale proceeds. Pre-retirement conditional ownership periods are skipped with a warning; saving remains allowed. Replacements are checked again; existing ownership costs and debt continue.",
             "properties": {
                 "requireFullSpending": {"type": "boolean", "description": "Only buy when the normal spending ramp is not cutting regular spending"},
                 "minPortfolioM": {"type": "number", "minimum": 0, "maximum": 1000, "description": "Minimum current portfolio net of unpaid taxes, in retirement-year $M"},

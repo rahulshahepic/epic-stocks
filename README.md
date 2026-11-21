@@ -300,7 +300,10 @@ The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `back
 spending (no spending cuts), a minimum current portfolio, and/or a minimum
 percentage of starting retirement wealth. The simulator decides using only
 state known on the purchase date, skips failed purchases, and reports how often
-you actually buy. Existing loan and ownership bills continue once committed.
+you actually buy. If a later retirement date moves an existing conditional
+purchase before retirement, that ownership period is skipped with a warning;
+you can still save and simulate the rest of the plan
+([example warning](screenshots/conditional-purchase-warning-light-mobile.png)). Existing loan and ownership bills continue once committed.
 For cars, enter ownership lifetime and annual nominal depreciation (including
 zero for a flat nominal price): the model sells at the end, pays remaining debt,
 and stops ownership costs. Each scheduled replacement has its own lifetime and

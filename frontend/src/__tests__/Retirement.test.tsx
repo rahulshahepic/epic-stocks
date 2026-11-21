@@ -507,7 +507,7 @@ describe('Retirement page', () => {
     expect(dateInput.disabled).toBe(false)
   })
 
-  it('shows a useful error when retirement moves beyond a conditional purchase', async () => {
+  it('runs with a warning when retirement moves beyond a conditional purchase', async () => {
     mockApi({ savedParams: { retirementDate: '2030-06-15', epicExit: 5, paths: 10,
       plannedEvents: [{ id: 'car', title: 'Car', kind: 'vehicle', date: '2037-01-01',
         amountM: 0.2, condition: { requireFullSpending: true } }] } })
@@ -517,7 +517,8 @@ describe('Retirement page', () => {
     const run = screen.getByRole('button', { name: /Simulate.*retirements/ })
     await waitFor(() => expect(run).toBeEnabled())
     fireEvent.click(run)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Conditional purchases must start at or after retirement')
+    expect(await screen.findByText(/Car: conditional ownership periods before retirement are skipped/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(run).toBeEnabled()
   })
 

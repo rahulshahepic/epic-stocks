@@ -819,6 +819,24 @@ test.describe('Screenshots', () => {
     })
   }
 
+  test('conditional purchase before changed retirement - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.request.post(`${BASE}/api/auth/test-login`, {
+      data: { email: 'conditional-warning@screenshots.example.test', name: 'Conditional Demo' },
+    })
+    const params = { retirementDate: '2034-06-01', epicExit: 5, paths: 10, seed: 1729,
+      plannedEvents: [{ id: 'car', title: 'Optional car', kind: 'vehicle',
+        date: '2035-01-01', amountM: 0.2, condition: { requireFullSpending: true } }] }
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...params, retirementDate: '2036-01-01' } } })).ok()).toBe(true)
+    await page.goto(`${BASE}/retirement`)
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+    const warning = page.getByText(/Optional car: conditional ownership periods before retirement are skipped/)
+    await expect(warning).toBeVisible()
+    await warning.screenshot({ path: `${OUT}/conditional-purchase-warning-light-mobile.png` })
+  })
+
   test('prices and tentative announcement - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Prices')

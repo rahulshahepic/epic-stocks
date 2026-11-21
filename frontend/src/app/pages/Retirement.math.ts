@@ -1719,13 +1719,22 @@ export function planCashFlows(
 ): PlannedCashFlows {
   const flows = new Float64Array(months + 1)
   const warnings: string[] = []
+  const skippedConditions = new Set<string>()
   let preRetirementNetM = 0
   let preRetirementEpicNeedM = 0
   const start = monthIndex(retirementDate)
   const todayOffset = monthIndex(asOfDate) - start + 1
   for (const event of vehicleOwnershipPeriods(events, retirementDate, months)) {
     const purchase = monthIndex(event.date) - start + 1
-    if (event.condition && purchase <= 0) throw new Error('Conditional purchases must start at or after retirement')
+    if (event.condition && purchase <= 0) {
+      const source = event.sourceEventId ?? event.id
+      if (!skippedConditions.has(source)) {
+        skippedConditions.add(source)
+        const title = events.find(e => e.id === source)?.title ?? event.title
+        warnings.push(title + ': conditional ownership periods before retirement are skipped, including their later bills and resale. Working-life market paths are not simulated; future lifetime replacements get separate decisions.')
+      }
+      continue
+    }
     const end = event.endDate ? monthIndex(event.endDate) - start + 1 : months
     const down = event.downPaymentPct ?? 1
     const loanMonths = Math.round((event.loanYears ?? 0) * 12)
@@ -2076,6 +2085,7 @@ export function quantile(sorted: ArrayLike<number>, q: number): number {
 
 export interface SimResult {
   eventOutcomes?: EventOutcome[]
+  eventWarnings?: string[]
   fanYears: number[]
   fanAges: number[]
   fanWealth: Float64Array[]
@@ -2106,14 +2116,15 @@ export function simulate(params: SimParams): SimResult {
   const months = Math.max(1, Math.round(params.endAge - params.currentAge)) * 12
   const events = vehicleOwnershipPeriods(params.plannedEvents ?? [], startDate, months)
   const planned = planCashFlows(events.filter(e => !e.condition), startDate, months, params.asOfDate)
+  const eventWarnings = planCashFlows(params.plannedEvents ?? [], startDate, months, params.asOfDate).warnings
   const outcomeGroups = (params.plannedEvents ?? []).filter(e => e.condition).map(event => ({
     eventId: event.id, title: event.title, boughtPaths: 0, totalPurchases: 0,
-    inHorizon: monthIndex(event.date) - monthIndex(startDate) + 1 <= months,
+    inHorizon: events.some(e => (e.sourceEventId ?? e.id) === event.id &&
+      monthIndex(e.date) >= monthIndex(startDate) && monthIndex(e.date) < monthIndex(startDate) + months),
   }))
   const monthlyConditional: Array<Array<{ index: number; decision: boolean }>> = Array.from({ length: months + 1 }, () => [])
-  const conditional = events.filter(e => e.condition).map(event => {
+  const conditional = events.filter(e => e.condition && monthIndex(e.date) >= monthIndex(startDate)).map(event => {
     const purchase = monthIndex(event.date) - monthIndex(startDate) + 1
-    if (purchase <= 0) throw new Error('Conditional purchases must start at or after retirement')
     const flows = planCashFlows([{ ...event, replacementEveryYears: 0 }], startDate, months, params.asOfDate).monthlyNeedM
     const repeatMonths = (event.replacementEveryYears ?? 0) * 12
     const resale = event.resaleDate ? monthIndex(event.resaleDate) - monthIndex(startDate) + 1 : months
@@ -2591,6 +2602,7 @@ export function simulate(params: SimParams): SimResult {
     pctRuin: ruin / N,
     medianFinalM,
     p10FinalM,
+    eventWarnings,
     eventOutcomes: outcomeGroups.filter(g => g.inHorizon).map(g => ({
       eventId: g.eventId, title: g.title,
       purchaseProbability: g.boughtPaths / N,

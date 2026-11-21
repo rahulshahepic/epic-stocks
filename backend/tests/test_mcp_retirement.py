@@ -405,8 +405,7 @@ def test_causal_purchase_condition_validation():
                       {"minStartingWealthRatio": -1}):
         with pytest.raises(ValueError):
             validate_planned_events([{**event, "condition": condition}])
-    with pytest.raises(ValueError, match="at or after retirement"):
-        validate_combined({"retirementDate": "2038-01-01", "plannedEvents": [event]})
+    validate_combined({"retirementDate": "2038-01-01", "plannedEvents": [event]})
 
 
 def test_vehicle_lifetime_validation():
@@ -421,12 +420,16 @@ def test_vehicle_lifetime_validation():
             validate_planned_events([{**event, **patch}])
 
 
-def test_web_rejects_conditional_purchase_before_retirement(mcp, client):
-    response = client.put("/api/retirement/params", json={"params": {
-        "retirementDate": "2040-01-01", "plannedEvents": [{
-            "id": "car", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
-            "amountM": 0.2, "condition": {"requireFullSpending": True},
-        }],
-    }})
-    assert response.status_code == 422
-    assert "at or after retirement" in response.json()["detail"]
+def test_moving_retirement_past_conditional_purchase_does_not_block_saves(mcp, client):
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2035-01-01",
+             "amountM": 0.2, "condition": {"requireFullSpending": True}}
+    params = {"retirementDate": "2034-06-01", "epicExit": 5, "plannedEvents": [event]}
+    assert client.put("/api/retirement/params", json={"params": params}).status_code == 200
+    moved = {**params, "retirementDate": "2036-01-01", "defaultSpend": 200}
+    assert client.put("/api/retirement/params", json={"params": moved}).status_code == 200
+    assert mcp.call("update_retirement_params", changes={"defaultSpend": 210})["saved"] is True
+    assert mcp.call("update_retirement_params", changes={"retirementDate": "2037-01-01"})["saved"] is True
+    saved = client.get("/api/retirement/params").json()["params"]
+    assert saved["defaultSpend"] == 210
+    assert saved["plannedEvents"] == [event]
+    assert saved["retirementDate"] == "2037-01-01"

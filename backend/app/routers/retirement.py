@@ -39,12 +39,7 @@ def save_my_retirement_params(
     if 'plannedEvents' in body.params:
         from app.retirement_simulation import validate_planned_events
         try:
-            events = validate_planned_events(body.params['plannedEvents'])
-            retirement = body.params.get('retirementDate')
-            if isinstance(retirement, str) and any(
-                e.get('condition') and e['date'][:7] < retirement[:7] for e in events
-            ):
-                raise ValueError('Conditional purchases must start at or after retirement')
+            validate_planned_events(body.params['plannedEvents'])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     user.retirement_params = body.params

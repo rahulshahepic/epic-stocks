@@ -226,10 +226,7 @@ def validate_combined(params):
         raise ValueError("Taxable cost basis cannot exceed the taxable balance")
     if "plannedEvents" in params:
         validate_planned_events(params["plannedEvents"])
-        retirement = params.get("retirementDate")
-        if retirement and any(e.get("condition") and e["date"][:7] < retirement[:7]
-                              for e in params["plannedEvents"]):
-            raise ValueError("Conditional purchases must start at or after retirement; working-life portfolio paths are not simulated")
+
     if params.get("endAge", 91) <= params.get("currentAge", 50):
         raise ValueError("End age must be later than retirement age")
 

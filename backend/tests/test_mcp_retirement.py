@@ -356,3 +356,38 @@ def test_epic_sale_month_boundaries_match_cash_flow_engine(mcp, monkeypatch):
                       recalculate_exit=False)
     assert result["hypotheticalEpicSales"] == []
     assert any("post-exit portfolio" in w for w in result["modelWarnings"])
+
+
+def test_unfunded_pre_retirement_gap_suppresses_misleading_comparison(mcp, monkeypatch):
+    from app.mcp import retirement_tools
+
+    def fake_run(owner, **kwargs):
+        has_events = bool(kwargs["overrides"].get("plannedEvents"))
+        return {
+            "retirementDate": "2033-01-01",
+            "result": {
+                "pctFundingShortfall": 1 if has_events else 0.02,
+                "medianFinalM": 5 if has_events else 9,
+                "p10FinalM": 2 if has_events else 4,
+                "modelFeasible": not has_events,
+                "preRetirementFundingGapM": 2 if has_events else 0,
+                "modelWarning": "Unfunded pre-retirement cash gap" if has_events else None,
+                "planned": {"preRetirementEpicNeedM": 3 if has_events else 0,
+                            "warnings": []},
+            },
+            "saved": False,
+        }
+
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    result = mcp.call("plan_life_events", events=[{
+        "id": "house", "title": "Large house", "kind": "home",
+        "date": "2030-01-01", "amountM": 3, "funding": "epic",
+    }], recalculate_exit=False)
+    assert result["impact"] == {
+        "fundingShortfallDelta": None,
+        "medianFinalDeltaM": None,
+        "p10FinalDeltaM": None,
+    }
+    assert result["withEvents"]["result"]["preRetirementFundingGapM"] == 2
+    assert "Unfunded pre-retirement cash gap" in result["modelWarnings"]
+    assert result["saved"] is False

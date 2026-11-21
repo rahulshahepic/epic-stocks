@@ -22,7 +22,7 @@ describe('life event editor saves backend-compatible shapes', () => {
     const event = onChange.mock.calls[0][0][0]
     const today = new Date()
     const years = (2032 - today.getFullYear()) + (1 - today.getMonth() - 1) / 12
-    expect(event.amountM).toBeCloseTo(Math.round(100000 * Math.pow(1.06, years)) / 1_000_000, 1)
+    expect(event.amountM).toBeCloseTo(Math.round(100000 * Math.pow(1.025, years)) / 1_000_000, 6)
     expect(event.amountM).toBeGreaterThan(0.1)
   })
 

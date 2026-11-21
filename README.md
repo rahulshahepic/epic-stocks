@@ -284,6 +284,14 @@ All math runs locally in your browser — no calculation results are stored. Tax
 
 ---
 
+### Retirement simulations in ChatGPT
+
+The Epic Stocks ChatGPT plugin can run the **same 1928–2023 historical block-bootstrap Monte Carlo engine** as the browser. Ask ChatGPT to **show my retirement plan**, **run the retirement simulation**, or **compare October 2031 with January 2032**. The interactive retirement card shows funding-shortfall probability, portfolio-exhaustion probability, initial and median ending wealth, a percentile fan chart, and what-if controls for date, spending, health insurance, stock/bond allocation and market scenario. The card's **Run simulation** and **Compare** actions do not save anything. **Save these inputs** writes only named fields when the connection has `comp:write` permission.
+
+The connector tools are `get_retirement_params`, `update_retirement_params`, `run_retirement_simulation`, `compare_retirement_scenarios`, `show_retirement` and app-only `refresh_retirement_view`. For retirement-date comparisons, the connector asks the existing `preview-exit` service for **after-tax, after-loan net cash** at each date. These amounts can depend on assumed future Epic share prices and are projections, not current balances. The simulations use a fixed random seed by default for comparable scenarios, at most 100,000 paths each, and return the percentiles in retirement-year purchasing power. Liquidity shortfalls and full portfolio exhaustion are separate metrics.
+
+The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `backend/app/retirement.math.mjs` and copies a Node runtime into the Python image. `backend/app/retirement_runner.mjs` runs the exact compiled calculator as a bounded subprocess through `backend/app/retirement_simulation.py`; `backend/app/mcp/retirement_tools.py` and `retirement_ui.py` expose it to the OAuth-scoped MCP server and versioned `retirement.html` component. No additional network access, secret, database table or environment variable is required.
+
 ### Retirement Simulator
 
 | Mobile | Desktop |
@@ -1586,7 +1594,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
 - **Daily jobs run outside the web process.** `python -m scheduled_jobs` checks whether UTC maintenance (03:00), notifications (07:00), and the admin digest (07:00) are due. A newly installed timer catches up later on the current UTC day, even when the due hour passed before deployment. It stores a runner start/finish heartbeat and the last result of each check, plus the last successful UTC date and timestamp separately for each job in `system_settings`. Admin → Deployment shows the build and these records, warning after 35 minutes without a completed check. Failed jobs retry on the next invocation, and PostgreSQL advisory locks avoid overlap. Digest delivery also records success per admin so a failed recipient can be retried without resending to successful recipients. Hetzner invokes the command every 15 minutes via a systemd timer installed before the app is taken down for deployment. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
-**ChatGPT UI code:** `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+**ChatGPT UI code:** `backend/app/mcp/ui_tools.py` and `retirement_ui.py` register scoped, versioned MCP Apps resources; `portfolio.html` and `retirement.html` are the self-contained components. `retirement_tools.py` exposes the Monte Carlo runner and named-field edits. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 
 
 Price entry and tentative announcement on mobile:

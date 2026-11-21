@@ -200,7 +200,7 @@ export default function LifeEventsPlanner({
                   onChange={e => set('replacementEveryYears', Math.max(0, Math.min(50, Math.floor(Number(e.target.value)))))}
                   className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
               </label>
-              {money('replacementCostM', 'Repeat cost ($; 0 = same as first purchase)')}
+              {money('replacementCostM', 'Repeat cost (0 = same as first purchase)')}
             </>
           </div>
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}

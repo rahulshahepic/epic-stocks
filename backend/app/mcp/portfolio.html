@@ -31,7 +31,7 @@
   function request(method, params) {
     return new Promise((resolve, reject) => {
       const id = ++nextId;
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error('ChatGPT did not respond. Try Refresh.')); }, 20000);
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error('The assistant did not respond. Try Refresh.')); }, 20000);
       pending.set(id, {resolve, reject, timer});
       window.parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
     });
@@ -78,7 +78,7 @@
       if(data.next_event) root.append(row('Next scheduled event',when(data.next_event.date)+' · '+data.next_event.event_type));
     } else if(snapshot.view==='grants') {
       root.append(el('h2','Your grants'));
-      if(!data.grants?.length) root.append(el('p','No grants recorded yet. Add them in Epic Stocks or ask ChatGPT to help enter a grant.','muted'));
+      if(!data.grants?.length) root.append(el('p','No grants recorded yet. Add them in Epic Stocks or ask your assistant to help enter a grant.','muted'));
       for(const g of data.grants ?? []) root.append(row(g.year+' · '+g.type,number(g.shares)+' shares · vests '+((g.vesting ?? []).map(v=>number(v.shares)+' on '+when(v.date)).join(', ') || 'from '+when(g.vest_start))));
     } else if(snapshot.view==='loans') {
       const hero=el('div',undefined,'hero'); hero.append(el('p','Outstanding principal'),el('div',money(data.total_outstanding),'value')); root.append(hero);
@@ -118,7 +118,7 @@
     if(!message || message.jsonrpc!=='2.0') return;
     if(message.id!==undefined && !message.method) {
       const p=pending.get(message.id); if(!p) return; clearTimeout(p.timer); pending.delete(message.id);
-      if(message.error) p.reject(new Error(message.error.message || 'ChatGPT could not complete this request.')); else p.resolve(message.result); return;
+      if(message.error) p.reject(new Error(message.error.message || 'The assistant could not complete this request.')); else p.resolve(message.result); return;
     }
     if(message.method==='ui/notifications/host-context-changed') contextChanged(message.params ?? {});
     if(message.method==='ui/notifications/tool-input') { const a=message.params?.arguments ?? {}; $('from').value=a.from_date ?? ''; $('through').value=a.to_date ?? ''; }

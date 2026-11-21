@@ -34,8 +34,9 @@ export default function LifeEventsPlanner({
   const [editing, setEditing] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
-  const set = <K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) =>
+  function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
+  }
   const money = (key: 'amountM' | 'annualCostM' | 'saleOffsetM' | 'resaleValueM' | 'replacementCostM', label: string) => (
     <label className="flex flex-col gap-1 text-xs text-cs-text-2">
       {label} ($)

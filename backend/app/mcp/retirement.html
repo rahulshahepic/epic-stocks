@@ -38,7 +38,7 @@
 <p class="foot">What-if runs do not change saved settings. Saving requires retirement edit permission. Results are estimates, not guarantees. Epic liquidation proceeds include modeled loan repayment and taxes; projected prices are assumptions.</p>
 </section>
 <section class="controls" aria-label="Hypothetical life events">
-<h2>Life events &amp; major purchases</h2>
+<details id="lifeEventsDetails"><summary style="cursor:pointer;font-weight:700">Life events &amp; major purchases</summary>
 <p class="muted">Model a house, car, college, wedding, vacation or other expense. This is a plan, not a real stock sale or transaction.</p>
 <div class="inputs">
 <label>Type<select id="eventKind"><option value="home">House</option><option value="vehicle">Car</option><option value="education">College / tuition</option><option value="wedding">Wedding</option><option value="travel">Vacation / Disney</option><option value="childcare">Childcare</option><option value="care">Care</option><option value="renovation">Renovation</option><option value="gift">Gift</option><option value="other">Other</option></select></label>
@@ -62,7 +62,7 @@
 <div id="eventList" aria-live="polite"></div>
 <div id="eventResults" aria-live="polite"></div>
 <p class="foot">Pre-retirement purchases reduce projected exit wealth without modeling wages, pre-retirement market returns or future sale-lot taxes. Existing home equity is not liquid until sold. Enter only incremental annual costs.</p>
-</section>
+</details></section>
 <section id="compare" hidden aria-label="Retirement date comparison"><h2>Retirement date comparison</h2><div id="comparison"></div></section>
 </main>
 <script>

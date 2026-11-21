@@ -1,10 +1,39 @@
 """Retirement MCP tools and portable MCP Apps entrypoint."""
+from datetime import date
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
 RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v1.html"
+
+_EVENT_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "id": {"type": "string", "maxLength": 100},
+        "title": {"type": "string", "maxLength": 100},
+        "kind": {"type": "string", "enum": [
+            "home", "vehicle", "education", "wedding", "travel",
+            "childcare", "care", "renovation", "gift", "other",
+        ]},
+        "date": {"type": "string", "description": "YYYY-MM-DD"},
+        "amountM": {"type": "number", "description": "Purchase or one-time expense in millions of dollars"},
+        "annualCostM": {"type": "number", "description": "Additional recurring annual cost in $M, not already in normal spending"},
+        "endDate": {"type": "string"},
+        "downPaymentPct": {"type": "number", "description": "Fraction paid upfront; required for financing"},
+        "loanRate": {"type": "number", "description": "Annual nominal loan rate as a fraction"},
+        "inflationRate": {"type": "number", "description": "Annual inflation for real fixed mortgage payments; default 0.025"},
+        "loanYears": {"type": "number"},
+        "saleOffsetM": {"type": "number", "description": "Net cash from selling an existing home or trade-in"},
+        "resaleDate": {"type": "string"},
+        "resaleValueM": {"type": "number"},
+        "replacementEveryYears": {"type": "number"},
+        "replacementCostM": {"type": "number", "description": "Optional repeat cost; 0 or omitted means repeat original amount"},
+        "funding": {"type": "string", "enum": ["epic", "brokerage", "cash", "mixed"]},
+    },
+    "required": ["id", "title", "kind", "date", "amountM"],
+}
+
 
 _PATCH = {
     "type": "object",
@@ -26,6 +55,7 @@ _PATCH = {
         "rebalance": {"type": "string", "enum": ["none", "tax-advantaged", "all"]},
         "retirementDate": {"type": "string", "description": "YYYY-MM-DD"},
         "spouseDOB": {"type": ["string", "null"], "description": "YYYY-MM-DD or null"},
+        "plannedEvents": {"type": "array", "maxItems": 20, "items": _EVENT_SCHEMA},
         "glidePoints": {"type": "array", "maxItems": 20, "items": {
             "type": "object", "additionalProperties": False,
             "properties": {
@@ -158,4 +188,88 @@ register(Tool(
     description="App-only interactive what-if recalculation without saving assumptions.",
     input_schema=_RUN_INPUT, output_schema=_RESULT, scope=COMP_READ, handler=_run,
     blocking_io=True, metadata={"ui": {"visibility": ["app"]}},
+))
+
+
+def _plan_life_events(ctx: ToolContext, args: dict):
+    """Read-only before/after comparison. Never touches the equity sale ledger."""
+    from app.retirement_simulation import validate_planned_events
+    owner = resolve_account(ctx.user, args.get("account"), ctx.db)
+    events = validate_planned_events(args.get("events"))
+    if not events:
+        raise ValueError("Provide at least one planned event")
+    if "overrides" in args and not isinstance(args["overrides"], dict):
+        raise ValueError("overrides must be an object")
+    recalc = args.get("recalculate_exit", EQUITY_READ in ctx.connector.scopes)
+    if type(recalc) is not bool:
+        raise ValueError("recalculate_exit must be true or false")
+    if recalc and EQUITY_READ not in ctx.connector.scopes:
+        raise ValueError("Date-specific Epic exit projections require equity:read")
+    base = {**(args.get("overrides") or {}), "plannedEvents": []}
+    before = run(owner, overrides=base, recalculate_exit=recalc)
+    after = run(owner, overrides={**base, "plannedEvents": events}, recalculate_exit=recalc)
+    a, b = before["result"], after["result"]
+    # The shared JS cash-flow engine schedules by calendar month, not day.
+    current_month = date.today().isoformat()[:7]
+    retirement_month = (after.get("retirementDate") or "")[:7]
+    feasible = a.get("modelFeasible", True) and b.get("modelFeasible", True)
+    return {
+        "baseline": before, "withEvents": after,
+        "impact": {
+            "fundingShortfallDelta": b["pctFundingShortfall"] - a["pctFundingShortfall"] if feasible else None,
+            "medianFinalDeltaM": b["medianFinalM"] - a["medianFinalM"] if feasible else None,
+            "p10FinalDeltaM": b["p10FinalM"] - a["p10FinalM"] if feasible else None,
+        },
+        "preRetirementEpicNetCashTargetM": b.get("planned", {}).get("preRetirementEpicNeedM", 0),
+        "modelWarnings": ([b["modelWarning"]] if b.get("modelWarning") else []) +
+                         b.get("planned", {}).get("warnings", []) + [
+            f"{e['title']}: the historical purchase is not a future Epic sale."
+            for e in events if e.get("funding") == "epic" and
+            e["date"][:7] < current_month
+        ] + [
+            f"{e['title']}: after-retirement funding uses the post-exit portfolio, not an Epic share sale."
+            for e in events if e.get("funding") == "epic" and
+            (not retirement_month or e["date"][:7] >= retirement_month)
+        ],
+        "hypotheticalEpicSales": [
+            {"eventId": e["id"], "date": e["date"],
+             "netCashTargetM": max(0, e["amountM"] * (
+                 e.get("downPaymentPct", 1) if e.get("loanYears", 0) else 1
+             ) - e.get("saleOffsetM", 0)),
+             "nextStep": "This is the one-time net target only. Check preRetirementEpicNetCashTargetM for recurring and replacement costs. Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
+            for e in events if e.get("funding") == "epic" and
+            e["date"][:7] >= current_month and
+            retirement_month and e["date"][:7] < retirement_month
+        ],
+        "saved": False,
+        "limitations": [
+            "No real stock sale, loan, purchase or transaction is created.",
+            "Pre-retirement purchases, loan payments and recurring expenses reduce the projected retirement portfolio without modeling wages, market growth or individual sale-lot taxes.",
+            "Home equity is not counted as spendable retirement assets until an explicit resale event; sale prices and loan rates are assumptions.",
+            "Recurring costs must be incremental to ordinary spending; otherwise they are double-counted.",
+            "All amounts are in retirement-date purchasing-power dollars.",
+        ],
+    }
+
+
+register(Tool(
+    name="plan_life_events", title="Plan major purchases and life expenses",
+    description=(
+        "Read-only retirement what-if for a house, vehicle, wedding, college, vacation, "
+        "childcare, eldercare, renovation, gifts or any other expense. Supports "
+        "down payments, amortizing mortgages/loans, existing-home sale offsets, "
+        "recurring ownership costs, resale and vehicle replacement. Compare the "
+        "actual Monte Carlo results with/without events using the same seed. "
+        "Can suggest a hypothetical Epic stock sale target, but NEVER creates "
+        "a sale or changes any saved settings. Use estimate_sale separately "
+        "to estimate shares and taxes from a stated future share price. "
+        "Ask the user for missing financial assumptions instead of inventing them."
+    ),
+    input_schema=object_schema({
+        "account": ACCOUNT_PROPERTY,
+        "events": {"type": "array", "minItems": 1, "maxItems": 20, "items": _EVENT_SCHEMA},
+        "overrides": _PATCH,
+        "recalculate_exit": {"type": "boolean", "default": True},
+    }, ["events"]),
+    scope=COMP_READ, handler=_plan_life_events, blocking_io=True,
 ))

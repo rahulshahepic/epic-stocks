@@ -210,3 +210,184 @@ def test_lower_spend_what_if_clamps_floor(client, db_session):
         db_session.commit()
         params, _, _ = prepare(user, overrides={"defaultSpend": 90})
         assert params["defaultSpend"] == params["minSpend"] == 90
+
+
+def test_planned_event_validation_and_no_saved_equity_write():
+    from app.retirement_simulation import validate_planned_events
+    event = {
+        "id": "college", "title": "College tuition", "kind": "education",
+        "date": "2032-09-01", "amountM": 0, "annualCostM": 0.07,
+        "endDate": "2036-06-01",
+    }
+    assert validate_changes({"plannedEvents": [event]})
+    for bad in (
+        {**event, "amountM": float("nan")},
+        {**event, "kind": "casino"},
+        {**event, "date": "2032-02-30"},
+        {**event, "endDate": "2031-01-01"},
+        {**event, "loanYears": 30, "downPaymentPct": 0.2, "loanRate": 1.5},
+        {**event, "unexpected": "value"},
+    ):
+        with pytest.raises(ValueError):
+            validate_planned_events([bad])
+    with pytest.raises(ValueError):
+        validate_planned_events([event, event])
+
+
+def test_life_event_planner_compares_without_persisting(mcp, client, monkeypatch):
+    from app.mcp import retirement_tools
+    calls = []
+    def fake_run(owner, **kwargs):
+        calls.append(kwargs)
+        events = kwargs["overrides"].get("plannedEvents", [])
+        return {"retirementDate": "2033-01-02", "result": {
+            "pctFundingShortfall": 0.01 + len(events) * 0.01,
+            "medianFinalM": 10 - len(events), "p10FinalM": 4 - len(events),
+        }, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    before = client.get("/api/retirement/params").json()["params"]
+    event = {"id": "wedding", "title": "Wedding", "kind": "wedding",
+             "date": "2032-06-01", "amountM": 0.1, "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event], recalculate_exit=False)
+    assert result["saved"] is False
+    assert result["impact"]["fundingShortfallDelta"] == pytest.approx(0.01)
+    assert result["hypotheticalEpicSales"][0]["netCashTargetM"] == pytest.approx(0.1)
+    assert calls[0]["overrides"]["plannedEvents"] == []
+    assert calls[1]["overrides"]["plannedEvents"] == [event]
+    assert client.get("/api/retirement/params").json()["params"] == before
+    assert "plan_life_events" in {t["name"] for t in mcp.list_tools()}
+
+
+def test_retirement_api_rejects_invalid_planned_events(client):
+    register_user(client)
+    invalid = {"id": "trip", "title": "Trip", "kind": "travel",
+               "date": "2033-01-01", "amountM": -1}
+    response = client.put("/api/retirement/params", json={"params": {
+        "epicExit": 5, "plannedEvents": [invalid],
+    }})
+    assert response.status_code == 422
+    assert client.get("/api/retirement/params").json()["params"] != {
+        "epicExit": 5, "plannedEvents": [invalid],
+    }
+
+
+@pytest.mark.parametrize("event", [
+    {"id": "cash-house", "title": "Cash house", "kind": "home",
+     "date": "2030-01-01", "amountM": 1.2, "downPaymentPct": 0.2,
+     "loanYears": 0, "loanRate": 0.06, "inflationRate": 0.025},
+    {"id": "full-down", "title": "Paid-off house", "kind": "home",
+     "date": "2030-01-01", "amountM": 1.2, "downPaymentPct": 1,
+     "loanYears": 30, "loanRate": 0.06},
+    {"id": "resale", "title": "Resale", "kind": "vehicle",
+     "date": "2030-01-01", "amountM": 0.05,
+     "resaleDate": "2034-01-01"},
+    {"id": "old-mortgage", "title": "Existing mortgage", "kind": "home",
+     "date": "2019-01-01", "amountM": 0.4, "downPaymentPct": 0.2,
+     "loanYears": 30, "loanRate": 0.05},
+])
+def test_web_planner_shapes_save_and_run_without_breaking_mcp(mcp, client, event, monkeypatch):
+    from app.mcp import retirement_tools
+    def fake_run(owner, **kwargs):
+        # Exercise the real saved-parameter validation without requiring the
+        # compiled Node runner in the Python-only CI job.
+        engine, on, _ = prepare(owner, overrides=kwargs.get("overrides"),
+                                recalculate_exit=False)
+        assert engine["plannedEvents"] == [event]
+        return {"retirementDate": on.isoformat(),
+                "result": {"pctFundingShortfall": 0.01}, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    response = client.put("/api/retirement/params", json={"params": {
+        "retirementDate": "2032-01-01", "epicExit": 8,
+        "plannedEvents": [event],
+    }})
+    assert response.status_code == 200, response.text
+    result = mcp.call("run_retirement_simulation", overrides={"paths": 100},
+                      recalculate_exit=False)
+    assert "result" in result
+    assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
+
+
+def test_historical_epic_purchase_is_not_a_future_sale(mcp, monkeypatch):
+    from app.mcp import retirement_tools
+    def fake_run(owner, **kwargs):
+        return {"retirementDate": "2033-01-01",
+                "result": {"pctFundingShortfall": 0.01, "medianFinalM": 9,
+                           "p10FinalM": 3}, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    event = {"id": "old", "title": "Existing mortgage", "kind": "home",
+             "date": "2019-01-01", "amountM": 0.4,
+             "downPaymentPct": 0.2, "loanYears": 30, "loanRate": 0.05,
+             "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event], recalculate_exit=False)
+    assert result["hypotheticalEpicSales"] == []
+    assert any("historical purchase" in warning for warning in result["modelWarnings"])
+
+
+def test_epic_sale_month_boundaries_match_cash_flow_engine(mcp, monkeypatch):
+    from datetime import date
+    from app.mcp import retirement_tools
+    retirement_date = f"{date.today().year + 5}-01-20"
+
+    def fake_run(owner, **kwargs):
+        events = kwargs["overrides"].get("plannedEvents", [])
+        return {
+            "retirementDate": retirement_date,
+            "result": {"pctFundingShortfall": 0.01,
+                       "medianFinalM": 9, "p10FinalM": 3,
+                       "planned": {"preRetirementEpicNeedM": 0.1 if events else 0,
+                                   "warnings": []}},
+            "saved": False,
+        }
+
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    this_month = date.today().replace(day=1).isoformat()
+    event = {"id": "same-month", "title": "This month's purchase",
+             "kind": "home", "date": this_month, "amountM": 0.1,
+             "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event],
+                      recalculate_exit=False)
+    assert result["preRetirementEpicNetCashTargetM"] == pytest.approx(0.1)
+    assert len(result["hypotheticalEpicSales"]) == 1
+    assert not any("historical purchase" in w for w in result["modelWarnings"])
+
+    retirement_month = {**event, "id": "retirement-month",
+                        "date": retirement_date[:7] + "-05"}
+    result = mcp.call("plan_life_events", events=[retirement_month],
+                      recalculate_exit=False)
+    assert result["hypotheticalEpicSales"] == []
+    assert any("post-exit portfolio" in w for w in result["modelWarnings"])
+
+
+def test_unfunded_pre_retirement_gap_suppresses_misleading_comparison(mcp, monkeypatch):
+    from app.mcp import retirement_tools
+
+    def fake_run(owner, **kwargs):
+        has_events = bool(kwargs["overrides"].get("plannedEvents"))
+        return {
+            "retirementDate": "2033-01-01",
+            "result": {
+                "pctFundingShortfall": 1 if has_events else 0.02,
+                "medianFinalM": 5 if has_events else 9,
+                "p10FinalM": 2 if has_events else 4,
+                "modelFeasible": not has_events,
+                "preRetirementFundingGapM": 2 if has_events else 0,
+                "modelWarning": "Unfunded pre-retirement cash gap" if has_events else None,
+                "planned": {"preRetirementEpicNeedM": 3 if has_events else 0,
+                            "warnings": []},
+            },
+            "saved": False,
+        }
+
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    result = mcp.call("plan_life_events", events=[{
+        "id": "house", "title": "Large house", "kind": "home",
+        "date": "2030-01-01", "amountM": 3, "funding": "epic",
+    }], recalculate_exit=False)
+    assert result["impact"] == {
+        "fundingShortfallDelta": None,
+        "medianFinalDeltaM": None,
+        "p10FinalDeltaM": None,
+    }
+    assert result["withEvents"]["result"]["preRetirementFundingGapM"] == 2
+    assert "Unfunded pre-retirement cash gap" in result["modelWarnings"]
+    assert result["saved"] is False

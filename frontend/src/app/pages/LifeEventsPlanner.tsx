@@ -15,7 +15,7 @@ const pct = (n: number) => (n * 100).toFixed(2) + '%'
 const blank = (kind: PlannedEventKind, date: string): PlannedEvent => ({
   id: '', title: KINDS.find(k => k[0] === kind)?.[1] ?? 'Expense',
   kind, date, amountM: 0, funding: 'mixed',
-  ...(kind === 'home' ? { downPaymentPct: 0.2, loanRate: 0.06, loanYears: 30 } : {}),
+  ...(kind === 'home' ? { downPaymentPct: 0.2, loanRate: 0.06, inflationRate: 0.025, loanYears: 30 } : {}),
   ...(kind === 'vehicle' ? { downPaymentPct: 1, replacementEveryYears: 0 } : {}),
 })
 
@@ -135,6 +135,11 @@ export default function LifeEventsPlanner({
                 <label className="flex flex-col gap-1 text-xs text-cs-text-2">Loan interest rate (%)
                   <input type="number" min="0" max="100" step="0.1" value={(draft.loanRate ?? 0) * 100}
                     onChange={e => set('loanRate', Math.max(0, Number(e.target.value)) / 100)}
+                    className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-cs-text-2">Assumed inflation (%)
+                  <input type="number" min="0" max="100" step="0.1" value={(draft.inflationRate ?? 0.025) * 100}
+                    onChange={e => set('inflationRate', Math.max(0, Number(e.target.value)) / 100)}
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
                 </label>
                 {money('saleOffsetM', 'Net existing-home sale proceeds / trade-in')}

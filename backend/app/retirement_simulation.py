@@ -139,7 +139,7 @@ def validate_planned_events(events):
             raise ValueError(f"{label} has a loan term but no financed balance")
         if event.get("loanRate", 0) and not event.get("loanYears", 0):
             raise ValueError(f"{label} has an interest rate without a loan term")
-        if event.get("replacementEveryYears", 0) and not event.get("replacementCostM", 0):
+        if event.get("replacementEveryYears", 0) and not (event.get("replacementCostM", 0) or event["amountM"]):
             raise ValueError(f"{label} needs a replacement cost")
         if "resaleDate" in event and "resaleValueM" not in event:
             raise ValueError(f"{label} needs a resale value")

@@ -18,7 +18,7 @@ describe('hypothetical life-event cash flows', () => {
     const r = 0.06 / 12
     const payment = 0.9 * r / (1 - Math.pow(1 + r, -360))
     expect(p.monthlyNeedM[1]).toBeCloseTo(payment + 0.024 / 12, 8)
-    expect(p.monthlyNeedM[13]).toBeCloseTo(payment + 0.024 / 12, 8)
+    expect(p.monthlyNeedM[13]).toBeCloseTo(payment / 1.025 + 0.024 / 12, 8)
     expect(p.preRetirementNetM).toBe(0)
   })
   it('accounts for pre-retirement purchases without pretending to simulate wages', () => {

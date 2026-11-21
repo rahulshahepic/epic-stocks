@@ -36,6 +36,12 @@ def save_my_retirement_params(
 ):
     if not isinstance(body.params, dict):
         raise HTTPException(status_code=422, detail="params must be an object")
+    if 'plannedEvents' in body.params:
+        from app.retirement_simulation import validate_planned_events
+        try:
+            validate_planned_events(body.params['plannedEvents'])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     user.retirement_params = body.params
     db.commit()
     return {"params": body.params}

@@ -236,21 +236,25 @@ export default function LifeEventsPlanner({
         <div className="rounded-lg border border-cs-border p-3 space-y-2" role="status">
           <h3 className="text-sm font-semibold text-cs-text">Same-seed Monte Carlo comparison</h3>
           {(comparison.baseline.preRetirementFundingGapM > 1e-9 ||
-            comparison.withEvents.preRetirementFundingGapM > 1e-9) ? (
+            comparison.withEvents.preRetirementFundingGapM > 1e-9) && (
             <p role="alert" className="text-sm text-cs-text">
               This plan needs {dollar(comparison.withEvents.preRetirementFundingGapM * 1_000_000)} more
               pre-retirement cash than the modeled taxable funds can cover. Retirement-account withdrawals,
               wages and financing before retirement are not simulated. No affordability odds or ending-wealth
               comparison is valid until you fund this gap.
             </p>
-          ) : <div className="grid grid-cols-2 gap-3 text-xs text-cs-text">
+          )}
+          {comparison.baseline.preRetirementFundingGapM <= 1e-9 &&
+            comparison.withEvents.preRetirementFundingGapM <= 1e-9 && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-cs-text">
               <div><p className="text-cs-muted">Without events</p>
                 <p className="text-lg font-bold">{pct(1 - comparison.baseline.pctRuin)}</p>
                 <p>Median ending: {dollar(comparison.baseline.medianFinalM * 1_000_000)}</p></div>
               <div><p className="text-cs-muted">With events</p>
                 <p className="text-lg font-bold">{pct(1 - comparison.withEvents.pctRuin)}</p>
                 <p>Median ending: {dollar(comparison.withEvents.medianFinalM * 1_000_000)}</p></div>
-            </div>}
+            </div>
+          )}
           <p className="text-xs text-cs-muted">Illustrative projections, not a guarantee or a verified ability to finance a purchase.</p>
         </div>
       )}

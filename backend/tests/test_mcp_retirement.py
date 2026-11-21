@@ -115,6 +115,8 @@ def test_card_resource_scoped_and_static(mcp, client):
     assert "Compare retirement dates" in resource["text"]
     assert "Compare Oct 2031" not in resource["text"]
     assert "recalculate_exit:projected" in resource["text"]
+    assert "data.exitSource==='projected_exit'" in resource["text"]
+    assert "value.trim()!=='')" in resource["text"]
     reader = Mcp(client, scope="equity:read")
     assert RETIREMENT_RESOURCE_URI not in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
     assert "error" in reader.rpc("resources/read", {"uri": RETIREMENT_RESOURCE_URI})

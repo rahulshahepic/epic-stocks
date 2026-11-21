@@ -17,6 +17,11 @@ try {
       warnings: planned.warnings },
     seed: params.seed,
     startingTotalM: result.startingTotal,
+    preRetirementFundingGapM: result.preRetirementFundingGapM,
+    modelFeasible: result.preRetirementFundingGapM <= 1e-9,
+    modelWarning: result.preRetirementFundingGapM > 1e-9
+      ? 'The pre-retirement purchase has an unfunded cash gap. Retirement Monte Carlo odds and ending wealth are not an affordability forecast until the gap is financed. Tax-advantaged accounts are not silently liquidated.'
+      : null,
     startingCashM: result.startingCash,
     pctFundingShortfall: result.pctRuin,
     pctLiquidityShortfall: result.pctLiquidityShortfall,

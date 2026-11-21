@@ -57,6 +57,14 @@ describe('hypothetical life-event cash flows', () => {
     expect(p.monthlyNeedM[61]).toBeCloseTo(0.09 + 0.05 / 12)
     expect(p.monthlyNeedM[73]).toBe(0)
   })
+  it('repeats a Disney vacation without needing a second price', () => {
+    const p = planCashFlows([{ id: 'disney', title: 'Disney vacation', kind: 'travel',
+      date: '2032-07-01', amountM: 0.02, replacementEveryYears: 3 }],
+      '2032-01-01', 120)
+    expect(p.monthlyNeedM[7]).toBeCloseTo(0.02)
+    expect(p.monthlyNeedM[43]).toBeCloseTo(0.02)
+    expect(p.monthlyNeedM[79]).toBeCloseTo(0.02)
+  })
   it('changes the real Monte Carlo outcomes without altering input objects', () => {
     const withEvents = { ...base, plannedEvents: [{ id: 'wedding', title: 'Wedding',
       kind: 'wedding' as const, date: '2035-05-01', amountM: 0.5 }] }

@@ -144,3 +144,9 @@ def test_exit_projection_cannot_cross_equity_read_scope(client):
             {"name": "October", "overrides": {"retirementDate": "2031-10-01"}},
             {"name": "January", "overrides": {"retirementDate": "2032-01-02"}},
         ])
+
+def test_bad_simulation_arguments_fail_readably(mcp):
+    assert "overrides must be an object" in mcp.error(
+        "run_retirement_simulation", overrides=["bad"])
+    assert "true or false" in mcp.error(
+        "run_retirement_simulation", recalculate_exit="yes")

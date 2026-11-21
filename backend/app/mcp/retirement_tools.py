@@ -56,6 +56,10 @@ _RESULT = object_schema({
 
 def _run(ctx: ToolContext, args: dict):
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
+    if "overrides" in args and not isinstance(args["overrides"], dict):
+        raise ValueError("overrides must be an object")
+    if "recalculate_exit" in args and type(args["recalculate_exit"]) is not bool:
+        raise ValueError("recalculate_exit must be true or false")
     if args.get("recalculate_exit") and EQUITY_READ not in ctx.connector.scopes:
         raise ValueError("Date-specific Epic exit projections require equity:read")
     return run(owner, overrides=args.get("overrides"),
@@ -90,6 +94,10 @@ def _compare(ctx: ToolContext, args: dict):
             raise ValueError("Scenario names must be unique and 1-60 characters")
         names.add(name)
         recalc = item.get("recalculate_exit", True)
+        if type(recalc) is not bool:
+            raise ValueError("recalculate_exit must be true or false")
+        if "overrides" in item and not isinstance(item["overrides"], dict):
+            raise ValueError("overrides must be an object")
         if recalc and EQUITY_READ not in ctx.connector.scopes:
             raise ValueError("Date-specific Epic exit projections require equity:read")
         result = run(owner, overrides=item.get("overrides"),

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { PlannedEvent, PlannedEventKind, SimResult } from './Retirement.math.ts'
+import { planCashFlows, type PlannedEvent, type PlannedEventKind, type SimResult } from './Retirement.math.ts'
 
 const KINDS: Array<[PlannedEventKind, string]> = [
   ['home', 'House'], ['vehicle', 'Car'], ['education', 'College / tuition'],
@@ -40,6 +40,7 @@ export default function LifeEventsPlanner({
     (Number(retirementDate.slice(5, 7)) - today.getMonth() - 1) / 12
   const conversionRate = draft.inflationRate ?? 0.025
   const convertedPrice = Math.round((Number(todayPrice) || 0) * Math.pow(1 + conversionRate, yearsToRetirement))
+  const hypotheticalEpicTargetM = planCashFlows(events, retirementDate, 1).preRetirementEpicNeedM
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
   }
@@ -218,6 +219,14 @@ export default function LifeEventsPlanner({
         assets until sold. Before retirement, upfront, mortgage and recurring costs reduce projected exit wealth;
         wages, investment returns and actual share-lot taxes are not simulated. A sale plan is not an executed sale.
       </p>
+      {hypotheticalEpicTargetM > 0 && (
+        <p className="rounded-lg border border-cs-border p-3 text-xs text-cs-text" role="note">
+          <strong>Hypothetical Epic sale cash target: {dollar(hypotheticalEpicTargetM * 1_000_000)} net.</strong>
+          {' '}This includes modeled pre-retirement purchases, loan payments and recurring costs
+          marked for Epic funding. It is not a share count or an executed sale. Confirm
+          vesting, loan payoff, share price and taxes separately before making any real decision.
+        </p>
+      )}
       {events.length > 0 && (
         <button type="button" disabled={running}
           className="rounded-lg bg-cs-text px-4 py-2 text-sm font-semibold text-cs-surface disabled:opacity-50"

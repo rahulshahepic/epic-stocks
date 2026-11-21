@@ -56,6 +56,40 @@ def _age(birth, on):
     return on.year - birth.year - ((on.month, on.day) < (birth.month, birth.day))
 
 
+def migrate_saved_params(saved):
+    """Match the browser's migrateLoadedParams before applying input limits."""
+    migrated = dict(saved)
+    additional = migrated.pop("additional", None)
+    migrated.pop("refillTaxDrag", None)
+    if type(additional) in (int, float) and math.isfinite(additional):
+        migrated.setdefault("taxableAdditional", additional)
+        migrated.setdefault("additionalBasis", 0)
+    points = migrated.get("glidePoints")
+    if isinstance(points, list) and points and isinstance(points[0], dict) and "age" in points[0]:
+        base_age = migrated.get("currentAge", 0)
+        if type(base_age) not in (int, float) or not math.isfinite(base_age):
+            base_age = 0
+        converted = []
+        for point in points:
+            if not isinstance(point, dict) or type(point.get("age")) not in (int, float):
+                raise ValueError("Legacy glide points must have numeric ages")
+            converted.append({
+                "yearsAfter": max(0, math.floor(point["age"] - base_age + 0.5)),
+                "stockPct": point.get("stockPct"), "bondPct": point.get("bondPct"),
+            })
+        migrated["glidePoints"] = converted
+    # Browser interpolation sorts the points and accepts duplicate years.
+    # Keep the first entry at a duplicate year, matching the stable JS sort.
+    if isinstance(migrated.get("glidePoints"), list):
+        pts = migrated["glidePoints"]
+        if all(isinstance(p, dict) and type(p.get("yearsAfter")) is int for p in pts):
+            unique = {}
+            for point in sorted(pts, key=lambda p: p["yearsAfter"]):
+                unique.setdefault(point["yearsAfter"], point)
+            migrated["glidePoints"] = list(unique.values())
+    return migrated
+
+
 def validate_changes(changes):
     """Validate a *partial* named-field patch, never replace a saved blob."""
     if not isinstance(changes, dict) or not changes:
@@ -111,8 +145,6 @@ def validate_combined(params):
         raise ValueError("Stocks and bonds cannot exceed 100% together")
     if params.get("additionalBasis", 0) > params.get("taxableAdditional", 0):
         raise ValueError("Taxable cost basis cannot exceed the taxable balance")
-    if params.get("minSpend", 0) > params.get("defaultSpend", 0):
-        raise ValueError("Minimum spending cannot exceed target spending")
     if params.get("endAge", 91) <= params.get("currentAge", 50):
         raise ValueError("End age must be later than retirement age")
 
@@ -133,11 +165,14 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
         raise ValueError("Saved retirement settings are invalid")
     # Validate saved values too, to keep a corrupted legacy record from
     # becoming an unbounded process request.
-    base = {k: v for k, v in saved.items() if k in EDITABLE}
+    migrated = migrate_saved_params(saved)
+    base = {k: v for k, v in migrated.items() if k in EDITABLE}
     if base:
         validate_changes(base)
     patch = validate_changes(overrides) if overrides else {}
     params = {**base, **patch}
+    if "defaultSpend" in patch and "minSpend" not in patch and params.get("minSpend", 0) > patch["defaultSpend"]:
+        params["minSpend"] = patch["defaultSpend"]
     retirement_date = _date(params.get("retirementDate", date.today().isoformat()), "retirementDate")
     if owner.date_of_birth:
         params["currentAge"] = _age(owner.date_of_birth, retirement_date)
@@ -145,9 +180,20 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
         raise ValueError("Set your date of birth in Epic Stocks before comparing retirement dates")
     spouse_dob = params.get("spouseDOB")
     if params.get("includeSpouse") and spouse_dob:
-        params["spouseCurrentAge"] = _age(_date(spouse_dob, "spouseDOB", birth=True), retirement_date)
+        parsed_spouse = _date(spouse_dob, "spouseDOB", birth=True)
+        params["spouseCurrentAge"] = _age(parsed_spouse, retirement_date)
+        params["spouseFra"] = (66 if parsed_spouse.year <= 1954 else
+                               67 if parsed_spouse.year >= 1960 else
+                               66 + (parsed_spouse.year - 1954) / 6)
     if recalculate_exit:
         params["epicExit"] = _projected_exit(owner, retirement_date)
+    if "epicExit" not in params:
+        raise ValueError("Epic exit value is missing. Grant equity:read for a date-specific projection or supply an epicExit assumption.")
+    # The browser derives untouched spending fields from 3% / 2% of wealth.
+    total_k = sum(params.get(k, 0) for k in ("epicExit", "taxableAdditional", "traditional", "roth")) * 1000
+    if total_k > 0:
+        params.setdefault("defaultSpend", math.floor(total_k * 0.03 + 0.5))
+        params.setdefault("minSpend", math.floor(total_k * 0.02 + 0.5))
     params["paths"] = params.get("paths", MAX_PATHS)
     params["seed"] = params.get("seed", DEFAULT_SEED)
     validate_combined(params)
@@ -165,12 +211,12 @@ def run(owner, *, overrides=None, recalculate_exit=False):
     params, on, exit_source = prepare(owner, overrides=overrides, recalculate_exit=recalculate_exit)
     if not RUNNER.is_file() or not RUNNER.with_name("retirement.math.mjs").is_file():
         raise ValueError("Retirement simulation runtime is not installed on this server")
-    if not SIM_SLOTS.acquire(blocking=False):
+    if not SIM_SLOTS.acquire(timeout=5):
         raise ValueError("Retirement simulations are busy; please retry shortly")
     try:
         try:
             proc = subprocess.run(
-                ["node", str(RUNNER)],
+                ["node", "--max-old-space-size=256", str(RUNNER)],
                 input=json.dumps({"params": params}), text=True, capture_output=True,
                 timeout=45, check=False,
             )

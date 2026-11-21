@@ -789,14 +789,17 @@ test.describe('Screenshots', () => {
       })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
+      await page.getByLabel('Retirement date').fill('2032-01-02')
       await page.getByRole('button', { name: /Add planned expense/ }).click()
       await page.getByLabel(/Purchase price \(/).fill('1200000')
+      await page.getByRole('heading', { name: 'Life events & major purchases' }).click()
       await expect(page.getByText(/Convert today's price to .* purchasing power/)).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
       const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
         .withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
-      await shoot(page, `life-events-planner-light-${label}`, { fullPage: true })
+      await page.locator('[aria-label="Life events and major purchases"]')
+        .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
     })
   }
 

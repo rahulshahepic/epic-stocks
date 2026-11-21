@@ -1,5 +1,5 @@
 """Retirement MCP tools and ChatGPT MCP Apps entrypoint."""
-from scaffold.oauth.scopes import COMP_READ, COMP_WRITE
+from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS

@@ -35,7 +35,7 @@ COPY --from=frontend-build /app/retirement-runtime/retirement.math.mjs ./app/ret
 # Only the Node executable is needed: the simulation is a dependency-free ESM file.
 COPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node
 # Verify the bundled Node executable and compiled browser engine work together.
-RUN printf '{"params":{"epicExit":1,"defaultSpend":50,"minSpend":30,"paths":100,"currentAge":50,"endAge":52,"seed":1}}' | node app/retirement_runner.mjs | python -c 'import json,sys; r=json.load(sys.stdin); assert r["paths"] == 100 and r["startingTotalM"] > 0 and 0 <= r["pctFundingShortfall"] <= 1 and r["pctFundingShortfall"] >= r["pctExhausted"]'
+RUN printf '{"params":{"epicExit":1,"defaultSpend":50,"minSpend":30,"paths":100,"currentAge":50,"endAge":52,"seed":1}}' | node app/retirement_runner.mjs | python -c 'import json,sys; r=json.load(sys.stdin); assert r["paths"] == 100 and r["startingTotalM"] > 0 and 0 <= r["pctFundingShortfall"] <= 1 and r["pctFundingShortfall"] >= r["pctExhausted"] and isinstance(r["wealthByAge"], list) and len(r["wealthByAge"]) > 0 and isinstance(r["finalPercentiles"], (dict,list)) and 0 <= r["pctLiquidityShortfall"] <= 1'
 
 
 RUN useradd -m -u 1000 appuser && chown -R appuser /app

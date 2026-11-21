@@ -144,7 +144,7 @@ def mcp(client):
 # The tools that leave something behind. Everything else must claim, and be,
 # read-only — a client decides how loudly to confirm from these annotations.
 WRITING_TOOLS = {
-    "add_compensation", "remove_compensation", "set_retirement_accounts",
+    "add_compensation", "remove_compensation", "set_retirement_accounts",\n    "update_retirement_params",
     "apply_changes",
 }
 

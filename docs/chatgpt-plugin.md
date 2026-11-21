@@ -1,12 +1,16 @@
-# Epic Stocks in ChatGPT
+# Epic Stocks MCP Apps in ChatGPT
+
+This document covers **ChatGPT-specific packaging and acceptance**. The portfolio and retirement cards use the **portable MCP Apps extension**, and existing portfolio cards have been user-verified in **Claude**. See [the cross-host MCP Apps guide](mcp-apps.md) for supported clients, tools, permissions and feature-by-feature verification.
 
 ## Experience and scope
 
 “Show my Epic Stocks portfolio” opens an inline card with net equity, stock value, held vested shares, outstanding loans and accrued interest. Buttons browse grants, loan history and events. Expand requests fullscreen; the same tool declares sidebar and conversation-panel entrypoints for hosts supporting those extensions. “Explain this” sends a follow-up message. The normal connector tools remain available without a rendered component.
 
-The plugin card is read-only: overview, grants with their vesting dates, loans and events. Entering equity happens in the conversation — attach documents and the assistant previews and applies edits with `apply_changes` (needs `equity:write`) after the person agrees.
+The portfolio card is read-only: overview, grants with their vesting dates, loans and events. Entering equity happens in the conversation — attach documents and the assistant previews and applies edits with `apply_changes` (needs `equity:write`) after the person agrees.
 
 A grant need not map to a configured template. Use **Add a new grant type**, enter the complete schedule and cost basis, and explicitly confirm both. Similar names never authorize choosing a template. Blank cost basis cannot silently become zero. Any change to the schedule resets both confirmations. Leave-related schedule changes use this same custom path.
+
+The **retirement card** (`show_retirement`) runs the actual retirement calculator with editable what-if inputs, percentile charts and date comparisons. Simulations do not save. `update_retirement_params` saves named fields only with `comp:write`. Date-specific Epic exit projections require `equity:read`. See [MCP Apps](mcp-apps.md).
 
 ## Implementation plan and acceptance checks
 

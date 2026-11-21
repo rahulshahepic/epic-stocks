@@ -56,6 +56,8 @@ _RESULT = object_schema({
 
 def _run(ctx: ToolContext, args: dict):
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
+    if args.get("recalculate_exit") and EQUITY_READ not in ctx.connector.scopes:
+        raise ValueError("Date-specific Epic exit projections require equity:read")
     return run(owner, overrides=args.get("overrides"),
                recalculate_exit=args.get("recalculate_exit", False))
 
@@ -87,8 +89,11 @@ def _compare(ctx: ToolContext, args: dict):
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 60 or name in names:
             raise ValueError("Scenario names must be unique and 1-60 characters")
         names.add(name)
+        recalc = item.get("recalculate_exit", True)
+        if recalc and EQUITY_READ not in ctx.connector.scopes:
+            raise ValueError("Date-specific Epic exit projections require equity:read")
         result = run(owner, overrides=item.get("overrides"),
-                     recalculate_exit=item.get("recalculate_exit", True))
+                     recalculate_exit=recalc)
         results.append({"name": name, **result})
     return {"scenarios": results, "saved": False,
             "note": "All scenarios use the same random seed by default. Epic exit projections use the date-specific price assumptions and are not guarantees."}

@@ -20,7 +20,7 @@ const blank = (kind: PlannedEventKind, date: string): PlannedEvent => ({
 })
 
 export default function LifeEventsPlanner({
-  events, retirementDate, onChange, comparison, onRun, running, readonly,
+  events, retirementDate, onChange, comparison, onRun, running,
 }: {
   events: PlannedEvent[]
   retirementDate: string
@@ -28,18 +28,24 @@ export default function LifeEventsPlanner({
   comparison: { baseline: SimResult; withEvents: SimResult } | null
   onRun: () => void
   running: boolean
-  readonly: boolean
 }) {
   const [draft, setDraft] = useState<PlannedEvent>(() => blank('home', retirementDate))
   const [editing, setEditing] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const [todayPrice, setTodayPrice] = useState('')
+  const retirementYear = retirementDate.slice(0, 4)
+  const today = new Date()
+  const yearsToRetirement = (Number(retirementYear) - today.getFullYear()) +
+    (Number(retirementDate.slice(5, 7)) - today.getMonth() - 1) / 12
+  const conversionRate = draft.inflationRate ?? 0.025
+  const convertedPrice = Math.round((Number(todayPrice) || 0) * Math.pow(1 + conversionRate, yearsToRetirement))
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
   }
   const money = (key: 'amountM' | 'annualCostM' | 'saleOffsetM' | 'resaleValueM' | 'replacementCostM', label: string) => (
     <label className="flex flex-col gap-1 text-xs text-cs-text-2">
-      {label} ($)
+      {label} ({retirementYear} $)
       <input type="number" min="0" step="1000" value={fromM(draft[key])}
         onChange={e => set(key, toM(e.target.value))}
         className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
@@ -130,6 +136,22 @@ export default function LifeEventsPlanner({
                 className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
             </label>
             {money('amountM', draft.kind === 'home' || draft.kind === 'vehicle' ? 'Purchase price' : 'One-time cost (0 if recurring only)')}
+            <div className="sm:col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
+              <p className="font-semibold">Convert today's price to {retirementYear} purchasing power</p>
+              <p className="mt-1 text-cs-muted">Use this for a current sticker price. Conversion assumes {(conversionRate * 100).toFixed(1)}% annual inflation; adjust the assumption below for financed purchases.</p>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1">Price in today's dollars ($)
+                  <input type="number" min="0" step="1000" value={todayPrice}
+                    onChange={e => setTodayPrice(e.target.value)}
+                    className="w-40 max-w-full rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+                </label>
+                <button type="button" disabled={!Number(todayPrice) || Number(todayPrice) < 0}
+                  className="rounded border border-cs-border-strong px-3 py-2 font-semibold text-cs-text disabled:opacity-50"
+                  onClick={() => set('amountM', convertedPrice / 1_000_000)}>
+                  Use {dollar(convertedPrice)} in {retirementYear} dollars
+                </button>
+              </div>
+            </div>
             {money('annualCostM', 'Additional annual costs (not in base spending)')}
             <label className="flex flex-col gap-1 text-xs text-cs-text-2">Stop recurring costs (optional)
               <input type="date" value={draft.endDate ?? ''} onChange={e => set('endDate', e.target.value || undefined)}
@@ -191,27 +213,35 @@ export default function LifeEventsPlanner({
         </div>
       )}
       <p className="text-[11px] leading-relaxed text-cs-muted">
-        Costs are in retirement-year purchasing power. The planner models loans, recurring costs,
+        Enter costs in {retirementYear} purchasing-power dollars, not today's sticker prices. The planner models loans, recurring costs,
         replacements and eventual home/vehicle resale. It excludes home equity from liquid retirement
         assets until sold. Before retirement, upfront, mortgage and recurring costs reduce projected exit wealth;
         wages, investment returns and actual share-lot taxes are not simulated. A sale plan is not an executed sale.
       </p>
       {events.length > 0 && (
-        <button type="button" disabled={running || readonly}
+        <button type="button" disabled={running}
           className="rounded-lg bg-cs-text px-4 py-2 text-sm font-semibold text-cs-surface disabled:opacity-50"
           onClick={onRun}>{running ? 'Simulating…' : 'Compare retirement with these events'}</button>
       )}
       {comparison && (
         <div className="rounded-lg border border-cs-border p-3 space-y-2" role="status">
           <h3 className="text-sm font-semibold text-cs-text">Same-seed Monte Carlo comparison</h3>
-          <div className="grid grid-cols-2 gap-3 text-xs text-cs-text">
+          {(comparison.baseline.preRetirementFundingGapM > 1e-9 ||
+            comparison.withEvents.preRetirementFundingGapM > 1e-9) ? (
+            <p role="alert" className="text-sm text-cs-text">
+              This plan needs {dollar(comparison.withEvents.preRetirementFundingGapM * 1_000_000)} more
+              pre-retirement cash than the modeled taxable funds can cover. Retirement-account withdrawals,
+              wages and financing before retirement are not simulated. No affordability odds or ending-wealth
+              comparison is valid until you fund this gap.
+            </p>
+          ) : <div className="grid grid-cols-2 gap-3 text-xs text-cs-text">
             <div><p className="text-cs-muted">Without events</p>
               <p className="text-lg font-bold">{pct(1 - comparison.baseline.pctRuin)}</p>
               <p>Median ending: {dollar(comparison.baseline.medianFinalM * 1_000_000)}</p></div>
             <div><p className="text-cs-muted">With events</p>
               <p className="text-lg font-bold">{pct(1 - comparison.withEvents.pctRuin)}</p>
               <p>Median ending: {dollar(comparison.withEvents.medianFinalM * 1_000_000)}</p></div>
-          </div>
+          </div>}
           <p className="text-xs text-cs-muted">Illustrative projections, not a guarantee or a verified ability to finance a purchase.</p>
         </div>
       )}

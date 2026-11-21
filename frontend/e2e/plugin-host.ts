@@ -68,3 +68,44 @@ export async function pluginHost(page: Page, options: { view?: keyof typeof snap
   await widget.getByRole('button', {name:'Refresh', exact:true}).waitFor()
   return widget
 }
+
+const retirementHtml = readFileSync(fileURLToPath(new URL('../../backend/app/mcp/retirement.html', import.meta.url)), 'utf8')
+export const retirementSnapshot = {
+  retirementDate:'2032-01-02',exitSource:'saved_exit',saved:false,
+  assumptions:{epicExit:6,taxableAdditional:1,traditional:.5,roth:.2,defaultSpend:180,minSpend:100,healthInsurance:25,stockPct:.7,bondPct:.2,scenario:'cautious',currentAge:48,endAge:91,paths:1000,seed:1729},
+  result:{paths:1000,startingTotalM:7.7,pctFundingShortfall:.03,pctExhausted:.01,medianFinalM:12.4,
+    wealthByAge:[{age:48,p10:7.7,p50:7.7,p90:7.7},{age:68,p10:4,p50:10,p90:20},{age:91,p10:2,p50:12.4,p90:40}]},
+}
+
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light') {
+  await page.goto('/login')
+  await page.evaluate(({html,initial,theme}) => {
+    document.body.innerHTML=''
+    const frame=document.createElement('iframe')
+    frame.title='Epic Stocks retirement plugin'
+    frame.style.cssText='width:100%;height:1000px;border:0;display:block'
+    document.body.style.margin='0'
+    const calls: {method:string;params:Record<string,unknown>}[]=[]
+    Object.assign(window,{pluginCalls:calls})
+    window.addEventListener('message',event=>{
+      if(event.source!==frame.contentWindow)return
+      const msg=event.data
+      if(msg.method)calls.push({method:msg.method,params:msg.params})
+      const reply=(result:unknown)=>frame.contentWindow?.postMessage({jsonrpc:'2.0',id:msg.id,result},'*')
+      if(msg.method==='ui/initialize')reply({hostContext:{theme,displayMode:'inline',availableDisplayModes:['inline','fullscreen']}})
+      if(msg.method==='ui/notifications/initialized')frame.contentWindow?.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:initial}},'*')
+      if(msg.method==='tools/call'){
+        if(msg.params.name==='compare_retirement_scenarios')reply({structuredContent:{scenarios:[{name:'October 2031',...initial},{name:'January 2032',...initial}]}})
+        else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
+        else reply({structuredContent:initial})
+      }
+      if(msg.method==='ui/request-display-mode')reply({mode:msg.params.mode})
+      if(msg.method==='ui/notifications/size-changed')frame.style.height=msg.params.height+'px'
+    })
+    frame.srcdoc=html
+    document.body.append(frame)
+  },{html:retirementHtml,initial:retirementSnapshot,theme})
+  const widget=page.frameLocator('iframe')
+  await widget.getByText('97.00%',{exact:true}).waitFor()
+  return widget
+}

@@ -27,11 +27,12 @@ describe('life event editor saves backend-compatible shapes', () => {
   })
 
   it('shows an explicitly hypothetical Epic sale target without posting a transaction', () => {
-    render(<LifeEventsPlanner events={[{
+    const event: PlannedEvent = {
       id: 'car', title: 'Future car', kind: 'vehicle', date: '2030-01-01',
       amountM: 0.08, funding: 'epic',
-    }]} retirementDate="2032-01-01" onChange={vi.fn()}
-    comparison={null} onRun={vi.fn()} running={false} />)
+    }
+    render(<LifeEventsPlanner events={[event]} retirementDate="2032-01-01"
+      onChange={vi.fn()} comparison={null} onRun={vi.fn()} running={false} />)
     expect(screen.getByRole('note').textContent).toContain('$80,000')
     expect(screen.getByRole('note').textContent).toContain('not a share count or an executed sale')
   })
@@ -39,10 +40,12 @@ describe('life event editor saves backend-compatible shapes', () => {
   it('does not present Monte Carlo affordability odds when pre-retirement cash is missing', () => {
     const baseline = { preRetirementFundingGapM: 0, pctRuin: 0.01, medianFinalM: 8 } as SimResult
     const withEvents = { preRetirementFundingGapM: 2, pctRuin: 1, medianFinalM: 5 } as SimResult
-    render(<LifeEventsPlanner events={[{
+    const event: PlannedEvent = {
       id: 'house', title: 'House', kind: 'home', date: '2030-01-01', amountM: 3,
-    }]} retirementDate="2032-01-01" onChange={vi.fn()}
-      comparison={{ baseline, withEvents }} onRun={vi.fn()} running={false} />)
+    }
+    render(<LifeEventsPlanner events={[event]} retirementDate="2032-01-01"
+      onChange={vi.fn()} comparison={{ baseline, withEvents }}
+      onRun={vi.fn()} running={false} />)
     expect(screen.getByRole('alert').textContent).toContain('$2,000,000')
     expect(screen.queryByText('99.00%')).toBeNull()
     expect(screen.queryByText('0.00%')).toBeNull()

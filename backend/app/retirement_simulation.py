@@ -40,14 +40,14 @@ SIDE_CARS = {"retirementDate", "spouseDOB"}
 EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints", "plannedEvents"} | SIDE_CARS
 
 
-def _date(value, label, *, birth=False):
+def _date(value, label, *, birth=False, historical=False):
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a YYYY-MM-DD date")
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
         raise ValueError(f"{label} must be a valid YYYY-MM-DD date") from None
-    if not (1900 if birth else 2020) <= parsed.year <= (2100 if not birth else 2099):
+    if not (1900 if birth or historical else 2020) <= parsed.year <= (2100 if not birth else 2099):
         raise ValueError(f"{label} is outside the supported date range")
     return parsed
 
@@ -117,10 +117,10 @@ def validate_planned_events(events):
             raise ValueError(f"{label} has an unsupported kind")
         if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
             raise ValueError(f"{label} has an unsupported funding source")
-        when = _date(event["date"], f"{label}.date")
+        when = _date(event["date"], f"{label}.date", historical=True)
         for key in ("endDate", "resaleDate"):
             if key in event and event[key] is not None:
-                other = _date(event[key], f"{label}.{key}")
+                other = _date(event[key], f"{label}.{key}", historical=True)
                 if other < when:
                     raise ValueError(f"{label}.{key} must not precede the event")
         for key in EVENT_NUMBERS & set(event):
@@ -135,14 +135,11 @@ def validate_planned_events(events):
             raise ValueError(f"{label} loan and replacement terms must be whole years")
         if event.get("loanYears", 0) and "downPaymentPct" not in event:
             raise ValueError(f"{label} financed purchases require downPaymentPct")
-        if event.get("loanYears", 0) and event.get("downPaymentPct", 1) == 1:
-            raise ValueError(f"{label} has a loan term but no financed balance")
-        if event.get("loanRate", 0) and not event.get("loanYears", 0):
-            raise ValueError(f"{label} has an interest rate without a loan term")
+        # Cash purchases may carry redundant loan fields from a web form.
+        # planCashFlows creates debt only for a positive financed balance.
         if event.get("replacementEveryYears", 0) and not (event.get("replacementCostM", 0) or event["amountM"]):
             raise ValueError(f"{label} needs a replacement cost")
-        if "resaleDate" in event and "resaleValueM" not in event:
-            raise ValueError(f"{label} needs a resale value")
+        # A missing resaleValueM means zero, as in the shared simulator.
     return events
 
 

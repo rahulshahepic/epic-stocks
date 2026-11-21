@@ -269,3 +269,29 @@ def test_retirement_api_rejects_invalid_planned_events(client):
     assert client.get("/api/retirement/params").json()["params"] != {
         "epicExit": 5, "plannedEvents": [invalid],
     }
+
+
+@pytest.mark.parametrize("event", [
+    {"id": "cash-house", "title": "Cash house", "kind": "home",
+     "date": "2030-01-01", "amountM": 1.2, "downPaymentPct": 0.2,
+     "loanYears": 0, "loanRate": 0.06, "inflationRate": 0.025},
+    {"id": "full-down", "title": "Paid-off house", "kind": "home",
+     "date": "2030-01-01", "amountM": 1.2, "downPaymentPct": 1,
+     "loanYears": 30, "loanRate": 0.06},
+    {"id": "resale", "title": "Resale", "kind": "vehicle",
+     "date": "2030-01-01", "amountM": 0.05,
+     "resaleDate": "2034-01-01"},
+    {"id": "old-mortgage", "title": "Existing mortgage", "kind": "home",
+     "date": "2019-01-01", "amountM": 0.4, "downPaymentPct": 0.2,
+     "loanYears": 30, "loanRate": 0.05},
+])
+def test_web_planner_shapes_save_and_run_without_breaking_mcp(mcp, client, event):
+    response = client.put("/api/retirement/params", json={"params": {
+        "retirementDate": "2032-01-01", "epicExit": 8,
+        "plannedEvents": [event],
+    }})
+    assert response.status_code == 200, response.text
+    result = mcp.call("run_retirement_simulation", overrides={"paths": 100},
+                      recalculate_exit=False)
+    assert "result" in result
+    assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]

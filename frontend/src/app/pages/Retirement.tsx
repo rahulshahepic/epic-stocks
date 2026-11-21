@@ -449,7 +449,9 @@ function RetirementAccount() {
     completedRun.spouseDOB !== spouseDOB ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState('')
+  const saveRequestRef = useRef(0)
   const [showRuinTable, setShowRuinTable] = useState(false)
 
   const vid = viewing?.invitationId
@@ -625,15 +627,23 @@ function RetirementAccount() {
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
+    const request = ++saveRequestRef.current
     setSaveStatus('saving')
+    setSaveError('')
     const t = setTimeout(() => {
       api.saveRetirementParams({
         ...(params as unknown as Record<string, unknown>),
         retirementDate,
         spouseDOB,
       })
-        .then(() => setSaveStatus('saved'))
-        .catch(() => setSaveStatus('idle'))
+        .then(() => {
+          if (request === saveRequestRef.current) setSaveStatus('saved')
+        })
+        .catch((err: unknown) => {
+          if (request !== saveRequestRef.current) return
+          setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
+          setSaveStatus('error')
+        })
     }, 500)
     return () => clearTimeout(t)
   }, [params, retirementDate, spouseDOB, vid])
@@ -716,9 +726,17 @@ function RetirementAccount() {
               ? 'Saving…'
               : saveStatus === 'saved'
                 ? 'All inputs saved'
-                : 'Inputs save automatically'}
+                : saveStatus === 'error'
+                  ? 'Save failed'
+                  : 'Inputs save automatically'}
         </span>
       </div>
+
+      {saveStatus === 'error' && !vid && (
+        <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
+          Retirement changes were NOT saved: {saveError}. Fix the invalid event or try again.
+        </p>
+      )}
 
       <div className="rounded-xl border border-cs-border bg-cs-raised ">
         <button

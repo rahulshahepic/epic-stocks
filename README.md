@@ -288,13 +288,25 @@ All math runs locally in your browser — no calculation results are stored. Tax
 
 The Epic Stocks MCP Apps connector can run the **same 1928–2023 historical block-bootstrap Monte Carlo engine** as the browser. Ask a supported assistant to **show my retirement plan**, **run the retirement simulation**, or **compare retiring this year versus next year**. The portable interactive retirement card shows funding-shortfall probability, portfolio-exhaustion probability, initial and median ending wealth, a percentile fan chart, and what-if controls for date, spending, health insurance, stock/bond allocation and market scenario. The card's **Run simulation** and **Compare** actions do not save anything. **Save these inputs** writes only named fields when the connection has `comp:write` permission.
 
-The connector tools are `get_retirement_params`, `update_retirement_params`, `run_retirement_simulation`, `compare_retirement_scenarios`, `show_retirement` and app-only `refresh_retirement_view`. For retirement-date comparisons, the connector asks the existing `preview-exit` service for **after-tax, after-loan net cash** at each date. These amounts can depend on assumed future Epic share prices and are projections, not current balances. The simulations use a fixed random seed by default for comparable scenarios, at most 100,000 paths each, and return the percentiles in retirement-year purchasing power. Liquidity shortfalls and full portfolio exhaustion are separate metrics.
+The connector tools are `get_retirement_params`, `update_retirement_params`, `run_retirement_simulation`, `compare_retirement_scenarios`, `plan_life_events`, `show_retirement` and app-only `refresh_retirement_view`. For retirement-date comparisons, the connector asks the existing `preview-exit` service for **after-tax, after-loan net cash** at each date. These amounts can depend on assumed future Epic share prices and are projections, not current balances. The simulations use a fixed random seed by default for comparable scenarios, at most 100,000 paths each, and return the percentiles in retirement-year purchasing power. Liquidity shortfalls and full portfolio exhaustion are separate metrics.
 
 For the host support matrix, scope requirements and real-host acceptance checklist, see [MCP Apps across assistants](docs/mcp-apps.md). The existing portfolio cards have been user-verified in Claude. The new retirement card still needs a separate Claude-host acceptance test.
 
 The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `backend/app/retirement.math.mjs` and copies a Node runtime into the Python image. `backend/app/retirement_runner.mjs` runs the exact compiled calculator as a bounded subprocess through `backend/app/retirement_simulation.py`; `backend/app/mcp/retirement_tools.py` and `retirement_ui.py` expose it to the OAuth-scoped MCP server and versioned `retirement.html` component. No additional network access, secret, database table or environment variable is required.
 
 ### Retirement Simulator
+
+**Life events and major purchases:** The Retirement tab and MCP Apps card can
+compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
+eldercare, renovations, gifts and repeat vacations. Set dates, upfront and
+incremental annual costs, mortgage terms, old-home/trade-in proceeds, optional
+resale, and a hypothetical funding source. The shared simulation engine
+calculates before/after risk using matched seeds. The read-only
+`plan_life_events` MCP tool never creates a stock sale or other transaction.
+Pre-retirement purchases, mortgage payments and incremental recurring costs
+reduce projected retirement wealth; the model does not simulate working-life
+income or actual future tax lots. See [Life events planning](docs/life-events-planner.md)
+for the limits and the AI/app division of responsibilities.
 
 | Mobile | Desktop |
 |--------|---------|

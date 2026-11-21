@@ -46,15 +46,37 @@ export default function LifeEventsPlanner({
     </label>
   )
   const save = () => {
-    if (!draft.title.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(draft.date) ||
-        !Number.isFinite(Date.parse(draft.date)) ||
-        (draft.endDate && draft.endDate < draft.date) ||
-        (draft.resaleDate && draft.resaleDate < draft.date)) {
+    // Match the MCP validator before sending events into the autosaved plan.
+    const validDate = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+      const parsed = new Date(value + 'T00:00:00Z')
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value &&
+        Number(value.slice(0, 4)) >= 1900 && Number(value.slice(0, 4)) <= 2100
+    }
+    if (!draft.title.trim() || !validDate(draft.date) ||
+        (draft.endDate && (!validDate(draft.endDate) || draft.endDate < draft.date)) ||
+        (draft.resaleDate && (!validDate(draft.resaleDate) || draft.resaleDate < draft.date))) {
       setError('Enter a title and valid dates. End and resale dates cannot precede the purchase.')
       return
     }
     if (events.length >= 20 && !editing) { setError('Maximum 20 planned events.'); return }
     const event = { ...draft, id: editing ?? 'event-' + Date.now().toString(36) }
+    event.replacementEveryYears = Math.min(50, Math.max(0, Math.floor(event.replacementEveryYears ?? 0)))
+    if (event.kind === 'home' || event.kind === 'vehicle') {
+      event.loanYears = Math.min(50, Math.max(0, Math.floor(event.loanYears ?? 0)))
+      if (!event.loanYears || (event.downPaymentPct ?? 1) >= 1 || !event.amountM) {
+        delete event.loanYears
+        delete event.loanRate
+        delete event.inflationRate
+        event.downPaymentPct = 1
+      }
+    }
+    if (event.resaleDate) event.resaleValueM = event.resaleValueM ?? 0
+    else delete event.resaleValueM
+    if (event.replacementEveryYears && !(event.replacementCostM || event.amountM)) {
+      setError('Enter a cost for repeating expenses.')
+      return
+    }
     onChange(editing ? events.map(e => e.id === editing ? event : e) : [...events, event])
     setEditing(null); setDraft(blank(draft.kind, retirementDate)); setOpen(false); setError('')
   }
@@ -129,7 +151,7 @@ export default function LifeEventsPlanner({
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-cs-text-2">Loan term (years; 0 = cash)
                   <input type="number" min="0" max="50" value={draft.loanYears ?? 0}
-                    onChange={e => set('loanYears', Math.max(0, Math.floor(Number(e.target.value))))}
+                    onChange={e => set('loanYears', Math.max(0, Math.min(50, Math.floor(Number(e.target.value)))))}
                     className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-cs-text-2">Loan interest rate (%)
@@ -151,12 +173,12 @@ export default function LifeEventsPlanner({
               </>
             )}
             <>
-                <label className="flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
-                  <input type="number" min="0" max="50" value={draft.replacementEveryYears ?? 0}
-                    onChange={e => set('replacementEveryYears', Math.max(0, Math.floor(Number(e.target.value))))}
-                    className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
-                </label>
-                {money('replacementCostM', 'Repeat cost ($; 0 = same as first purchase)')}
+              <label className="flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
+                <input type="number" min="0" max="50" value={draft.replacementEveryYears ?? 0}
+                  onChange={e => set('replacementEveryYears', Math.max(0, Math.min(50, Math.floor(Number(e.target.value)))))}
+                  className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+              </label>
+              {money('replacementCostM', 'Repeat cost ($; 0 = same as first purchase)')}
             </>
           </div>
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
@@ -171,7 +193,7 @@ export default function LifeEventsPlanner({
       <p className="text-[11px] leading-relaxed text-cs-muted">
         Costs are in retirement-year purchasing power. The planner models loans, recurring costs,
         replacements and eventual home/vehicle resale. It excludes home equity from liquid retirement
-        assets until sold. Before retirement, upfront costs reduce projected exit wealth; pre-retirement
+        assets until sold. Before retirement, upfront, mortgage and recurring costs reduce projected exit wealth;
         wages, investment returns and actual share-lot taxes are not simulated. A sale plan is not an executed sale.
       </p>
       {events.length > 0 && (

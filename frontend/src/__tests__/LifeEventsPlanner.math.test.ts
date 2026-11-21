@@ -23,8 +23,13 @@ describe('hypothetical life-event cash flows', () => {
   })
   it('accounts for pre-retirement purchases without pretending to simulate wages', () => {
     const p = planCashFlows([{ ...home, date: '2030-01-01', saleOffsetM: 0 }], '2032-01-01', 360)
-    expect(p.preRetirementNetM).toBeCloseTo(0.3)
-    expect(p.preRetirementEpicNeedM).toBeCloseTo(0.3)
+    const r = 0.06 / 12
+    const monthly = 0.9 * r / (1 - Math.pow(1 + r, -360))
+    const preRetirementLoan = Array.from({ length: 24 }, (_, i) =>
+    monthly / Math.pow(1.025, i / 12)).reduce((sum, n) => sum + n, 0)
+    const expected = 0.3 + 0.024 * 2 + preRetirementLoan
+    expect(p.preRetirementNetM).toBeCloseTo(expected)
+    expect(p.preRetirementEpicNeedM).toBeCloseTo(expected)
     expect(p.warnings.join(' ')).toContain('pre-retirement')
     expect(p.monthlyNeedM[1]).toBeGreaterThan(0)
   })
@@ -60,7 +65,7 @@ describe('hypothetical life-event cash flows', () => {
   it('repeats a Disney vacation without needing a second price', () => {
     const p = planCashFlows([{ id: 'disney', title: 'Disney vacation', kind: 'travel',
       date: '2032-07-01', amountM: 0.02, replacementEveryYears: 3 }],
-      '2032-01-01', 120)
+    '2032-01-01', 120)
     expect(p.monthlyNeedM[7]).toBeCloseTo(0.02)
     expect(p.monthlyNeedM[43]).toBeCloseTo(0.02)
     expect(p.monthlyNeedM[79]).toBeCloseTo(0.02)

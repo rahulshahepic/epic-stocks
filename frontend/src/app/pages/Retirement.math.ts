@@ -1677,25 +1677,25 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     if (purchase <= 0) {
       preRetirementNetM += cashAtPurchase
       if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
-      warnings.push(event.title + ': pre-retirement cash outlay is deducted from projected retirement wealth without modeling pre-retirement returns, wages or sale-lot taxes.')
+      warnings.push(event.title + ': pre-retirement purchase and debt costs reduce projected retirement wealth without modeling wages, pre-retirement returns or sale-lot taxes.')
     } else if (purchase <= months) flows[purchase] += cashAtPurchase
-    // Education, childcare and other recurring expenses can begin before
-    // retirement. Charge the pre-retirement installments against the projected
-    // starting wealth instead of silently ignoring them.
-    if (purchase <= 0 && event.annualCostM) {
-      const count = Math.max(0, Math.min(0, end) - purchase + 1)
-      const cost = count * event.annualCostM / 12
-      preRetirementNetM += cost
-      if (event.funding === 'epic') preRetirementEpicNeedM += cost
-    }
-
     const r = (event.loanRate ?? 0) / 12
     const payment = loanPrincipal <= 0 ? 0 : r === 0
       ? loanPrincipal / loanMonths
       : loanPrincipal * r / (1 - Math.pow(1 + r, -loanMonths))
-    // Pre-retirement payments are assumed funded from working income.
-    // After retirement, amortization continues until the term or resale.
     const resale = event.resaleDate ? monthIndex(event.resaleDate) - start + 1 : null
+    // Conservative policy: charge both pre-retirement mortgage payments and
+    // incremental recurring costs to projected exit wealth. No salary is
+    // assumed to cover one expense category but not the other.
+    for (let m = purchase; m <= 0; m++) {
+      if (resale != null && m > resale) break
+      const elapsed = m - purchase
+      let cost = 0
+      if (elapsed >= 0 && elapsed < loanMonths) cost += payment / Math.pow(1 + (event.inflationRate ?? 0.025), elapsed / 12)
+      if (event.annualCostM && m <= end) cost += event.annualCostM / 12
+      preRetirementNetM += cost
+      if (event.funding === 'epic') preRetirementEpicNeedM += cost
+    }
     for (let m = Math.max(1, purchase); m <= months; m++) {
       if (resale != null && m > resale) break
       const elapsed = m - purchase

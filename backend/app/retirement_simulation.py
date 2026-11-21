@@ -113,9 +113,9 @@ def validate_planned_events(events):
         if event["id"] in ids:
             raise ValueError("planned event IDs must be unique")
         ids.add(event["id"])
-        if event["kind"] not in EVENT_KINDS:
+        if not isinstance(event["kind"], str) or event["kind"] not in EVENT_KINDS:
             raise ValueError(f"{label} has an unsupported kind")
-        if event.get("funding", "mixed") not in EVENT_FUNDING:
+        if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
             raise ValueError(f"{label} has an unsupported funding source")
         when = _date(event["date"], f"{label}.date")
         for key in ("endDate", "resaleDate"):

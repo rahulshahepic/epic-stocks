@@ -1624,6 +1624,94 @@ export const HISTORICAL_RETURNS: ReadonlyArray<HistoricalReturn> = HISTORICAL_RA
   }),
 )
 
+
+// Hypothetical life events live only in retirement scenarios. They never create
+// an equity sale, mortgage, or transaction in the owner's actual ledger.
+// Values are real $M at the retirement-date purchasing-power anchor.
+export type PlannedEventKind = 'home' | 'vehicle' | 'education' | 'wedding' | 'travel' | 'childcare' | 'care' | 'renovation' | 'gift' | 'other'
+export interface PlannedEvent {
+  id: string
+  title: string
+  kind: PlannedEventKind
+  date: string                  // YYYY-MM-DD
+  amountM: number               // purchase or one-time expense
+  annualCostM?: number          // recurring real cost, from date through endDate
+  endDate?: string
+  downPaymentPct?: number       // financed home/vehicle: fraction of price paid now
+  loanRate?: number             // annual nominal rate, fixed
+  loanYears?: number
+  saleOffsetM?: number          // net cash from selling an existing home / trade-in
+  resaleDate?: string           // optional eventual disposal
+  resaleValueM?: number         // estimated sale price before remaining debt
+  replacementEveryYears?: number // vehicles and other recurring replacements
+  replacementCostM?: number
+  funding?: 'epic' | 'brokerage' | 'cash' | 'mixed'
+}
+export interface PlannedCashFlows {
+  preRetirementNetM: number
+  monthlyNeedM: Float64Array   // positive = outflow, negative = inflow
+  warnings: string[]
+  preRetirementEpicNeedM: number
+}
+// Month offsets use UTC calendar months so time zones and DST cannot shift a
+// planned purchase into a neighboring simulation month.
+function monthIndex(date: string): number {
+  const y = Number(date.slice(0, 4))
+  const m = Number(date.slice(5, 7))
+  return y * 12 + m - 1
+}
+export function planCashFlows(events: PlannedEvent[], retirementDate: string, months: number): PlannedCashFlows {
+  const flows = new Float64Array(months + 1)
+  const warnings: string[] = []
+  let preRetirementNetM = 0
+  let preRetirementEpicNeedM = 0
+  const start = monthIndex(retirementDate)
+  for (const event of events) {
+    const purchase = monthIndex(event.date) - start + 1
+    const end = event.endDate ? monthIndex(event.endDate) - start + 1 : months
+    const down = event.downPaymentPct ?? 1
+    const loanMonths = Math.round((event.loanYears ?? 0) * 12)
+    const loanPrincipal = loanMonths > 0 ? event.amountM * (1 - down) : 0
+    const cashAtPurchase = event.amountM - loanPrincipal - (event.saleOffsetM ?? 0)
+    if (purchase <= 0) {
+      preRetirementNetM += cashAtPurchase
+      if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
+      warnings.push(event.title + ': pre-retirement cash outlay is deducted from projected retirement wealth without modeling pre-retirement returns, wages or sale-lot taxes.')
+    } else if (purchase <= months) flows[purchase] += cashAtPurchase
+
+    const r = (event.loanRate ?? 0) / 12
+    const payment = loanPrincipal <= 0 ? 0 : r === 0
+      ? loanPrincipal / loanMonths
+      : loanPrincipal * r / (1 - Math.pow(1 + r, -loanMonths))
+    // Pre-retirement payments are assumed funded from working income.
+    // After retirement, amortization continues until the term or resale.
+    const resale = event.resaleDate ? monthIndex(event.resaleDate) - start + 1 : null
+    for (let m = Math.max(1, purchase); m <= months && m <= end; m++) {
+      if (resale != null && m > resale) break
+      const elapsed = m - purchase
+      if (elapsed >= 0 && elapsed < loanMonths) flows[m] += payment
+      if (event.annualCostM) flows[m] += event.annualCostM / 12
+    }
+    if (resale != null && resale >= 1 && resale <= months) {
+      const elapsed = Math.max(0, Math.min(loanMonths, resale - purchase + 1))
+      const remaining = loanPrincipal <= 0 ? 0 : r === 0
+        ? Math.max(0, loanPrincipal - payment * elapsed)
+        : Math.max(0, loanPrincipal * Math.pow(1 + r, elapsed) -
+          payment * (Math.pow(1 + r, elapsed) - 1) / r)
+      flows[resale] -= (event.resaleValueM ?? 0) - remaining
+    } else if (resale != null && resale <= 0) {
+      warnings.push(event.title + ': resale before retirement is not separately modeled; enter net sale proceeds as saleOffsetM.')
+    }
+    if (event.replacementEveryYears && event.replacementCostM) {
+      const cadence = event.replacementEveryYears * 12
+      for (let m = purchase + cadence; m <= months && m <= end; m += cadence) {
+        if (m >= 1 && (resale == null || m <= resale)) flows[m] += event.replacementCostM
+      }
+    }
+  }
+  return { preRetirementNetM, monthlyNeedM: flows, warnings, preRetirementEpicNeedM }
+}
+
 export interface SimParams {
   // Account buckets (all $M, real). Epic exit is its own field so the UI can
   // surface it separately and so we can cleanly fold its full basis (it was
@@ -1632,6 +1720,7 @@ export interface SimParams {
   // traditional (401k/Trad IRA, locked until 59½, ordinary tax), and roth
   // (locked until 59½, tax-free).
   epicExit: number
+  plannedEvents?: PlannedEvent[]
   taxableAdditional: number
   additionalBasis: number
   traditional: number
@@ -1682,6 +1771,7 @@ export interface SimParams {
 
 export const DEFAULT_PARAMS: SimParams = {
   epicExit: 0,
+  plannedEvents: [],
   taxableAdditional: 0,
   additionalBasis: 0,
   traditional: 0,
@@ -1928,13 +2018,14 @@ export function simulate(params: SimParams): SimResult {
   const dataLen = data.length
 
   // Bucket totals (in $M, real).
-  const taxableTotal = Math.max(0, params.epicExit + params.taxableAdditional)
+  const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', Math.max(1, Math.round(params.endAge - params.currentAge)) * 12)
+  const taxableTotal = Math.max(0, params.epicExit + params.taxableAdditional - planned.preRetirementNetM)
   const tradTotal = Math.max(0, params.traditional)
   const rothTotal = Math.max(0, params.roth)
   // Epic exit always carries full basis (just sold). Pre-existing taxable
   // additional carries user-supplied basis (capped to its value).
-  const baselineBasis = Math.max(0, params.epicExit) +
-    Math.min(Math.max(0, params.additionalBasis), Math.max(0, params.taxableAdditional))
+  const baselineBasis = Math.min(taxableTotal, Math.max(0, params.epicExit) +
+    Math.min(Math.max(0, params.additionalBasis), Math.max(0, params.taxableAdditional)))
   const totalPortfolio = taxableTotal + tradTotal + rothTotal
 
   const stockPct = Math.max(0, params.stockPct)
@@ -2183,7 +2274,7 @@ export function simulate(params: SimParams): SimResult {
 
       // Monthly net need from portfolio. SS and spouse's net work income (gross minus
       // payroll taxes; income tax on gross is handled at year-end) reduce the draw.
-      const need = baseSpendMonthly + hiMonthly - ssGrossM - spouseNetWorkMonthM
+      const need = baseSpendMonthly + hiMonthly + planned.monthlyNeedM[m] - ssGrossM - spouseNetWorkMonthM
       if (need <= 0) cash -= need
       else if (withdraw(need, age) > 1e-9) recordShortfall(m)
 

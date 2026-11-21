@@ -2033,6 +2033,7 @@ export interface SimResult {
   startingEquity: number
   startingCash: number
   startingTotal: number
+  preRetirementFundingGapM: number // unfunded working-life outlay; not modeled as an IRA withdrawal
   years: number
   pctAboveStart: number
   pctRuin: number
@@ -2048,6 +2049,7 @@ export function simulate(params: SimParams): SimResult {
 
   // Bucket totals (in $M, real).
   const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', Math.max(1, Math.round(params.endAge - params.currentAge)) * 12, params.asOfDate)
+  const preRetirementFundingGapM = Math.max(0, planned.preRetirementNetM - Math.max(0, params.epicExit + params.taxableAdditional))
   const taxableTotal = Math.max(0, params.epicExit + params.taxableAdditional - planned.preRetirementNetM)
   const tradTotal = Math.max(0, params.traditional)
   const rothTotal = Math.max(0, params.roth)
@@ -2160,7 +2162,7 @@ export function simulate(params: SimParams): SimResult {
     let trdB = tradTotal * wB
     let rthS = rothTotal * wS
     let rthB = rothTotal * wB
-    const preRetirementShortfall = planned.preRetirementNetM > Math.max(0, params.epicExit + params.taxableAdditional) + 1e-9
+    const preRetirementShortfall = preRetirementFundingGapM > 1e-9
     let hadLiquidityShortfall = preRetirementShortfall && (tradTotal + rothTotal > 1e-9)
     let hadExhaustion = preRetirementShortfall && !(tradTotal + rothTotal > 1e-9)
     let taxArrears = 0
@@ -2477,6 +2479,7 @@ export function simulate(params: SimParams): SimResult {
     startingEquity,
     startingCash,
     startingTotal,
+    preRetirementFundingGapM,
     years: Y,
     pctAboveStart: above / N,
     pctRuin: ruin / N,

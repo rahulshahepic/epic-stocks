@@ -102,7 +102,7 @@ def validate_changes(changes):
             _date(value, key)
         elif key == "spouseDOB":
             if value is not None and value != "":
-                _date(value, key)
+                _date(value, key, birth=True)
     return changes
 
 

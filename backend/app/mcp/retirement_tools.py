@@ -209,6 +209,9 @@ def _plan_life_events(ctx: ToolContext, args: dict):
     before = run(owner, overrides=base, recalculate_exit=recalc)
     after = run(owner, overrides={**base, "plannedEvents": events}, recalculate_exit=recalc)
     a, b = before["result"], after["result"]
+    # The shared JS cash-flow engine schedules by calendar month, not day.
+    current_month = date.today().isoformat()[:7]
+    retirement_month = (after.get("retirementDate") or "")[:7]
     return {
         "baseline": before, "withEvents": after,
         "impact": {
@@ -220,11 +223,11 @@ def _plan_life_events(ctx: ToolContext, args: dict):
         "modelWarnings": b.get("planned", {}).get("warnings", []) + [
             f"{e['title']}: the historical purchase is not a future Epic sale."
             for e in events if e.get("funding") == "epic" and
-            e["date"] < date.today().isoformat()
+            e["date"][:7] < current_month
         ] + [
             f"{e['title']}: after-retirement funding uses the post-exit portfolio, not an Epic share sale."
             for e in events if e.get("funding") == "epic" and
-            (not after.get("retirementDate") or e["date"] >= after["retirementDate"])
+            (not retirement_month or e["date"][:7] >= retirement_month)
         ],
         "hypotheticalEpicSales": [
             {"eventId": e["id"], "date": e["date"],
@@ -233,8 +236,8 @@ def _plan_life_events(ctx: ToolContext, args: dict):
              ) - e.get("saleOffsetM", 0)),
              "nextStep": "This is the one-time net target only. Check preRetirementEpicNetCashTargetM for recurring and replacement costs. Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
             for e in events if e.get("funding") == "epic" and
-            e["date"] >= date.today().isoformat() and
-            after.get("retirementDate") and e["date"] < after["retirementDate"]
+            e["date"][:7] >= current_month and
+            retirement_month and e["date"][:7] < retirement_month
         ],
         "saved": False,
         "limitations": [

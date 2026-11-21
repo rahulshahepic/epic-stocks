@@ -1679,6 +1679,15 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
       if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
       warnings.push(event.title + ': pre-retirement cash outlay is deducted from projected retirement wealth without modeling pre-retirement returns, wages or sale-lot taxes.')
     } else if (purchase <= months) flows[purchase] += cashAtPurchase
+    // Education, childcare and other recurring expenses can begin before
+    // retirement. Charge the pre-retirement installments against the projected
+    // starting wealth instead of silently ignoring them.
+    if (purchase <= 0 && event.annualCostM) {
+      const count = Math.max(0, Math.min(0, end) - purchase + 1)
+      const cost = count * event.annualCostM / 12
+      preRetirementNetM += cost
+      if (event.funding === 'epic') preRetirementEpicNeedM += cost
+    }
 
     const r = (event.loanRate ?? 0) / 12
     const payment = loanPrincipal <= 0 ? 0 : r === 0
@@ -1706,7 +1715,12 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     if (event.replacementEveryYears && event.replacementCostM) {
       const cadence = event.replacementEveryYears * 12
       for (let m = purchase + cadence; m <= months && m <= end; m += cadence) {
-        if (m >= 1 && (resale == null || m <= resale)) flows[m] += event.replacementCostM
+        if (resale != null && m > resale) continue
+        if (m >= 1) flows[m] += event.replacementCostM
+        else {
+          preRetirementNetM += event.replacementCostM
+          if (event.funding === 'epic') preRetirementEpicNeedM += event.replacementCostM
+        }
       }
     }
   }

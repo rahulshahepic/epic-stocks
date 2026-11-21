@@ -54,6 +54,7 @@ for(const theme of ['light','dark'] as const){
 
 test('life events in MCP card are read-only and passed to the planner', async ({page}) => {
   const card=await retirementHost(page)
+  await card.locator('#lifeEventsDetails summary').click()
   await card.getByLabel('Type', {exact:true}).selectOption('travel')
   await card.getByLabel('Name', {exact:true}).fill('Disney vacation')
   await card.getByLabel('Date', {exact:true}).fill('2034-07-01')

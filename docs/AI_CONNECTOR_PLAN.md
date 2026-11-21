@@ -1,6 +1,6 @@
 # AI Connector — two-way API access for ChatGPT and Claude
 
-Status: **proposal, not built.** This document is the design and the build order.
+Status: **historical design proposal.** The OAuth-protected MCP server, read/write tools, and portable MCP Apps cards have since been implemented. For the current user-facing features, verified Claude/ChatGPT host support, permissions and acceptance checks, see [MCP Apps](mcp-apps.md). For ChatGPT-specific packaging see [ChatGPT plugin](chatgpt-plugin.md). The remainder of this document preserves the original decisions and should not be treated as current implementation status.
 
 Decisions taken (Rahul, this round):
 - **Read-only first.** Get it working, then decide about writes.

@@ -1,4 +1,6 @@
-# Epic Stocks plugin
+# Epic Stocks MCP Apps plugin packaging
+
+The interactive portfolio and retirement cards use the **MCP Apps extension** and can be rendered by compatible hosts including ChatGPT and Claude. The existing portfolio cards have been user-verified in Claude; retirement is not yet host-verified there. Hosts without MCP Apps can still call ordinary tools and receive JSON/text results. See [cross-host support and verification](../../docs/mcp-apps.md).
 
 The UI and OAuth server ship with Epic Stocks itself. This directory is the portable packaging source; build it for a specific deployment so forks never connect to the original owner's server by accident:
 
@@ -11,3 +13,5 @@ The output includes root `plugin.json`, `mcp.json` with the `streamable-http` tr
 Public directory publication is separate from building or registering a personal plugin. See [the implementation and rollout plan](../../docs/chatgpt-plugin.md).
 
 Version 1.1 adds the full Import tab: host file selection, parser attempts, ChatGPT repair, editable custom grants and explicit review/acceptance. Refresh tools after deployment; the UI resource is versioned at `portfolio-v2.html`. No API key is needed.
+
+Version 1.2 adds a portable MCP Apps retirement planning card with a percentile fan chart, what-if inputs, side-by-side retirement date comparisons and an explicit Save button. Supported assistants can run the same simulator through `run_retirement_simulation`, compare with `compare_retirement_scenarios`, or save named settings with `update_retirement_params`. Simulation and comparison never change saved settings. The server needs the bundled Node runtime from the Docker build; the browser and connector use the same TypeScript financial model.

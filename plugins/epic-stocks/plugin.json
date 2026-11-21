@@ -1,15 +1,15 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "epic-stocks",
-  "version": "1.1.0",
-  "description": "Browse Epic Stocks, and enter grants, loans and prices from your documents with a preview you confirm.",
+  "version": "1.2.0",
+  "description": "Browse Epic Stocks, run retirement Monte Carlo simulations and compare scenarios, and enter equity documents with confirmation.",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Epic Stocks (Unofficial)",
-        "shortDescription": "Stocks, loans and vesting",
-        "longDescription": "Browse your current equity, grants, loans and vesting events. Import PDFs, CSVs, Excel workbooks and other documents inside ChatGPT, review parsing findings, repair with ChatGPT and add new grant types without a built-in template. Confirm the exact changes in the plugin before saving. Connect your account with OAuth; saving needs edit permission. This is an independent app, not an official Epic product.",
+        "shortDescription": "Equity and retirement planning",
+        "longDescription": "Browse current Epic equity, grants, loans and vesting events. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product.",
         "developerName": "Epic Stocks contributors",
         "category": "Productivity",
         "capabilities": [
@@ -22,7 +22,9 @@
           "Show my Epic Stocks portfolio",
           "Show my upcoming vesting events",
           "Explain my outstanding stock loans",
-          "Import my Epic Stocks documents"
+          "Import my Epic Stocks documents",
+          "Run my retirement simulation",
+          "Compare retiring in three months versus next year"
         ]
       }
     }

@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost } from './plugin-host'
+import { pluginHost, retirementHost } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -88,6 +88,31 @@ test.describe('Screenshots', () => {
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296
       }
     })
+  })
+
+  // Portable MCP Apps retirement resource, rendered in the synthetic MCP host.
+  // Synthetic balances only; capture both themes and sizes for PR visual review.
+  for (const theme of ['light', 'dark'] as const) {
+    for (const size of ['mobile', 'desktop'] as const) {
+      test(`MCP Apps retirement card - ${theme} - ${size}`, async ({ page }) => {
+        await page.setViewportSize(size === 'mobile' ? MOBILE : DESKTOP)
+        const card = await retirementHost(page, theme)
+        await expect(card.getByText('97.00%', { exact: true })).toBeVisible()
+        await expect(card.getByRole('img', { name: 'Median wealth and 10th to 90th percentile range by age' })).toBeVisible()
+        await expect(card.getByRole('status')).toContainText('Simulation complete')
+        await shoot(page, `mcp-apps-retirement-${theme}-${size}`, { fullPage: true })
+      })
+    }
+  }
+
+  test('MCP Apps retirement card - comparison - light - desktop', async ({ page }) => {
+    await page.setViewportSize(DESKTOP)
+    const card = await retirementHost(page, 'light')
+    await card.getByLabel('Compare against').fill('2032-07-02')
+    await card.getByRole('button', { name: 'Compare retirement dates' }).click()
+    await expect(card.getByRole('cell', { name: '2032-07-02' })).toBeVisible()
+    await expect(card.getByRole('status')).toContainText('Neither scenario was saved')
+    await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
   })
 
   for (const theme of ['light', 'dark'] as const) {

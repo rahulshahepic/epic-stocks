@@ -1,4 +1,4 @@
-"""Retirement simulation MCP permissions, parity, bounds and ChatGPT card."""
+"""Retirement simulation MCP permissions, parity, bounds and MCP Apps card."""
 import pytest
 
 from tests.conftest import register_user, user_key
@@ -77,8 +77,8 @@ def test_simulation_and_card_use_same_service(mcp, monkeypatch):
             "saved": False,
         }
     monkeypatch.setattr(retirement_tools, "run", fake_run)
-    expected = mcp.call("run_retirement_simulation", overrides={"defaultSpend": 180})
-    card = mcp.raw_call("show_retirement", overrides={"defaultSpend": 180})
+    expected = mcp.call("run_retirement_simulation", overrides={"defaultSpend": 180}, recalculate_exit=False)
+    card = mcp.raw_call("show_retirement", overrides={"defaultSpend": 180}, recalculate_exit=False)
     assert card["structuredContent"] == expected
     assert calls == [
         {"overrides": {"defaultSpend": 180}, "recalculate_exit": False},
@@ -143,8 +143,8 @@ def test_exit_projection_cannot_cross_equity_read_scope(client):
         "run_retirement_simulation", recalculate_exit=True)
     assert "equity:read" in reader.error(
         "compare_retirement_scenarios", scenarios=[
-            {"name": "October", "overrides": {"retirementDate": "2031-10-01"}},
-            {"name": "January", "overrides": {"retirementDate": "2032-01-02"}},
+            {"name": "October", "overrides": {"retirementDate": "2031-10-01"}, "recalculate_exit": True},
+            {"name": "January", "overrides": {"retirementDate": "2032-01-02"}, "recalculate_exit": True},
         ])
 
 def test_bad_simulation_arguments_fail_readably(mcp):
@@ -154,4 +154,52 @@ def test_bad_simulation_arguments_fail_readably(mcp):
         "run_retirement_simulation", recalculate_exit="yes")
 
 def test_no_retirement_assets_does_not_report_fake_success(mcp):
-    assert "Enter an Epic exit value" in mcp.error("run_retirement_simulation")
+    assert "Epic exit value is missing" in mcp.error("run_retirement_simulation", recalculate_exit=False)
+
+
+def test_unsaved_spending_derives_from_portfolio_and_is_reported(client, db_session):
+    from scaffold.models import User
+    register_user(client)
+    user = db_session.query(User).first()
+    with user_key(user):
+        user.retirement_params = {"epicExit": 5.0, "retirementDate": "2032-01-02"}
+        db_session.commit()
+        params, _, _ = prepare(user)
+        assert params["defaultSpend"] == 150
+        assert params["minSpend"] == 100
+
+
+def test_legacy_balances_and_glide_points_are_migrated(client, db_session):
+    from scaffold.models import User
+    register_user(client)
+    user = db_session.query(User).first()
+    with user_key(user):
+        user.retirement_params = {
+            "epicExit": 5.0, "additional": 2.0, "currentAge": 50,
+            "glidePoints": [
+                {"age": 60, "stockPct": 0.6, "bondPct": 0.3},
+                {"age": 55, "stockPct": 0.7, "bondPct": 0.2},
+                {"age": 60, "stockPct": 0.5, "bondPct": 0.4},
+            ],
+        }
+        db_session.commit()
+        params, _, _ = prepare(user)
+        assert params["taxableAdditional"] == 2.0
+        assert params["additionalBasis"] == 0
+        assert params["glidePoints"] == [
+            {"yearsAfter": 5, "stockPct": 0.7, "bondPct": 0.2},
+            {"yearsAfter": 10, "stockPct": 0.6, "bondPct": 0.3},
+        ]
+        assert params["defaultSpend"] == 210
+        assert params["minSpend"] == 140
+
+
+def test_lower_spend_what_if_clamps_floor(client, db_session):
+    from scaffold.models import User
+    register_user(client)
+    user = db_session.query(User).first()
+    with user_key(user):
+        user.retirement_params = {"epicExit": 5.0, "defaultSpend": 180, "minSpend": 100}
+        db_session.commit()
+        params, _, _ = prepare(user, overrides={"defaultSpend": 90})
+        assert params["defaultSpend"] == params["minSpend"] == 90

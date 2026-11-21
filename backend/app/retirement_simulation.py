@@ -151,6 +151,8 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     params["paths"] = params.get("paths", MAX_PATHS)
     params["seed"] = params.get("seed", DEFAULT_SEED)
     validate_combined(params)
+    if sum(params.get(k, 0) for k in ("epicExit", "taxableAdditional", "traditional", "roth")) <= 0:
+        raise ValueError("Enter an Epic exit value or retirement account balances before simulating")
     # Sidecar fields are not part of the TypeScript engine.
     engine = {k: v for k, v in params.items() if k not in SIDE_CARS}
     engine["simulationStartDate"] = retirement_date.isoformat()

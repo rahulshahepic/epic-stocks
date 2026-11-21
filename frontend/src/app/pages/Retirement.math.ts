@@ -1715,14 +1715,15 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     } else if (resale != null && resale <= 0) {
       warnings.push(event.title + ': resale before retirement is not separately modeled; enter net sale proceeds as saleOffsetM.')
     }
-    if (event.replacementEveryYears && event.replacementCostM) {
+    const repeatCost = event.replacementCostM || event.amountM
+    if (event.replacementEveryYears && repeatCost) {
       const cadence = event.replacementEveryYears * 12
       for (let m = purchase + cadence; m <= months && m <= end; m += cadence) {
         if (resale != null && m > resale) continue
-        if (m >= 1) flows[m] += event.replacementCostM
+        if (m >= 1) flows[m] += repeatCost
         else {
-          preRetirementNetM += event.replacementCostM
-          if (event.funding === 'epic') preRetirementEpicNeedM += event.replacementCostM
+          preRetirementNetM += repeatCost
+          if (event.funding === 'epic') preRetirementEpicNeedM += repeatCost
         }
       }
     }

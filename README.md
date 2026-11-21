@@ -312,6 +312,18 @@ for the limits and the AI/app division of responsibilities.
 |--------|---------|
 | ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
 
+| Life-event planner: mobile | Life-event planner: desktop |
+|----------------------------|-----------------------------|
+| ![Major purchase planner on mobile](screenshots/life-events-planner-light-mobile.png) | ![Major purchase planner on desktop](screenshots/life-events-planner-light-desktop.png) |
+
+The planner accepts amounts in the selected retirement year's purchasing power,
+not today's sticker prices. Its built-in converter inflates a current price to
+that year using the stated inflation assumption. If a pre-retirement purchase
+exceeds available modeled taxable funds, the app reports the unfunded gap and
+withholds misleading affordability odds and ending-wealth charts until a
+funding source is modeled. Locked retirement accounts are not silently spent.
+
+
 The **Retirement** tab runs a 100,000-path simulation of your retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time using **block-bootstrapped real returns from 1928–2023 U.S. history**.
 
 **How returns are sampled.** Each month of every Monte-Carlo path is drawn from a real historical month (S&P 500 total return + 10-year Treasury, both inflation-adjusted using CPI). We start at a random month and walk forward; each subsequent month there's a 1-in-120 chance the path jumps to a new random month, otherwise it advances. This is the **stationary block bootstrap** of Politis & Romano (1994), with mean block length 120 months (~10 years). It preserves crash shapes, recovery patterns, and stock/bond co-movement that an i.i.d. lognormal model can't capture — Oct 1929 is usually followed by Nov 1929, Sep 2008 by Oct 2008 — while still giving plenty of inter-path Monte-Carlo variation. Blocks of ~10 years span most major market cycles (dot-com crash, 2008–09, 2020) while providing more Monte-Carlo variation across the 100,000 paths than the prior 20-year blocks.

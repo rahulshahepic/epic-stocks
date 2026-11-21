@@ -53,8 +53,8 @@ scratch. The app does not guess what the user wants.
 ## Important limits
 
 - The current retirement engine starts at the retirement date. A **pre-retirement
-  purchase's upfront net cash outlay** is conservatively deducted from the
-  retirement-date projected taxable portfolio. Pre-retirement wages, market
+  purchase's upfront net cash outlay and pre-retirement recurring/replacement
+  expenses** are conservatively deducted from the retirement-date projected taxable portfolio. Pre-retirement wages, market
   returns on the spent cash, actual future stock sale lots, and pre-retirement
   debt service are not simulated. Payments on remaining loans after retirement
   are simulated. This is a scenario approximation, **not a verified pre-retirement

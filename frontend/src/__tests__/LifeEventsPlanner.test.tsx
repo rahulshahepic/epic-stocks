@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import LifeEventsPlanner from '../app/pages/LifeEventsPlanner.tsx'
-import type { PlannedEvent } from '../app/pages/Retirement.math.ts'
+import type { PlannedEvent, SimResult } from '../app/pages/Retirement.math.ts'
 
 function mount() {
   const onChange = vi.fn<(events: PlannedEvent[]) => void>()
@@ -24,6 +24,18 @@ describe('life event editor saves backend-compatible shapes', () => {
     const years = (2032 - today.getFullYear()) + (1 - today.getMonth() - 1) / 12
     expect(event.amountM).toBeCloseTo(Math.round(100000 * Math.pow(1.025, years)) / 1_000_000, 6)
     expect(event.amountM).toBeGreaterThan(0.1)
+  })
+
+  it('does not present Monte Carlo affordability odds when pre-retirement cash is missing', () => {
+    const baseline = { preRetirementFundingGapM: 0, pctRuin: 0.01, medianFinalM: 8 } as SimResult
+    const withEvents = { preRetirementFundingGapM: 2, pctRuin: 1, medianFinalM: 5 } as SimResult
+    render(<LifeEventsPlanner events={[{
+      id: 'house', title: 'House', kind: 'home', date: '2030-01-01', amountM: 3,
+    }]} retirementDate="2032-01-01" onChange={vi.fn()}
+      comparison={{ baseline, withEvents }} onRun={vi.fn()} running={false} />)
+    expect(screen.getByRole('alert').textContent).toContain('$2,000,000')
+    expect(screen.queryByText('99.00%')).toBeNull()
+    expect(screen.queryByText('0.00%')).toBeNull()
   })
 
   it('normalizes a cash house with a stale interest rate', () => {

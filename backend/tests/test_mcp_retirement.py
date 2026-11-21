@@ -150,3 +150,6 @@ def test_bad_simulation_arguments_fail_readably(mcp):
         "run_retirement_simulation", overrides=["bad"])
     assert "true or false" in mcp.error(
         "run_retirement_simulation", recalculate_exit="yes")
+
+def test_no_retirement_assets_does_not_report_fake_success(mcp):
+    assert "Enter an Epic exit value" in mcp.error("run_retirement_simulation")

@@ -30,6 +30,8 @@ jobs:
           npm ci --no-audit
           npx playwright install chromium
       - name: Run repository screenshot script against synthetic database
+        env:
+          GREP: 'retirement|life events planner'
         run: ./screenshots/run.sh
       - name: Commit captured retirement and life-event screenshots
         run: |

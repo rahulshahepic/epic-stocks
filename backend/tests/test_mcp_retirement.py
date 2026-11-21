@@ -305,3 +305,19 @@ def test_web_planner_shapes_save_and_run_without_breaking_mcp(mcp, client, event
                       recalculate_exit=False)
     assert "result" in result
     assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
+
+
+def test_historical_epic_purchase_is_not_a_future_sale(mcp, monkeypatch):
+    from app.mcp import retirement_tools
+    def fake_run(owner, **kwargs):
+        return {"retirementDate": "2033-01-01",
+                "result": {"pctFundingShortfall": 0.01, "medianFinalM": 9,
+                           "p10FinalM": 3}, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
+    event = {"id": "old", "title": "Existing mortgage", "kind": "home",
+             "date": "2019-01-01", "amountM": 0.4,
+             "downPaymentPct": 0.2, "loanYears": 30, "loanRate": 0.05,
+             "funding": "epic"}
+    result = mcp.call("plan_life_events", events=[event], recalculate_exit=False)
+    assert result["hypotheticalEpicSales"] == []
+    assert any("historical purchase" in warning for warning in result["modelWarnings"])

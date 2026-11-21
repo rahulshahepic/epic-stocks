@@ -1661,12 +1661,16 @@ function monthIndex(date: string): number {
   const m = Number(date.slice(5, 7))
   return y * 12 + m - 1
 }
-export function planCashFlows(events: PlannedEvent[], retirementDate: string, months: number): PlannedCashFlows {
+export function planCashFlows(
+  events: PlannedEvent[], retirementDate: string, months: number,
+  asOfDate: string = new Date().toISOString().slice(0, 10),
+): PlannedCashFlows {
   const flows = new Float64Array(months + 1)
   const warnings: string[] = []
   let preRetirementNetM = 0
   let preRetirementEpicNeedM = 0
   const start = monthIndex(retirementDate)
+  const todayOffset = monthIndex(asOfDate) - start + 1
   for (const event of events) {
     const purchase = monthIndex(event.date) - start + 1
     const end = event.endDate ? monthIndex(event.endDate) - start + 1 : months
@@ -1675,9 +1679,13 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     const loanPrincipal = loanMonths > 0 ? event.amountM * (1 - down) : 0
     const cashAtPurchase = event.amountM - loanPrincipal - (event.saleOffsetM ?? 0)
     if (purchase <= 0) {
-      preRetirementNetM += cashAtPurchase
-      if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
-      warnings.push(event.title + ': pre-retirement purchase and debt costs reduce projected retirement wealth without modeling wages, pre-retirement returns or sale-lot taxes.')
+      if (purchase >= todayOffset) {
+        preRetirementNetM += cashAtPurchase
+        if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
+        warnings.push(event.title + ': future pre-retirement purchase and debt costs reduce projected retirement wealth without modeling wages, returns or sale-lot taxes.')
+      } else {
+        warnings.push(event.title + ': historical purchase and past payments are excluded; only future costs are modeled.')
+      }
     } else if (purchase <= months) flows[purchase] += cashAtPurchase
     const r = (event.loanRate ?? 0) / 12
     const payment = loanPrincipal <= 0 ? 0 : r === 0
@@ -1687,7 +1695,7 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     // Conservative policy: charge both pre-retirement mortgage payments and
     // incremental recurring costs to projected exit wealth. No salary is
     // assumed to cover one expense category but not the other.
-    for (let m = purchase; m <= 0; m++) {
+    for (let m = Math.max(purchase, todayOffset); m <= 0; m++) {
       if (resale != null && m > resale) break
       const elapsed = m - purchase
       let cost = 0
@@ -1721,7 +1729,7 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
       for (let m = purchase + cadence; m <= months && m <= end; m += cadence) {
         if (resale != null && m > resale) continue
         if (m >= 1) flows[m] += repeatCost
-        else {
+        else if (m >= todayOffset) {
           preRetirementNetM += repeatCost
           if (event.funding === 'epic') preRetirementEpicNeedM += repeatCost
         }
@@ -1764,6 +1772,7 @@ export interface SimParams {
   includeSpouse: boolean
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
   simulationStartDate?: string // exact calendar anchor for FRA-year rules
+  asOfDate?: string // date for excluding already-paid pre-retirement costs
   spouseBirthDate?: string     // exact calendar anchor for FRA-year rules
   spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
   spouseClaimAge: number    // 62-70
@@ -2037,7 +2046,7 @@ export function simulate(params: SimParams): SimResult {
   const dataLen = data.length
 
   // Bucket totals (in $M, real).
-  const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', Math.max(1, Math.round(params.endAge - params.currentAge)) * 12)
+  const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', Math.max(1, Math.round(params.endAge - params.currentAge)) * 12, params.asOfDate)
   const taxableTotal = Math.max(0, params.epicExit + params.taxableAdditional - planned.preRetirementNetM)
   const tradTotal = Math.max(0, params.traditional)
   const rothTotal = Math.max(0, params.roth)

@@ -9,7 +9,7 @@ try {
   const request = JSON.parse(readFileSync(0, 'utf8'))
   const params = { ...DEFAULT_PARAMS, ...request.params }
   const result = simulate(params)
-  const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', result.years * 12)
+  const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', result.years * 12, params.asOfDate)
   const response = {
     paths: params.paths,
     planned: { preRetirementNetM: planned.preRetirementNetM,

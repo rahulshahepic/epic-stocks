@@ -54,11 +54,12 @@ scratch. The app does not guess what the user wants.
 
 ## Important limits
 
-- The current retirement engine starts at the retirement date. A **pre-retirement
-  purchase's upfront net cash outlay, mortgage payments and pre-retirement
-  recurring/replacement expenses** are conservatively deducted from the
-  retirement-date projected taxable portfolio. Pre-retirement wages, market
-  returns on spent cash and actual future stock sale lots are not simulated.
+- The current retirement engine starts at the retirement date. **Future
+  pre-retirement upfront outlays, remaining mortgage payments and incremental
+  recurring/replacement expenses** are conservatively deducted from projected
+  retirement-date taxable wealth. Already-paid historical purchase costs and
+  past loan payments are excluded. Pre-retirement wages, market returns on
+  spent cash and actual future stock sale lots are not simulated.
   Remaining loan payments after retirement are modeled separately. This is a
   scenario approximation, **not a verified pre-retirement cash-flow forecast**.
 - A modeled Epic funding source is a label and net-cash target. It does **not**
@@ -66,7 +67,8 @@ scratch. The app does not guess what the user wants.
   will be available at a future price. Use the read-only `estimate_sale` for
   share-count and tax estimates; review vesting and loans separately.
 - Repeated purchases stop at the optional end date, including vehicle
-  replacement and recurring vacations.\n- Home equity is excluded from liquid retirement assets until a modeled sale.
+  replacement and recurring vacations.
+- Home equity is excluded from liquid retirement assets until a modeled sale.
   Resale proceeds are reduced by modeled outstanding loan principal; selling
   costs and taxes must be included in the entered proceeds/value assumptions.
 - Mortgage rates are nominal and fixed; payments are deflated to real dollars using event inflation (2.5% default), with no refinancing, adjustable rates or itemized

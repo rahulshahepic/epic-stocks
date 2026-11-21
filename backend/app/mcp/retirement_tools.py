@@ -1,4 +1,5 @@
 """Retirement MCP tools and portable MCP Apps entrypoint."""
+from datetime import date
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
@@ -217,6 +218,10 @@ def _plan_life_events(ctx: ToolContext, args: dict):
         },
         "preRetirementEpicNetCashTargetM": b.get("planned", {}).get("preRetirementEpicNeedM", 0),
         "modelWarnings": b.get("planned", {}).get("warnings", []) + [
+            f"{e['title']}: the historical purchase is not a future Epic sale."
+            for e in events if e.get("funding") == "epic" and
+            e["date"] < date.today().isoformat()
+        ] + [
             f"{e['title']}: after-retirement funding uses the post-exit portfolio, not an Epic share sale."
             for e in events if e.get("funding") == "epic" and
             (not after.get("retirementDate") or e["date"] >= after["retirementDate"])
@@ -228,6 +233,7 @@ def _plan_life_events(ctx: ToolContext, args: dict):
              ) - e.get("saleOffsetM", 0)),
              "nextStep": "This is the one-time net target only. Check preRetirementEpicNetCashTargetM for recurring and replacement costs. Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
             for e in events if e.get("funding") == "epic" and
+            e["date"] >= date.today().isoformat() and
             after.get("retirementDate") and e["date"] < after["retirementDate"]
         ],
         "saved": False,

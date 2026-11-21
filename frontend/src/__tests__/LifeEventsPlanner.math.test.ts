@@ -70,6 +70,22 @@ describe('hypothetical life-event cash flows', () => {
     expect(p.monthlyNeedM[43]).toBeCloseTo(0.02)
     expect(p.monthlyNeedM[79]).toBeCloseTo(0.02)
   })
+  it('excludes sunk costs on existing homes and only charges future loan payments', () => {
+    const oldHome: PlannedEvent = { id: 'old', title: 'Paid-off home', kind: 'home',
+      date: '1990-01-01', amountM: 0.4, downPaymentPct: 0.2,
+      loanYears: 30, loanRate: 0.05 }
+    const paid = planCashFlows([oldHome], '2032-01-01', 120, '2026-11-01')
+    expect(paid.preRetirementNetM).toBe(0)
+    const mortgage = planCashFlows([{ ...oldHome, date: '2019-01-01' }],
+      '2032-01-01', 120, '2026-11-01')
+    const rate = 0.05 / 12
+    const payment = 0.32 * rate / (1 - Math.pow(1 + rate, -360))
+    // Nov 2026 through Dec 2031, inclusive: 62 remaining pre-retirement payments.
+    const remaining = Array.from({ length: 62 }, (_, i) =>
+      payment / Math.pow(1.025, (94 + i) / 12)).reduce((sum, n) => sum + n, 0)
+    expect(mortgage.preRetirementNetM).toBeCloseTo(remaining)
+    expect(mortgage.preRetirementNetM).toBeLessThan(0.2)
+  })
   it('changes the real Monte Carlo outcomes without altering input objects', () => {
     const withEvents = { ...base, plannedEvents: [{ id: 'wedding', title: 'Wedding',
       kind: 'wedding' as const, date: '2035-05-01', amountM: 0.5 }] }

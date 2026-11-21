@@ -267,6 +267,7 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     # Sidecar fields are not part of the TypeScript engine.
     engine = {k: v for k, v in params.items() if k not in SIDE_CARS}
     engine["simulationStartDate"] = retirement_date.isoformat()
+    engine["asOfDate"] = date.today().isoformat()
     if spouse_dob:
         engine["spouseBirthDate"] = spouse_dob
     return engine, retirement_date, "projected_exit" if recalculate_exit else "saved_exit"

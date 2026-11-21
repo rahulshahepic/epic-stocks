@@ -78,15 +78,12 @@ def migrate_saved_params(saved):
                 "stockPct": point.get("stockPct"), "bondPct": point.get("bondPct"),
             })
         migrated["glidePoints"] = converted
-    # Browser interpolation sorts the points and accepts duplicate years.
-    # Keep the first entry at a duplicate year, matching the stable JS sort.
+    # Browser interpolation stable-sorts and *keeps* duplicate years.
+    # The last duplicate at the final year controls the later allocation.
     if isinstance(migrated.get("glidePoints"), list):
         pts = migrated["glidePoints"]
         if all(isinstance(p, dict) and type(p.get("yearsAfter")) is int for p in pts):
-            unique = {}
-            for point in sorted(pts, key=lambda p: p["yearsAfter"]):
-                unique.setdefault(point["yearsAfter"], point)
-            migrated["glidePoints"] = list(unique.values())
+            migrated["glidePoints"] = sorted(pts, key=lambda p: p["yearsAfter"])
     return migrated
 
 
@@ -127,7 +124,7 @@ def validate_changes(changes):
                 if not isinstance(point, dict) or set(point) != {"yearsAfter", "stockPct", "bondPct"}:
                     raise ValueError("Each glide point needs yearsAfter, stockPct and bondPct")
                 y, s, b = point["yearsAfter"], point["stockPct"], point["bondPct"]
-                if type(y) is not int or not 0 <= y <= 120 or y <= last:
+                if type(y) is not int or not 0 <= y <= 120 or y < last:
                     raise ValueError("Glide point yearsAfter must increase from 0 to 120")
                 if any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in (s, b)) or s + b > 1.00000001:
                     raise ValueError("Glide stock and bond weights must sum to at most 1")

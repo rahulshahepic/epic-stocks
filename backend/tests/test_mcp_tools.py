@@ -554,8 +554,23 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
         },
         "remove_compensation": {"ids": ["nothing-with-this-id"]},
         "set_retirement_accounts": {"roth": 0.25},
+        "update_retirement_params": {"changes": {"defaultSpend": 180}},
+        "compare_retirement_scenarios": {"scenarios": [
+            {"name": "First", "recalculate_exit": False},
+            {"name": "Second", "recalculate_exit": False},
+        ]},
     }
     arguments = dict(required.get(name, {}))
+    if name in {"run_retirement_simulation", "compare_retirement_scenarios",
+                "show_retirement", "refresh_retirement_view"}:
+        # The backend pytest job has no compiled Node worker. The simulator
+        # itself is exercised by the frontend and Docker jobs.
+        from app.mcp import retirement_tools
+        monkeypatch.setattr(retirement_tools, "run", lambda owner, **kw: {
+            "retirementDate": "2032-01-02", "exitSource": "saved_exit",
+            "assumptions": {"epicExit": 1.0, "defaultSpend": 180},
+            "result": {"pctRuin": 0.02}, "saved": False,
+        })
     if name == "get_tax_breakdown":
         arguments["sale_id"] = mcp.call("list_sales")["sales"][0]["id"]
     if name == "apply_changes":

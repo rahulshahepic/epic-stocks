@@ -15,6 +15,10 @@ approving or merging a pull request. It applies to all contributors and agents.
   for each batch (on opening the PR and after each round of fixes). Pushes
   alone do not start it. Leave `Under Review`, `Waiting for Changes` and
   `Ready to merge` to the review session.
+- After merging a PR into `staging`, open (or reuse) the `staging` → `main` PR,
+  subscribe to its activity, and merge it with a merge commit once all required
+  CI passes and nothing blocks it. If something fails, comment and notify
+  instead. See REVIEW_POLICY.md → "Promoting staging to main".
 - Only `@rahulshahepic` supplies the code-owner approval required when a
   collaborator merges. Other approvals do not replace it.
 - Rahul and agents authenticated through his account may merge through the

@@ -52,6 +52,33 @@ Follow Rahul's instructions for the current task. Do not manufacture an approval
 approve your own implementation in the same session, disable CI, dismiss genuine
 blocking feedback to force a merge, or push directly to protected branches.
 
+## Promoting staging to main
+
+Merging a feature PR into `staging` is not the end of the job. Whoever merges it
+(a review session or any agent acting through Rahul's account) then, in the same
+run:
+
+1. Opens a PR from `staging` to `main`, or reuses the one already open. Never
+   open a second one, and never use a branch other than `staging` as the
+   source; `require-staging-source` fails anything else.
+2. Subscribes to that PR's activity, so CI results and comments come back to
+   the session instead of being polled for.
+3. Merges it with a merge commit (not squash or rebase, so `staging` and `main`
+   keep the same history) once **all** of these hold for its current head:
+   - every required check has passed (backend, frontend, e2e, caddy-validate,
+     dependency-review, require-staging-source);
+   - it has no merge conflicts with `main`;
+   - no review thread is unresolved, no `Waiting for Changes` label is set,
+     and no comment from Rahul asks to hold the release;
+   - every feature PR it carries was cleared by its assistant review.
+4. If a check fails or a blocker appears, does not merge. It comments on the
+   PR with what failed and notifies Rahul. It never retries CI with an empty
+   commit, and never fixes the failure by pushing directly to `staging` or
+   `main`. A fix goes through a feature PR to `staging` like any other change.
+
+Merging to `main` deploys to production, so the conditions above are the gate.
+They are not a formality to work around.
+
 ## What GitHub can enforce
 
 - `.github/CODEOWNERS` assigns every path, including itself, to Rahul.

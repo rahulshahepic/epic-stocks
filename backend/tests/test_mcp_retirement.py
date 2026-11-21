@@ -193,6 +193,7 @@ def test_legacy_balances_and_glide_points_are_migrated(client, db_session):
         assert params["glidePoints"] == [
             {"yearsAfter": 5, "stockPct": 0.7, "bondPct": 0.2},
             {"yearsAfter": 10, "stockPct": 0.6, "bondPct": 0.3},
+            {"yearsAfter": 10, "stockPct": 0.5, "bondPct": 0.4},
         ]
         assert params["defaultSpend"] == 210
         assert params["minSpend"] == 140

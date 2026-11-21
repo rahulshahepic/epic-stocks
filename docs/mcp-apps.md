@@ -37,7 +37,7 @@ Epic Stocks exposes **one OAuth-protected Streamable HTTP MCP server** at `https
 
 | Host | Vendor MCP Apps support | Epic Stocks verification |
 | --- | --- | --- |
-| **Claude (web/desktop)** | Yes, per MCP's official announcement | **Existing portfolio cards user-verified in Claude (November 2026).** Retirement card and its save/compare controls are **not yet host-verified**. |
+| **Claude** | Yes, per MCP's official announcement | **Existing portfolio cards user-verified in Claude (November 2026; client/platform not specified).** Retirement card and its save/compare controls are **not yet host-verified**. |
 | **ChatGPT** | Yes | Portfolio/retirement MCP Apps implementations and synthetic-host E2E tests exist. Real host behavior depends on deployment, connected plugin and client; do not equate CI with a live-host acceptance test. |
 | **Cursor** | Yes, per [Cursor MCP docs](https://prod.cursor.com/docs/mcp) | Not tested with Epic Stocks cards. |
 | **VS Code / GitHub Copilot** | Yes, per [MCP Apps overview](https://modelcontextprotocol.io/docs/extensions/apps/overview); availability can depend on release | Not tested with Epic Stocks cards. |

@@ -133,3 +133,14 @@ def test_prepare_uses_saved_inputs_without_mutating_them(client, db_session):
     assert on.isoformat() == "2032-01-02"
     assert source == "saved_exit"
     assert user.retirement_params == original
+
+def test_exit_projection_cannot_cross_equity_read_scope(client):
+    register_user(client)
+    reader = Mcp(client, scope="comp:read")
+    assert "equity:read" in reader.error(
+        "run_retirement_simulation", recalculate_exit=True)
+    assert "equity:read" in reader.error(
+        "compare_retirement_scenarios", scenarios=[
+            {"name": "October", "overrides": {"retirementDate": "2031-10-01"}},
+            {"name": "January", "overrides": {"retirementDate": "2032-01-02"}},
+        ])

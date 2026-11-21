@@ -1686,11 +1686,11 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     // Pre-retirement payments are assumed funded from working income.
     // After retirement, amortization continues until the term or resale.
     const resale = event.resaleDate ? monthIndex(event.resaleDate) - start + 1 : null
-    for (let m = Math.max(1, purchase); m <= months && m <= end; m++) {
+    for (let m = Math.max(1, purchase); m <= months; m++) {
       if (resale != null && m > resale) break
       const elapsed = m - purchase
       if (elapsed >= 0 && elapsed < loanMonths) flows[m] += payment
-      if (event.annualCostM) flows[m] += event.annualCostM / 12
+      if (event.annualCostM && m <= end) flows[m] += event.annualCostM / 12
     }
     if (resale != null && resale >= 1 && resale <= months) {
       const elapsed = Math.max(0, Math.min(loanMonths, resale - purchase + 1))
@@ -2132,7 +2132,7 @@ export function simulate(params: SimParams): SimResult {
     let rthS = rothTotal * wS
     let rthB = rothTotal * wB
     let hadLiquidityShortfall = false
-    let hadExhaustion = false
+    let hadExhaustion = planned.preRetirementNetM > Math.max(0, params.epicExit + params.taxableAdditional) + 1e-9
     let taxArrears = 0
     let dataIdx = Math.floor(rand() * dataLen)
 
@@ -2151,6 +2151,7 @@ export function simulate(params: SimParams): SimResult {
     // pctRuin as its breakdown, so a path has to land in exactly one: judging
     // every shortfall separately let one path count as both and the two
     // percentages add up to more than the total they are splitting.
+    if (hadExhaustion) firstShortfallMonth[i] = 1  // unaffordable pre-retirement outlay
     const recordShortfall = (month: number) => {
       if (firstShortfallMonth[i]) return
       firstShortfallMonth[i] = month

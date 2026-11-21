@@ -1639,6 +1639,7 @@ export interface PlannedEvent {
   endDate?: string
   downPaymentPct?: number       // financed home/vehicle: fraction of price paid now
   loanRate?: number             // annual nominal rate, fixed
+  inflationRate?: number        // deflate fixed nominal payments
   loanYears?: number
   saleOffsetM?: number          // net cash from selling an existing home / trade-in
   resaleDate?: string           // optional eventual disposal
@@ -1689,7 +1690,7 @@ export function planCashFlows(events: PlannedEvent[], retirementDate: string, mo
     for (let m = Math.max(1, purchase); m <= months; m++) {
       if (resale != null && m > resale) break
       const elapsed = m - purchase
-      if (elapsed >= 0 && elapsed < loanMonths) flows[m] += payment
+      if (elapsed >= 0 && elapsed < loanMonths) flows[m] += payment / Math.pow(1 + (event.inflationRate ?? 0.025), elapsed / 12)
       if (event.annualCostM && m <= end) flows[m] += event.annualCostM / 12
     }
     if (resale != null && resale >= 1 && resale <= months) {

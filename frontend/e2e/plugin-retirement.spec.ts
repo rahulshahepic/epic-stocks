@@ -27,12 +27,15 @@ test('what-if runs do not save, and saving is explicit', async ({page}) => {
 
 test('date comparison renders two scenarios without saving', async ({page}) => {
   const card=await retirementHost(page)
-  await card.getByRole('button',{name:'Compare Oct 2031 / Jan 2032'}).click()
+  await card.getByLabel('Compare against').fill('2032-07-02')
+  await card.getByRole('button',{name:'Compare retirement dates'}).click()
   await expect(card.getByRole('table')).toBeVisible()
-  await expect(card.getByRole('cell',{name:'October 2031'})).toBeVisible()
-  await expect(card.getByRole('cell',{name:'January 2032'})).toBeVisible()
-  const calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:{name?:string}}[]}).pluginCalls)
-  expect(calls.some(c=>c.params.name==='compare_retirement_scenarios')).toBe(true)
+  await expect(card.getByRole('cell',{name:'2032-01-02'})).toBeVisible()
+  await expect(card.getByRole('cell',{name:'2032-07-02'})).toBeVisible()
+  const calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:{name?:string;arguments?:{scenarios?:{overrides?:{retirementDate?:string};recalculate_exit?:boolean}[]}}}[]}).pluginCalls)
+  const compare=calls.find(c=>c.params.name==='compare_retirement_scenarios')
+  expect(compare?.params.arguments?.scenarios?.map(s=>s.overrides?.retirementDate)).toEqual(['2032-01-02','2032-07-02'])
+  expect(compare?.params.arguments?.scenarios?.every(s=>s.recalculate_exit===false)).toBe(true)
   expect(calls.some(c=>c.params.name==='update_retirement_params')).toBe(false)
 })
 

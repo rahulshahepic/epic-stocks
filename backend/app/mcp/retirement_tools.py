@@ -223,7 +223,7 @@ def _plan_life_events(ctx: ToolContext, args: dict):
                  e.get("downPaymentPct", 1) if e.get("loanYears", 0) else 1
              ) - e.get("saleOffsetM", 0)),
              "nextStep": "This is the one-time net target only. Check preRetirementEpicNetCashTargetM for recurring and replacement costs. Use estimate_sale with a dated share-price assumption to estimate shares, lot taxes and loan payoff. Do not record a sale."}
-            for e in events if e.get("funding") == "epic"
+            for e in events if e.get("funding") == "epic" and e["date"] < after["retirementDate"]
         ],
         "saved": False,
         "limitations": [

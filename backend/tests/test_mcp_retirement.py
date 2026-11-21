@@ -285,7 +285,17 @@ def test_retirement_api_rejects_invalid_planned_events(client):
      "date": "2019-01-01", "amountM": 0.4, "downPaymentPct": 0.2,
      "loanYears": 30, "loanRate": 0.05},
 ])
-def test_web_planner_shapes_save_and_run_without_breaking_mcp(mcp, client, event):
+def test_web_planner_shapes_save_and_run_without_breaking_mcp(mcp, client, event, monkeypatch):
+    from app.mcp import retirement_tools
+    def fake_run(owner, **kwargs):
+        # Exercise the real saved-parameter validation without requiring the
+        # compiled Node runner in the Python-only CI job.
+        engine, on, _ = prepare(owner, overrides=kwargs.get("overrides"),
+                                recalculate_exit=False)
+        assert engine["plannedEvents"] == [event]
+        return {"retirementDate": on.isoformat(),
+                "result": {"pctFundingShortfall": 0.01}, "saved": False}
+    monkeypatch.setattr(retirement_tools, "run", fake_run)
     response = client.put("/api/retirement/params", json={"params": {
         "retirementDate": "2032-01-01", "epicExit": 8,
         "plannedEvents": [event],

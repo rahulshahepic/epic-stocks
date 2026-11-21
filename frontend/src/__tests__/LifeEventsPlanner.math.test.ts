@@ -26,7 +26,7 @@ describe('hypothetical life-event cash flows', () => {
     const r = 0.06 / 12
     const monthly = 0.9 * r / (1 - Math.pow(1 + r, -360))
     const preRetirementLoan = Array.from({ length: 24 }, (_, i) =>
-    monthly / Math.pow(1.025, i / 12)).reduce((sum, n) => sum + n, 0)
+      monthly / Math.pow(1.025, i / 12)).reduce((sum, n) => sum + n, 0)
     const expected = 0.3 + 0.024 * 2 + preRetirementLoan
     expect(p.preRetirementNetM).toBeCloseTo(expected)
     expect(p.preRetirementEpicNeedM).toBeCloseTo(expected)

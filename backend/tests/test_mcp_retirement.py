@@ -333,9 +333,9 @@ def test_epic_sale_month_boundaries_match_cash_flow_engine(mcp, monkeypatch):
         return {
             "retirementDate": retirement_date,
             "result": {"pctFundingShortfall": 0.01,
-                       "medianFinalM": 9, "p10FinalM": 3},
-            "planned": {"preRetirementEpicNeedM": 0.1 if events else 0,
-                        "warnings": []},
+                       "medianFinalM": 9, "p10FinalM": 3,
+                       "planned": {"preRetirementEpicNeedM": 0.1 if events else 0,
+                                   "warnings": []}},
             "saved": False,
         }
 

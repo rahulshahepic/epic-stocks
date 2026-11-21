@@ -37,7 +37,7 @@ ENUMS = {
     "rebalance": {"none", "tax-advantaged", "all"},
 }
 SIDE_CARS = {"retirementDate", "spouseDOB"}
-EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints"} | SIDE_CARS
+EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints", "plannedEvents"} | SIDE_CARS
 
 
 def _date(value, label, *, birth=False):
@@ -87,6 +87,63 @@ def migrate_saved_params(saved):
     return migrated
 
 
+
+EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
+EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
+EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM"}
+EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding"} | EVENT_NUMBERS
+
+
+def validate_planned_events(events):
+    """Strict input boundary shared by MCP what-ifs and saved scenarios."""
+    if not isinstance(events, list) or len(events) > 20:
+        raise ValueError("plannedEvents must be a list of at most 20 hypothetical events")
+    ids = set()
+    for index, event in enumerate(events):
+        label = f"plannedEvents[{index}]"
+        if not isinstance(event, dict) or set(event) - EVENT_FIELDS:
+            raise ValueError(f"{label} has unknown fields")
+        for key in ("id", "title", "kind", "date", "amountM"):
+            if key not in event:
+                raise ValueError(f"{label} requires {key}")
+        if any(not isinstance(event[k], str) or not event[k].strip() or len(event[k]) > 100
+               for k in ("id", "title")):
+            raise ValueError(f"{label} id/title must be nonempty strings (max 100)")
+        if event["id"] in ids:
+            raise ValueError("planned event IDs must be unique")
+        ids.add(event["id"])
+        if event["kind"] not in EVENT_KINDS:
+            raise ValueError(f"{label} has an unsupported kind")
+        if event.get("funding", "mixed") not in EVENT_FUNDING:
+            raise ValueError(f"{label} has an unsupported funding source")
+        when = _date(event["date"], f"{label}.date")
+        for key in ("endDate", "resaleDate"):
+            if key in event and event[key] is not None:
+                other = _date(event[key], f"{label}.{key}")
+                if other < when:
+                    raise ValueError(f"{label}.{key} must not precede the event")
+        for key in EVENT_NUMBERS & set(event):
+            value = event[key]
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError(f"{label}.{key} must be a finite number")
+            maximum = (1 if key in {"downPaymentPct", "loanRate"} else
+                       50 if key in {"loanYears", "replacementEveryYears"} else 1000)
+            if not 0 <= value <= maximum:
+                raise ValueError(f"{label}.{key} must be between 0 and {maximum}")
+        if event.get("loanYears", 0) and "downPaymentPct" not in event:
+            raise ValueError(f"{label} financed purchases require downPaymentPct")
+        if event.get("loanYears", 0) and event.get("downPaymentPct", 1) == 1:
+            raise ValueError(f"{label} has a loan term but no financed balance")
+        if event.get("loanRate", 0) and not event.get("loanYears", 0):
+            raise ValueError(f"{label} has an interest rate without a loan term")
+        if event.get("replacementEveryYears", 0) and not event.get("replacementCostM", 0):
+            raise ValueError(f"{label} needs a replacement cost")
+        if "resaleDate" in event and "resaleValueM" not in event:
+            raise ValueError(f"{label} needs a resale value")
+    return events
+
+
 def validate_changes(changes):
     """Validate a *partial* named-field patch, never replace a saved blob."""
     if not isinstance(changes, dict) or not changes:
@@ -116,6 +173,8 @@ def validate_changes(changes):
                 raise ValueError(f"{key} is outside the supported range")
             if key in INTEGERS and not isinstance(value, int):
                 raise ValueError(f"{key} must be an integer")
+        elif key == "plannedEvents":
+            validate_planned_events(value)
         elif key == "glidePoints":
             if not isinstance(value, list) or len(value) > 20:
                 raise ValueError("glidePoints must be a list of at most 20 entries")
@@ -142,6 +201,8 @@ def validate_combined(params):
         raise ValueError("Stocks and bonds cannot exceed 100% together")
     if params.get("additionalBasis", 0) > params.get("taxableAdditional", 0):
         raise ValueError("Taxable cost basis cannot exceed the taxable balance")
+    if "plannedEvents" in params:
+        validate_planned_events(params["plannedEvents"])
     if params.get("endAge", 91) <= params.get("currentAge", 50):
         raise ValueError("End age must be later than retirement age")
 
@@ -240,7 +301,7 @@ def run(owner, *, overrides=None, recalculate_exit=False):
         "assumptions": {k: params.get(k) for k in (
             "epicExit", "taxableAdditional", "traditional", "roth",
             "defaultSpend", "minSpend", "healthInsurance", "scenario",
-            "stockPct", "bondPct", "currentAge", "endAge", "paths", "seed",
+            "stockPct", "bondPct", "currentAge", "endAge", "paths", "seed", "plannedEvents",
         )},
         "result": summary,
         "saved": False,

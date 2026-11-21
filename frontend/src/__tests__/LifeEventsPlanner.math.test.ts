@@ -86,6 +86,17 @@ describe('hypothetical life-event cash flows', () => {
     expect(mortgage.preRetirementNetM).toBeCloseTo(remaining)
     expect(mortgage.preRetirementNetM).toBeLessThan(0.2)
   })
+  it('keeps replacement purchases after recurring costs end', () => {
+    const p = planCashFlows([{
+      id: 'car', title: 'Car', kind: 'vehicle', date: '2032-01-01',
+      amountM: 0.04, annualCostM: 0.012, endDate: '2033-01-01',
+      replacementEveryYears: 3, replacementCostM: 0.05,
+    }], '2032-01-01', 120)
+    expect(p.monthlyNeedM[1]).toBeCloseTo(0.041)
+    expect(p.monthlyNeedM[14]).toBe(0)
+    expect(p.monthlyNeedM[37]).toBeCloseTo(0.05)
+    expect(p.monthlyNeedM[73]).toBeCloseTo(0.05)
+  })
   it('changes the real Monte Carlo outcomes without altering input objects', () => {
     const withEvents = { ...base, plannedEvents: [{ id: 'wedding', title: 'Wedding',
       kind: 'wedding' as const, date: '2035-05-01', amountM: 0.5 }] }

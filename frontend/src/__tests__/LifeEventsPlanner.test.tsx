@@ -26,6 +26,16 @@ describe('life event editor saves backend-compatible shapes', () => {
     expect(event.amountM).toBeGreaterThan(0.1)
   })
 
+  it('shows an explicitly hypothetical Epic sale target without posting a transaction', () => {
+    render(<LifeEventsPlanner events={[{
+      id: 'car', title: 'Future car', kind: 'vehicle', date: '2030-01-01',
+      amountM: 0.08, funding: 'epic',
+    }]} retirementDate="2032-01-01" onChange={vi.fn()}
+      comparison={null} onRun={vi.fn()} running={false} />)
+    expect(screen.getByRole('note').textContent).toContain('$80,000')
+    expect(screen.getByRole('note').textContent).toContain('not a share count or an executed sale')
+  })
+
   it('does not present Monte Carlo affordability odds when pre-retirement cash is missing', () => {
     const baseline = { preRetirementFundingGapM: 0, pctRuin: 0.01, medianFinalM: 8 } as SimResult
     const withEvents = { preRetirementFundingGapM: 2, pctRuin: 1, medianFinalM: 5 } as SimResult

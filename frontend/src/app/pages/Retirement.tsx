@@ -49,6 +49,7 @@ import {
   type SimResult,
 } from './Retirement.math.ts'
 import { fmt$M, fmtPct } from '../format.ts'
+import LifeEventsPlanner from './LifeEventsPlanner.tsx'
 
 const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
 // .year is yyyymm — extract just the calendar year for display.
@@ -431,6 +432,7 @@ function RetirementAccount() {
     retirementDate: string
     spouseDOB: string | null
   } | null>(null)
+  const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
   const resultDollarYear = completedRun?.retirementDate.slice(0, 4)
@@ -475,6 +477,7 @@ function RetirementAccount() {
     setParamsLoaded(false)
     setParamsError(false)
     setCompletedRun(null)
+    setLifeEventComparison(null)
     setHasRun(false)
     setRunning(false)
     if (runTimer.current) clearTimeout(runTimer.current)
@@ -665,8 +668,13 @@ function RetirementAccount() {
     setRunning(true)
     runTimer.current = setTimeout(() => {
       try {
+        const simulated = simulate(runParams)
+        const baseline = runParams.plannedEvents?.length
+          ? simulate({ ...runParams, plannedEvents: [] })
+          : null
+        setLifeEventComparison(baseline ? { baseline, withEvents: simulated } : null)
         setCompletedRun({
-          result: simulate(runParams),
+          result: simulated,
           params: { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) },
           retirementDate,
           spouseDOB,
@@ -750,6 +758,19 @@ function RetirementAccount() {
           </div>
         )}
       </div>
+
+      <LifeEventsPlanner
+        events={params.plannedEvents ?? []}
+        retirementDate={retirementDate}
+        onChange={events => {
+          update('plannedEvents', events)
+          setLifeEventComparison(null)
+        }}
+        comparison={lifeEventComparison}
+        onRun={run}
+        running={running}
+        readonly={false}
+      />
 
       {/* Card 1: Who & when */}
       <Card pad="md">

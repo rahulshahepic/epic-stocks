@@ -95,7 +95,7 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
       if(msg.method==='ui/initialize')reply({hostContext:{theme,displayMode:'inline',availableDisplayModes:['inline','fullscreen']}})
       if(msg.method==='ui/notifications/initialized')frame.contentWindow?.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:initial}},'*')
       if(msg.method==='tools/call'){
-        if(msg.params.name==='compare_retirement_scenarios')reply({structuredContent:{scenarios:[{name:'October 2031',...initial},{name:'January 2032',...initial}]}})
+        if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map(s=>({...initial,...s,retirementDate:s.overrides.retirementDate}))}})}
         else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
         else reply({structuredContent:initial})
       }

@@ -27,7 +27,7 @@ _EVENT_SCHEMA = {
         "resaleDate": {"type": "string"},
         "resaleValueM": {"type": "number"},
         "replacementEveryYears": {"type": "number"},
-        "replacementCostM": {"type": "number"},
+        "replacementCostM": {"type": "number", "description": "Optional repeat cost; 0 or omitted means repeat original amount"},
         "funding": {"type": "string", "enum": ["epic", "brokerage", "cash", "mixed"]},
     },
     "required": ["id", "title", "kind", "date", "amountM"],

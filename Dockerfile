@@ -12,7 +12,7 @@ ARG COMMIT_SHA=dev
 ENV VITE_COMMIT_SHA=$COMMIT_SHA
 ARG APP_ENV=production
 ENV VITE_APP_ENV=$APP_ENV
-RUN npm run build
+RUN npm run build\n# Compile the *same* pure TS retirement engine the browser uses for the MCP worker.\nRUN ./node_modules/.bin/tsc --target ES2022 --module ES2022 --moduleResolution bundler --skipLibCheck --outDir /app/retirement-runtime src/app/pages/Retirement.math.ts \\\n    && mv /app/retirement-runtime/Retirement.math.js /app/retirement-runtime/retirement.math.mjs
 
 # Stage 2: Python runtime
 FROM python:3.12-slim
@@ -27,7 +27,7 @@ COPY backend/ ./
 COPY plugins/epic-stocks/ ./plugins/epic-stocks/
 
 # Copy built frontend into backend static dir
-COPY --from=frontend-build /app/frontend/dist ./static
+COPY --from=frontend-build /app/frontend/dist ./static\nCOPY --from=frontend-build /app/retirement-runtime/retirement.math.mjs ./app/retirement.math.mjs\n# Only the Node executable is needed: the simulation is a dependency-free ESM file.\nCOPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node
 
 RUN useradd -m -u 1000 appuser && chown -R appuser /app
 ARG COMMIT_SHA=dev

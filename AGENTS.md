@@ -11,6 +11,10 @@ approving or merging a pull request. It applies to all contributors and agents.
   from `staging`. Keep all required CI checks passing.
 - Have ChatGPT/Codex or Claude review the current head in a separate review
   session. Prefer the other assistant when one wrote the implementation.
+- Request that review by adding the `Needs Review` label after your final push
+  for each batch (on opening the PR and after each round of fixes). Pushes
+  alone do not start it. Leave `Under Review`, `Waiting for Changes` and
+  `Ready to merge` to the review session.
 - Only `@rahulshahepic` supplies the code-owner approval required when a
   collaborator merges. Other approvals do not replace it.
 - Rahul and agents authenticated through his account may merge through the

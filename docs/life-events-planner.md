@@ -66,7 +66,7 @@ scratch. The app does not guess what the user wants.
 - Home equity is excluded from liquid retirement assets until a modeled sale.
   Resale proceeds are reduced by modeled outstanding loan principal; selling
   costs and taxes must be included in the entered proceeds/value assumptions.
-- Mortgage rates are fixed, with no refinancing, adjustable rates or itemized
+- Mortgage rates are nominal and fixed; payments are deflated to real dollars using event inflation (2.5% default), with no refinancing, adjustable rates or itemized
   mortgage-interest deduction. Loan terms are whole years. Recurring expenses
   are assumed constant in **real** dollars.
 - This is planning, not advice or a guarantee of purchase affordability or

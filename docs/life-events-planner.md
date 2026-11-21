@@ -20,7 +20,9 @@ The same dated `plannedEvents` schema handles:
   expenses, annual incremental costs or both.
 
 Events are capped at 20 per scenario. All dollar amounts are **millions of
-real dollars in the retirement-year purchasing-power frame**. Annual costs
+real dollars in the retirement-year purchasing-power frame**. The web editor
+labels that year on each amount and offers a current-sticker-price conversion
+using the stated annual inflation assumption (2.5% by default). Annual costs
 must be **additional to baseline spending**. They must not be entered twice.
 
 ## What the app must calculate (deterministic and auditable)
@@ -62,6 +64,15 @@ scratch. The app does not guess what the user wants.
   spent cash and actual future stock sale lots are not simulated.
   Remaining loan payments after retirement are modeled separately. This is a
   scenario approximation, **not a verified pre-retirement cash-flow forecast**.
+- When future pre-retirement spending exceeds the modeled taxable funds,
+  `preRetirementFundingGapM` is the unmet cash need. The engine does not
+  invent an early IRA withdrawal or pretend the locked balance financed it.
+  The browser suppresses Monte Carlo affordability odds and ending-wealth
+  charts for that infeasible plan. MCP marks `modelFeasible=false`, supplies
+  a warning and suppresses before/after deltas. Any simulated remaining
+  wealth is conditional and must not be quoted as an affordable outcome.
+  This policy applies even if the owner will be over 59½ before retirement:
+  the working-life tax, withdrawal and earnings path is not modeled.
 - A modeled Epic funding source is a label and net-cash target. It does **not**
   reserve or sell shares, mutate grants/loans/sales, or prove that vested shares
   will be available at a future price. Use the read-only `estimate_sale` for

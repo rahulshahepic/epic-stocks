@@ -361,6 +361,7 @@ export default function Sales() {
         setTrancheLoading(false)
       }
     }, 300)
+    return () => { if (trancheTimer.current) clearTimeout(trancheTimer.current) }
   }, [form.date, form.shares, method, mode])
 
   // Live estimate — debounced 400ms, triggered by dollar target or share count + price change
@@ -400,6 +401,7 @@ export default function Sales() {
         setEstimateLoading(false)
       }
     }, 400)
+    return () => { if (estimateTimer.current) clearTimeout(estimateTimer.current) }
   }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, mode])
 
   function resetForm() {

@@ -91,8 +91,9 @@ def migrate_saved_params(saved):
 EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
 EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
 EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
-                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate"}
-EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding", "condition"} | EVENT_NUMBERS
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate", "durationYears"}
+EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding", "condition",
+                "conditionFailure", "deadlineDate"} | EVENT_NUMBERS
 
 
 def validate_planned_events(events):
@@ -118,6 +119,14 @@ def validate_planned_events(events):
         if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
             raise ValueError(f"{label} has an unsupported funding source")
         when = _date(event["date"], f"{label}.date", historical=True)
+        if "conditionFailure" in event:
+            if event["conditionFailure"] not in ("skip", "defer") or "condition" not in event:
+                raise ValueError(f"{label}.conditionFailure requires a condition and must be skip or defer")
+        if "deadlineDate" in event:
+            if event.get("conditionFailure") != "defer":
+                raise ValueError(f"{label}.deadlineDate requires deferred purchase conditions")
+            if _date(event["deadlineDate"], f"{label}.deadlineDate", historical=True) < when:
+                raise ValueError(f"{label}.deadlineDate must not precede the event")
         if "condition" in event:
             condition = event["condition"]
             if not isinstance(condition, dict) or not condition or set(condition) - {
@@ -142,9 +151,12 @@ def validate_planned_events(events):
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f"{label}.{key} must be a finite number")
             maximum = (1 if key in {"downPaymentPct", "loanRate", "inflationRate", "depreciationRate"} else
-                       50 if key in {"loanYears", "replacementEveryYears", "lifetimeYears"} else 1000)
+                       50 if key in {"loanYears", "replacementEveryYears", "lifetimeYears", "durationYears"} else 1000)
             if not 0 <= value <= maximum:
                 raise ValueError(f"{label}.{key} must be between 0 and {maximum}")
+        if "durationYears" in event:
+            if event["kind"] in {"home", "vehicle"} or event.get("endDate") or not float(event["durationYears"]).is_integer() or event["durationYears"] < 1:
+                raise ValueError(f"{label} duration must be 1–50 whole years for a non-asset expense; choose duration or endDate")
         if any(key in event and not float(event[key]).is_integer() for key in ("loanYears", "replacementEveryYears")):
             raise ValueError(f"{label} loan and replacement terms must be whole years")
         if event.get("loanYears", 0) and "downPaymentPct" not in event:
@@ -253,8 +265,6 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
         validate_changes(base)
     patch = validate_changes(overrides) if overrides else {}
     params = {**base, **patch}
-    if "defaultSpend" in patch and "minSpend" not in patch and params.get("minSpend", 0) > patch["defaultSpend"]:
-        params["minSpend"] = patch["defaultSpend"]
     retirement_date = _date(params.get("retirementDate", date.today().isoformat()), "retirementDate")
     if owner.date_of_birth:
         params["currentAge"] = _age(owner.date_of_birth, retirement_date)
@@ -276,6 +286,8 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     if total_k > 0:
         params.setdefault("defaultSpend", math.floor(total_k * 0.03 + 0.5))
         params.setdefault("minSpend", math.floor(total_k * 0.02 + 0.5))
+    if "minSpend" not in patch and params.get("minSpend", 0) > params.get("defaultSpend", 0):
+        params["minSpend"] = params["defaultSpend"]
     # Match the browser's TaxSettings refresh rather than stale saved values.
     # An explicit what-if override remains an intentional scenario input.
     if "stateLTCGRate" not in patch:
@@ -323,11 +335,9 @@ def run(owner, *, overrides=None, recalculate_exit=False):
     return {
         "retirementDate": on.isoformat(),
         "exitSource": exit_source,
-        "assumptions": {k: params.get(k) for k in (
-            "epicExit", "taxableAdditional", "traditional", "roth",
-            "defaultSpend", "minSpend", "healthInsurance", "scenario",
-            "stockPct", "bondPct", "currentAge", "endAge", "paths", "seed", "plannedEvents",
-        )},
+        "inputOverrides": dict(overrides or {}),
+        "assumptions": {**{k: v for k, v in params.items() if k in EDITABLE},
+                        "spouseDOB": params.get("spouseBirthDate")},
         "result": summary,
         "saved": False,
     }

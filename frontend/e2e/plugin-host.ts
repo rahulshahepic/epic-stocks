@@ -94,7 +94,7 @@ export const purchaseSnapshot = {
   },
 }
 
-export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string } = {}) {
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string; resourceHtml?: string } = {}) {
   await page.goto('/login')
   await page.evaluate(({html,initial,theme,refreshed,refreshResponses,comparisonFailure}) => {
     document.body.innerHTML=''
@@ -123,7 +123,7 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
     })
     frame.srcdoc=html
     document.body.append(frame)
-  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses,comparisonFailure:options.comparisonFailure})
+  },{html:options.resourceHtml ?? retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses,comparisonFailure:options.comparisonFailure})
   const widget=page.frameLocator('iframe')
   await widget.getByText('97.00%',{exact:true}).waitFor()
   return widget

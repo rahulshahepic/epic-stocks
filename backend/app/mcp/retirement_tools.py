@@ -5,7 +5,11 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
-RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v4.html"
+RETIREMENT_RESOURCE_VERSION = 4
+RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
+RETIREMENT_RESOURCE_URIS = frozenset(
+    f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
+)
 
 _EVENT_SCHEMA = {
     "type": "object", "additionalProperties": False,

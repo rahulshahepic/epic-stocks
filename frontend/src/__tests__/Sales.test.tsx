@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Sales from '../app/pages/Sales.tsx'
+import { api } from '../api.ts'
 
 const MOCK_SALES = [
   {
@@ -229,4 +230,23 @@ describe('Sales — who maintains a repayment sale', () => {
     await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument())
     expect(screen.queryByText('Yours')).not.toBeInTheDocument()
   })
+})
+
+
+it('cancels queued sale previews when leaving the page', async () => {
+  mockApi()
+  const view = renderSales()
+  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(2))
+  vi.useFakeTimers()
+  try {
+    const tranche = vi.spyOn(api, 'getTrancheAllocation')
+    const estimate = vi.spyOn(api, 'estimateSale')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit sale' })[0])
+    view.unmount()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(tranche).not.toHaveBeenCalled()
+    expect(estimate).not.toHaveBeenCalled()
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -27,7 +27,7 @@ Epic Stocks exposes **one OAuth-protected Streamable HTTP MCP server** at `https
 | Resource | Server files | Scope |
 | --- | --- | --- |
 | `ui://epic-stocks/portfolio-v3.html` | `backend/app/mcp/ui_tools.py`, `portfolio.html` | `equity:read` |
-| `ui://epic-stocks/retirement-v1.html` | `backend/app/mcp/retirement_tools.py`, `retirement_ui.py`, `retirement.html` | `comp:read` |
+| `ui://epic-stocks/retirement-v3.html` | `backend/app/mcp/retirement_tools.py`, `retirement_ui.py`, `retirement.html` | `comp:read` |
 
 `backend/app/mcp/transport.py` lists and serves these resources. HTML/CSS/JS is bundled in the resource, with no third-party script or direct account API fetch. CSP, OAuth scopes, account isolation, revocation and server-side rate limits still apply. The `openai/ui` metadata enables optional ChatGPT display/entrypoint enhancements; the **basic MCP Apps protocol is shared**. Do not assume fullscreen, sidebar, host file selection, persistence or mobile presentation is identical across clients.
 
@@ -52,8 +52,13 @@ The [official MCP Apps announcement](https://blog.modelcontextprotocol.io/posts/
 1. In Epic Stocks, go to **Settings → AI Connections → Connect your AI**. Choose a supported assistant and use its instructions for adding the OAuth-protected `https://YOUR-DOMAIN/mcp` connector. Claude and ChatGPT also have downloadable provider-specific plugin packages. The ZIPs configure the same server; they do **not** contain credentials.
 2. Sign in and review permissions. For the portfolio card, grant `equity:read`. For retirement simulation, grant `comp:read`; also grant `equity:read` to recalculate date-specific Epic liquidation values. Grant `comp:write` only if you want the card to save retirement settings.
 3. Ask **“Show my Epic Stocks portfolio”** or **“Show my retirement plan.”** If the host supports MCP Apps, it may render a card. Otherwise ask for the numerical tool result.
-4. Change retirement spending or date and choose **Run simulation**. This does not save. **Compare** runs two scenarios without saving. **Save these inputs** changes the stored scenario only with write permission and an explicit click.
+4. The card opens **Results** without a form. Choose **Edit assumptions**, change spending or date, and choose **Run simulation** to return to results. This does not save. **Compare dates** opens a separate comparison view and runs two scenarios without saving. **Save these inputs** changes the stored scenario only with write permission and an explicit click.
 5. After deploying a new resource or adding tools, refresh the assistant's connector/tool metadata, and reconnect if the host needs it. Check actual host behavior before claiming a new client is verified.
+
+Retirement responses distinguish resolved `assumptions` for display from explicit
+`inputOverrides` for later runs and saves. The card preserves chat overrides and
+edited fields without persisting derived defaults. A date-specific Epic projection
+is saved only when selected explicitly and already run for the current date.
 
 For the ChatGPT package build and host-specific rollout, see [ChatGPT plugin instructions](chatgpt-plugin.md) and [portable plugin packaging](../plugins/epic-stocks/README.md). For Claude, the Connect your AI page provides its custom connector and ZIP installation paths.
 
@@ -75,3 +80,18 @@ The existing Claude verification establishes that **the existing portfolio cards
 - [Official MCP Apps announcement and initial host support](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/)
 - [Cursor's MCP Apps support](https://prod.cursor.com/docs/mcp)
 - [ChatGPT plugin implementation and acceptance](chatgpt-plugin.md)
+
+## Retirement workflow and purchase deferral
+
+The retirement-v3 resource separates results, assumption editing and retirement-date
+comparison within one active card. It preserves complete what-if assumptions across
+reruns, including chat-specified fields without form controls. It does not depend
+on communication between independent cards. A comparison uses one draft snapshot;
+editing inputs invalidates the previous comparison. Saves remain explicit.
+
+Purchase conditions accept `conditionFailure: "skip" | "defer"` (default `skip`)
+and an optional `deadlineDate` for defer mode. Wait retries monthly and moves
+ownership, loan and sale schedules with the actual purchase. Purchase-count,
+first-purchase-year and funded-purchase probabilities match the website's shared
+simulator. Working-life needs are summarized by year; they are conservative
+retirement-wealth deductions, not calculated stock-sale transactions.

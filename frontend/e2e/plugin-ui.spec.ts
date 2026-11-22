@@ -62,10 +62,12 @@ for (const theme of ['light','dark'] as const) {
 test('retirement card sends causal purchase rules and car lifetime', async ({ page }) => {
   const { retirementHost } = await import('./plugin-host')
   const card = await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
   await card.locator('summary').filter({ hasText: 'Life events' }).click()
   await card.locator('#eventKind').selectOption('vehicle')
   await card.getByLabel('Date', { exact: true }).fill('2037-01-02')
-  await card.getByLabel('Purchase / one-time cost (retirement-year $)').fill('200000')
+  await card.locator('#eventBasis').selectOption('retirement')
+  await card.getByLabel('Purchase / one-time cost ($)').fill('200000')
   await card.getByLabel('Sell car after N years (optional)').fill('15')
   await card.getByLabel('Annual nominal depreciation (%)').fill('0')
   await card.locator('#eventRule').selectOption('conditional')

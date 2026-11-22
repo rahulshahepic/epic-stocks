@@ -233,6 +233,19 @@ describe('projectedSpend (behavioral spending ramp)', () => {
 })
 
 describe('graded spending in simulate()', () => {
+  it('matches MCP effective floors when a saved target is below a derived or saved floor', () => {
+    const saved = { ...DEFAULT_PARAMS, epicExit: 10, taxableAdditional: 0,
+      traditional: 0, roth: 0, defaultSpend: 50, paths: 100, seed: 51 }
+    const effective = simulate({ ...saved, minSpend: 50 })
+    for (const minSpend of [100, 200]) {
+      const webParams = { ...saved, minSpend }
+      expect(simulate(webParams)).toEqual(effective)
+      expect(webParams.minSpend).toBe(minSpend)
+      for (const ratio of [0, 0.5, 0.75, 1, 1.2]) {
+        expect(projectedSpend(ratio, 50, minSpend)).toBe(50)
+      }
+    }
+  })
   it('reduces ruin probability vs an equivalent flat-spend run on a stressed portfolio', () => {
     // Same portfolio, same returns; the only difference is whether spending
     // can ramp down. Behavioral spend (default != min) should produce

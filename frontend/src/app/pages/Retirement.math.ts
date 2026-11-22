@@ -88,6 +88,7 @@ export const SPEND_RAMP_FLOOR = 0.5
 // insurance). Pure function so the UI can show worked examples that match
 // the math exactly.
 export function projectedSpend(wealthRatio: number, defaultSpend: number, minSpend: number): number {
+  minSpend = Math.min(minSpend, defaultSpend)
   const t = Math.max(0, Math.min(1, (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
   return minSpend + t * (defaultSpend - minSpend)
 }
@@ -1640,11 +1641,17 @@ export interface EventOutcome {
   purchaseProbability: number
   skippedProbability: number
   meanPurchases: number
+  onTimeProbability: number
+  delayedProbability: number
+  fundedPurchaseProbability: number
+  meanDelayMonths: number
+  firstPurchaseByYear: Array<{ year: number; probability: number }>
 }
 export interface PurchaseSummary {
   paths: number
   pathsWithPurchase: number
   purchaseProbability: number
+  fundedPurchaseProbability: number
   meanPurchases: number
   distribution: Array<{ purchases: number; paths: number; probability: number }>
 }
@@ -1656,6 +1663,7 @@ export interface PlannedEvent {
   amountM: number               // purchase or one-time expense
   annualCostM?: number          // recurring real cost, from date through endDate
   endDate?: string
+  durationYears?: number        // recurring non-asset costs, from actual start
   downPaymentPct?: number       // financed home/vehicle: fraction of price paid now
   loanRate?: number             // annual nominal rate, fixed
   inflationRate?: number        // deflate fixed nominal payments
@@ -1667,6 +1675,8 @@ export interface PlannedEvent {
   replacementCostM?: number
   funding?: 'epic' | 'brokerage' | 'cash' | 'mixed'
   condition?: PurchaseCondition
+  conditionFailure?: 'skip' | 'defer' // missing preserves the original one-time check
+  deadlineDate?: string             // last month to initiate a conditional purchase
   lifetimeYears?: number        // vehicle ownership period before sale
   depreciationRate?: number     // annual nominal depreciation; zero = flat nominal resale
 }
@@ -1675,6 +1685,7 @@ export interface PlannedCashFlows {
   monthlyNeedM: Float64Array   // positive = outflow, negative = inflow
   warnings: string[]
   preRetirementEpicNeedM: number
+  preRetirementSchedule: Array<{ date: string; eventId: string; title: string; funding: string; netCashM: number }>
 }
 // Month offsets use UTC calendar months so time zones and DST cannot shift a
 // planned purchase into a neighboring simulation month.
@@ -1688,7 +1699,7 @@ function monthIndex(date: string): number {
 function vehicleOwnershipPeriods(events: PlannedEvent[], retirementDate: string, months: number): Array<PlannedEvent & { sourceEventId?: string }> {
   const lastMonth = monthIndex(retirementDate) + months - 1
   return events.flatMap(event => {
-    if (event.lifetimeYears == null) return [event]
+    if (event.lifetimeYears == null || event.conditionFailure === 'defer') return [event]
     if (event.kind !== 'vehicle' || !Number.isInteger(event.lifetimeYears) || event.lifetimeYears < 1 || event.lifetimeYears > 50)
       throw new Error('Vehicle lifetime must be a whole number from 1 to 50 years')
     if (event.resaleDate || event.resaleValueM != null) throw new Error('Choose vehicle lifetime or an explicit resale, not both')
@@ -1729,6 +1740,13 @@ export function planCashFlows(
   const skippedConditions = new Set<string>()
   let preRetirementNetM = 0
   let preRetirementEpicNeedM = 0
+  const preRetirementSchedule: PlannedCashFlows['preRetirementSchedule'] = []
+  const record = (event: PlannedEvent, month: number, netCashM: number) => {
+    if (Math.abs(netCashM) < 1e-12) return
+    const absolute = monthIndex(retirementDate) + month - 1
+    preRetirementSchedule.push({ date: `${Math.floor(absolute / 12)}-${String(absolute % 12 + 1).padStart(2, '0')}-01`,
+      eventId: event.id, title: event.title, funding: event.funding ?? 'mixed', netCashM })
+  }
   const start = monthIndex(retirementDate)
   const todayOffset = monthIndex(asOfDate) - start + 1
   for (const event of vehicleOwnershipPeriods(events, retirementDate, months)) {
@@ -1738,11 +1756,14 @@ export function planCashFlows(
       if (!skippedConditions.has(source)) {
         skippedConditions.add(source)
         const title = events.find(e => e.id === source)?.title ?? event.title
-        warnings.push(title + ': conditional ownership periods before retirement are skipped, including their later bills and resale. Working-life market paths are not simulated; future lifetime replacements get separate decisions.')
+        warnings.push(event.conditionFailure === 'defer'
+          ? title + ': deferred purchases scheduled before retirement are skipped. Working-life conditions are not simulated; move the earliest date to retirement or later to retry.'
+          : title + ': conditional ownership periods before retirement are skipped, including their later bills and resale. Working-life market paths are not simulated; future lifetime replacements get separate decisions.')
       }
       continue
     }
-    const end = event.endDate ? monthIndex(event.endDate) - start + 1 : months
+    const end = event.durationYears != null ? purchase + event.durationYears * 12 - 1
+      : event.endDate ? monthIndex(event.endDate) - start + 1 : months
     const down = event.downPaymentPct ?? 1
     const loanMonths = Math.round((event.loanYears ?? 0) * 12)
     const loanPrincipal = loanMonths > 0 ? event.amountM * (1 - down) : 0
@@ -1750,6 +1771,7 @@ export function planCashFlows(
     if (purchase <= 0) {
       if (purchase >= todayOffset) {
         preRetirementNetM += cashAtPurchase
+        record(event, purchase, cashAtPurchase)
         if (event.funding === 'epic') preRetirementEpicNeedM += Math.max(0, cashAtPurchase)
         warnings.push(event.title + ': future pre-retirement purchase and debt costs reduce projected retirement wealth without modeling wages, returns or sale-lot taxes.')
       } else {
@@ -1771,6 +1793,7 @@ export function planCashFlows(
       if (elapsed >= 0 && elapsed < loanMonths) cost += payment / Math.pow(1 + (event.inflationRate ?? 0.025), elapsed / 12)
       if (event.annualCostM && m <= end) cost += event.annualCostM / 12
       preRetirementNetM += cost
+      record(event, m, cost)
       if (event.funding === 'epic') preRetirementEpicNeedM += cost
     }
     for (let m = Math.max(1, purchase); m <= months; m++) {
@@ -1801,12 +1824,14 @@ export function planCashFlows(
         if (m >= 1) flows[m] += repeatCost
         else if (m >= todayOffset) {
           preRetirementNetM += repeatCost
+          record(event, m, repeatCost)
           if (event.funding === 'epic') preRetirementEpicNeedM += repeatCost
         }
       }
     }
   }
-  return { preRetirementNetM, monthlyNeedM: flows, warnings, preRetirementEpicNeedM }
+  return { preRetirementNetM, monthlyNeedM: flows, warnings, preRetirementEpicNeedM,
+    preRetirementSchedule: preRetirementSchedule.sort((a, b) => a.date.localeCompare(b.date)) }
 }
 
 export interface SimParams {
@@ -2126,8 +2151,11 @@ export function simulate(params: SimParams): SimResult {
   const planned = planCashFlows(events.filter(e => !e.condition), startDate, months, params.asOfDate)
   const eventWarnings = planCashFlows(params.plannedEvents ?? [], startDate, months, params.asOfDate).warnings
   const purchaseCounts = new Map<number, number>()
+  let fundedPurchasePaths = 0
   const outcomeGroups = (params.plannedEvents ?? []).filter(e => e.condition).map(event => ({
     eventId: event.id, title: event.title, boughtPaths: 0, totalPurchases: 0,
+    onTime: 0, delayed: 0, funded: 0, delayMonths: 0, firstYears: new Map<number, number>(),
+    intendedMonth: monthIndex(event.date) - monthIndex(startDate) + 1,
     inHorizon: events.some(e => (e.sourceEventId ?? e.id) === event.id &&
       monthIndex(e.date) >= monthIndex(startDate) && monthIndex(e.date) < monthIndex(startDate) + months),
   }))
@@ -2140,12 +2168,33 @@ export function simulate(params: SimParams): SimResult {
     const group = outcomeGroups.findIndex(g => g.eventId === (event.sourceEventId ?? event.id))
     const laterFlows = repeatMonths ? planCashFlows([{ ...event, amountM: 0, saleOffsetM: 0,
       loanYears: 0, replacementEveryYears: 0 }], startDate, months, params.asOfDate).monthlyNeedM : flows
-    return { event, purchase, flows, laterFlows, repeatMonths, resale, group }
+    const waiting = event.conditionFailure === 'defer'
+    // Relative ownership templates are built once, never once per path or retry.
+    // Shifting them moves debt, maintenance, depreciation and sale together.
+    const shiftedDate = (value: string) => {
+      const month = monthIndex(value) - monthIndex(event.date) + monthIndex(startDate)
+      return `${Math.floor(month / 12)}-${String(month % 12 + 1).padStart(2, '0')}-01`
+    }
+    const template = (replacement: boolean) => planCashFlows([{
+      ...event, date: startDate, condition: undefined, conditionFailure: undefined,
+      deadlineDate: undefined, replacementEveryYears: 0,
+      amountM: replacement ? event.replacementCostM || event.amountM : event.amountM,
+      saleOffsetM: replacement ? 0 : event.saleOffsetM,
+      annualCostM: 0, endDate: undefined,
+      resaleDate: event.resaleDate ? shiftedDate(event.resaleDate) : undefined,
+    }], startDate, months, params.asOfDate).monthlyNeedM
+    return { event, purchase, flows, laterFlows, repeatMonths, resale, group, waiting,
+      deadline: event.deadlineDate ? monthIndex(event.deadlineDate) - monthIndex(startDate) + 1 : months,
+      annualEnd: event.endDate ? monthIndex(event.endDate) - monthIndex(startDate) + 1 : months,
+      ownershipMonths: event.lifetimeYears != null ? event.lifetimeYears * 12 : event.resaleDate ? resale - purchase : months,
+      firstTemplate: waiting ? template(false) : flows,
+      repeatTemplate: waiting && event.lifetimeYears ? template(true) : laterFlows }
+
   })
   conditional.forEach((c, index) => {
     for (let m = Math.max(1, c.purchase); m <= months; m++) {
       const decision = m === c.purchase || (c.repeatMonths > 0 && m <= c.resale && (m - c.purchase) % c.repeatMonths === 0)
-      if (decision || c.flows[m] !== 0 || c.laterFlows[m] !== 0) monthlyConditional[m].push({ index, decision })
+      if (c.waiting || decision || c.flows[m] !== 0 || c.laterFlows[m] !== 0) monthlyConditional[m].push({ index, decision })
     }
   })
   const preRetirementFundingGapM = Math.max(0, planned.preRetirementNetM - Math.max(0, params.epicExit + params.taxableAdditional))
@@ -2176,7 +2225,9 @@ export function simulate(params: SimParams): SimResult {
   const wB = 1 - wS
 
   const defaultSpendK = params.defaultSpend
-  const minSpendK = params.minSpend
+  // Saved/auto-derived floors can exceed an edited target. Both the browser
+  // and MCP runtime must use the target as the maximum effective floor.
+  const minSpendK = Math.min(params.minSpend, defaultSpendK)
   const hiK = params.healthInsurance
 
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
@@ -2250,6 +2301,8 @@ export function simulate(params: SimParams): SimResult {
   for (let i = 0; i < N; i++) {
     let pathPurchases = 0
     const owned = new Uint8Array(conditional.length)
+    const boughtAt = new Int32Array(conditional.length)
+    const nextDue = Int32Array.from(conditional, c => c.purchase)
     const purchasedGroups = new Uint8Array(outcomeGroups.length)
     let cash = startingCash
     // Separate stock/bond sub-buckets per account type.
@@ -2414,7 +2467,14 @@ export function simulate(params: SimParams): SimResult {
       for (const { index: j, decision } of monthlyConditional[m]) {
         const c = conditional[j]
         const initial = m === c.purchase
-        if (decision) {
+        if (c.waiting && boughtAt[j]) {
+          const relative = m - boughtAt[j] + 1
+          eventNeed += (owned[j] === 1 ? c.firstTemplate : c.repeatTemplate)[relative] ?? 0
+          if (m <= c.annualEnd && relative <= Math.min(c.ownershipMonths + 1, (c.event.durationYears ?? Infinity) * 12)) eventNeed += (c.event.annualCostM ?? 0) / 12
+        }
+        const due = c.waiting ? m >= nextDue[j] && m <= c.deadline &&
+          (!boughtAt[j] || c.event.lifetimeYears != null || !c.event.resaleDate || m <= c.resale + boughtAt[j] - c.purchase) : decision
+        if (due) {
           const rule = c.event.condition!
           const netWealth = Math.max(0, assets() - taxArrears - Math.max(0, eventNeed))
           const ratio = startingTotal > 0 ? netWealth / startingTotal : 0
@@ -2425,15 +2485,34 @@ export function simulate(params: SimParams): SimResult {
           if (buy) {
             pathPurchases++
             outcomeGroups[c.group].totalPurchases++
-            if (!purchasedGroups[c.group]) { purchasedGroups[c.group] = 1; outcomeGroups[c.group].boughtPaths++ }
-            if (initial) owned[j] = 1
+            const g = outcomeGroups[c.group]
+            if (!purchasedGroups[c.group]) {
+              purchasedGroups[c.group] = 1; g.boughtPaths++
+              const delay = m - g.intendedMonth
+              if (delay === 0) g.onTime++; else g.delayed++
+              g.delayMonths += delay
+              const year = Math.floor((monthIndex(startDate) + m - 1) / 12)
+              g.firstYears.set(year, (g.firstYears.get(year) ?? 0) + 1)
+            }
+            if (c.waiting) {
+              if (!boughtAt[j] || c.event.lifetimeYears) {
+                const replacement = !!boughtAt[j]
+                boughtAt[j] = m; owned[j] = replacement ? 2 : 1
+                eventNeed += (replacement ? c.repeatTemplate : c.firstTemplate)[1]
+                if (m <= c.annualEnd) eventNeed += (c.event.annualCostM ?? 0) / 12
+              } else eventNeed += c.event.replacementCostM || c.event.amountM
+              // Replacements follow actual ownership. A missed cycle never
+              // accumulates purchases to catch up later.
+              nextDue[j] = c.repeatMonths && (!c.event.resaleDate || m + c.repeatMonths <= c.resale + boughtAt[j] - c.purchase)
+                ? m + c.repeatMonths : months + 1
+            } else if (initial) owned[j] = 1
             else {
               eventNeed += c.event.replacementCostM || c.event.amountM
               if (!owned[j]) owned[j] = 2 // cash replacement; no phantom initial loan
             }
           }
         }
-        if (owned[j]) eventNeed += owned[j] === 1 ? c.flows[m] : c.laterFlows[m]
+        if (!c.waiting && owned[j]) eventNeed += owned[j] === 1 ? c.flows[m] : c.laterFlows[m]
       }
       const need = baseSpendMonthly + hiMonthly + eventNeed - ssGrossM - spouseNetWorkMonthM
       if (need <= 0) cash -= need
@@ -2577,6 +2656,10 @@ export function simulate(params: SimParams): SimResult {
       }
     }
 
+    if (!firstShortfallMonth[i]) {
+      if (pathPurchases) fundedPurchasePaths++
+      purchasedGroups.forEach((purchased, index) => { if (purchased) outcomeGroups[index].funded++ })
+    }
     purchaseCounts.set(pathPurchases, (purchaseCounts.get(pathPurchases) ?? 0) + 1)
     finalWealth[i] = Math.max(0, assets() - taxArrears)
     ruined[i] = firstShortfallMonth[i] ? 1 : 0
@@ -2619,6 +2702,7 @@ export function simulate(params: SimParams): SimResult {
       paths: N,
       pathsWithPurchase: N - (purchaseCounts.get(0) ?? 0),
       purchaseProbability: 1 - (purchaseCounts.get(0) ?? 0) / N,
+      fundedPurchaseProbability: fundedPurchasePaths / N,
       meanPurchases: [...purchaseCounts].reduce((sum, [count, paths]) => sum + count * paths, 0) / N,
       distribution: [...purchaseCounts].sort(([a], [b]) => a - b).map(([purchases, paths]) => ({
         purchases, paths, probability: paths / N,
@@ -2629,6 +2713,10 @@ export function simulate(params: SimParams): SimResult {
       purchaseProbability: g.boughtPaths / N,
       skippedProbability: 1 - g.boughtPaths / N,
       meanPurchases: g.totalPurchases / N,
+      onTimeProbability: g.onTime / N, delayedProbability: g.delayed / N,
+      fundedPurchaseProbability: g.funded / N,
+      meanDelayMonths: g.boughtPaths ? g.delayMonths / g.boughtPaths : 0,
+      firstPurchaseByYear: [...g.firstYears].sort(([a], [b]) => a - b).map(([year, paths]) => ({ year, probability: paths / N })),
     })),
   }
 }

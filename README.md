@@ -290,7 +290,7 @@ The Epic Stocks MCP Apps connector can run the **same 1928–2023 historical blo
 
 The connector tools are `get_retirement_params`, `update_retirement_params`, `run_retirement_simulation`, `compare_retirement_scenarios`, `plan_life_events`, `show_retirement` and app-only `refresh_retirement_view`. For retirement-date comparisons, the connector asks the existing `preview-exit` service for **after-tax, after-loan net cash** at each date. These amounts can depend on assumed future Epic share prices and are projections, not current balances. The simulations use a fixed random seed by default for comparable scenarios, at most 100,000 paths each, and return the percentiles in retirement-year purchasing power. Liquidity shortfalls and full portfolio exhaustion are separate metrics.
 
-After **Run simulation**, the card shows a wealth chart with labeled dollar and age axes, plus **Will the planned purchases happen?** above the input editor. Purchase bars show the percentage buying and skipping each conditional event. A distribution chart shows how many paths buy none, one or several purchases, including replacements, and the overall chance of buying at least one. Those overall odds count individual paths once, rather than adding overlapping event probabilities. Required expenses such as college remain listed separately and are never switched off by a purchase condition. These are scheduling probabilities, not a guarantee that all bills are funded. The same results update after **Compare with / without events**. Older hosts without the new summary still show each event's available odds.
+The card opens results directly. After **Edit assumptions → Run simulation**, it shows a wealth chart with labeled dollar and age axes, plus **Will the planned purchases happen?** after the core funding and wealth results. Purchase bars show the percentage buying and skipping each conditional event. A distribution chart shows how many paths buy none, one or several purchases, including replacements, and the overall chance of buying at least one. Those overall odds count individual paths once, rather than adding overlapping event probabilities. Required expenses such as college remain listed separately and are never switched off by a purchase condition. These are scheduling probabilities, not a guarantee that all bills are funded. The same results update after **Compare with / without events**. Older hosts without the new summary still show each event's available odds.
 
 ![Retirement card with purchase probabilities](screenshots/mcp-purchase-results-light-mobile.png)
 ![Retirement purchase results in dark mode](screenshots/mcp-purchase-results-dark-mobile.png)
@@ -304,8 +304,12 @@ The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `back
 **Conditional purchases and car ownership:** Major purchases can require normal
 spending (no spending cuts), a minimum current portfolio, and/or a minimum
 percentage of starting retirement wealth. The simulator decides using only
-state known on the purchase date, skips failed purchases, and reports how often
-you actually buy. If a later retirement date moves an existing conditional
+state known at the time of purchase. Choose **Skip this purchase** for a single
+check, or **Wait until eligible** for monthly retries, optionally with a deadline.
+Waiting moves ownership, debt, sale and replacement timing with the actual buy.
+The explicit recurring-cost cutoff remains an absolute calendar date. Existing
+plans retain skip behavior. Reports show on-time/later/never buying, purchase
+counts, first-purchase timing, and buying while funding the whole plan. If a later retirement date moves an existing conditional
 purchase before retirement, that ownership period is skipped with a warning;
 you can still save and simulate the rest of the plan
 ([example warning](screenshots/conditional-purchase-warning-light-mobile.png)). Existing loan and ownership bills continue once committed.
@@ -315,6 +319,19 @@ and stops ownership costs. Each scheduled replacement has its own lifetime and
 conditional decision. These controls are available in the web planner and the
 ChatGPT retirement card; read-only MCP tools accept the same fields. See
 [conditions and lifetimes](docs/life-events-planner.md).
+
+**Plan workflow:** **Before retirement** shows a yearly funding chart and a
+per-expense funding schedule; **Retirement** puts core inputs before expenses and
+core funding results before purchase charts. The same saved expenses carry their
+ongoing costs across retirement. New expenses default to today's prices, converted
+on save. The expense editor starts with type, name, date and price, then opens one topic
+at a time for purchase rules, ownership or price assumptions. Cash purchases hide
+loan fields; ownership costs stop automatically when sold, and recurring expenses
+such as college keep their duration when the start moves.
+
+The MCP card opens results without a form. **Edit assumptions** and **Compare dates**
+are separate views; running returns to results. Chat-specified assumptions survive
+reruns, and saving remains a separate explicit action. See [MCP Apps](docs/mcp-apps.md).
 
 **Life events and major purchases:** The Retirement tab and MCP Apps card can
 compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
@@ -331,6 +348,19 @@ for the limits and the AI/app division of responsibilities.
 | Mobile | Desktop |
 |--------|---------|
 | ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
+
+| Purchase outcomes | Before retirement |
+| --- | --- |
+| ![Purchase timing and funded outcomes](screenshots/retirement-purchase-outcomes-light-mobile.png) | ![Working-life funding needs](screenshots/before-retirement-light-mobile.png) |
+
+![MCP assumption editor](screenshots/mcp-retirement-editor-light-mobile.png)
+
+| Expense rule | Saved expense |
+| --- | --- |
+| ![A140% conditional purchase](screenshots/life-events-planner-light-mobile.png) | ![A saved purchase plan](screenshots/life-events-review-light-mobile.png) |
+
+[Ownership controls](screenshots/life-events-ownership-light-mobile.png) · [MCP date comparison](screenshots/mcp-retirement-comparison-light-mobile.png)
+
 
 | Life-event planner: mobile | Life-event planner: desktop |
 |----------------------------|-----------------------------|
@@ -1683,3 +1713,9 @@ An estimated price change as the next dashboard event, viewed the day before it 
 Diagnostic implementation: `backend/services/diagnostics.py` defines safe event envelopes and bounded host/scheduler reads; `backend/services/diagnostic_sources.py` reads fixed GitHub/Cloudflare endpoints; `ops/collect_diagnostics.py` and `ops/systemd/epic-stocks-diagnostics.*` collect host metadata outside the app. The deploy workflow installs the collector under `/usr/local/lib/epic-stocks/` and mounts its output directory read-only. Diagnostics installation failures warn without blocking the app release, and first collection is asynchronous. `vars.APP_ENV` overrides the branch default (`main` → production; other refs, including manual feature-branch dispatches → staging); the collector reads that same resolved environment. Container images carry `org.opencontainers.image.revision` for correlation.
 
 Off-site backups: `ops/backup_database.py` streams `pg_dump` through `age` to Cloudflare R2 nightly, with `.secrets/` minus the KEK. `ops/install_backup.sh` installs the timer, settings watcher, `age` and stdlib-only `services/backup_protocol.py`. `services/backup_admin.py` and `scaffold/routers/backups.py` implement the Admin status/settings API; `Backups.tsx` renders the controls. The app can write only the non-secret handoff directory, while the collector snapshot is mounted read-only and R2 credentials remain host-only. Saving settings or requesting a run triggers a fixed systemd service via a path unit, without exposing Docker, systemd, credentials or arbitrary commands to the web container. Admin settings survive redeploys and override deployment defaults. The same script lists and fetches runs for a restore. See [OPERATIONS.md §6](OPERATIONS.md#6-backups); tests in `test_backup.py`, `test_backup_admin.py`, `Backups.test.tsx` and `admin-backups.spec.ts`.
+
+The planning presentation uses `frontend/src/app/pages/BeforeRetirement.tsx`
+(yearly working-life funding schedule) and `PurchaseResults.tsx` (purchase odds,
+counts and timing), alongside the shared `Retirement.math.ts` simulator and
+category-specific `LifeEventsPlanner.tsx` editor. The implementation scope and
+validation checklist are recorded in [the planning workflow plan](docs/planning-workflow-plan.md).

@@ -10,10 +10,16 @@ try {
   const params = { ...DEFAULT_PARAMS, ...request.params }
   const result = simulate(params)
   const planned = planCashFlows(params.plannedEvents ?? [], params.simulationStartDate ?? '2030-01-01', result.years * 12, params.asOfDate)
+  const workingYears = new Map()
+  for (const row of planned.preRetirementSchedule) {
+    const year = row.date.slice(0, 4)
+    workingYears.set(year, (workingYears.get(year) ?? 0) + row.netCashM)
+  }
   const response = {
     paths: params.paths,
     planned: { preRetirementNetM: planned.preRetirementNetM,
       preRetirementEpicNeedM: planned.preRetirementEpicNeedM,
+      preRetirementByYear: [...workingYears].map(([year, netCashM]) => ({ year, netCashM })),
       warnings: planned.warnings },
     seed: params.seed,
     startingTotalM: result.startingTotal,

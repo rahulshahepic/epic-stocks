@@ -21,8 +21,10 @@ The same dated `plannedEvents` schema handles:
 
 Events are capped at 20 per scenario. All dollar amounts are **millions of
 real dollars in the retirement-year purchasing-power frame**. The web editor
-labels that year on each amount and offers a current-sticker-price conversion
-using the stated annual inflation assumption (2.5% by default). Annual costs
+defaults new entries to today's dollars and converts on save using the stated
+inflation assumption (2.5% by default). Choose retirement-year dollars to enter
+amounts already in that frame. Editing existing events starts in their stored
+retirement-year frame. Percentage fields retain the exact text while typing. Annual costs
 must be **additional to baseline spending**. They must not be entered twice.
 
 ## Causal purchase rules
@@ -48,16 +50,38 @@ at/after retirement. Moving retirement later never invalidates an existing saved
 plan or blocks unrelated changes: conditional ownership periods now before
 retirement are skipped entirely, with a visible warning. Their later loan,
 ownership and resale flows are excluded too; working-life market paths are not
-modeled. Future independent lifetime replacement periods remain eligible. Conditions are evaluated once, with
-no deferral or retry. A skipped initial asset generates no purchase, proceeds
-from selling the old home/trade-in, loan payments, ownership costs or resale.
+modeled. In skip mode, future independent lifetime replacement periods remain eligible. `conditionFailure` selects the policy:
+
+- Missing or `skip`: check once on each originally scheduled purchase date.
+- `defer`: starting at the earliest purchase month, retry monthly until the
+  condition passes. An optional `deadlineDate` is the last month to initiate
+  either the first purchase or a later replacement. With no deadline, retries
+  continue through the simulation horizon. A path with a prior shortfall cannot
+  initiate a conditional purchase, even if its wealth later recovers.
+
+In wait mode, debt, resale and ownership lifetime follow the actual purchase
+month. An explicit resale date is treated as an ownership duration and moves
+with the initial purchase. Replacements are due relative to the actual prior
+purchase, never accumulated as catch-up purchases. A sold asset's legacy cash
+replacements cannot retry past its actual sale. The optional `endDate` remains
+an **absolute calendar cutoff** for annual costs across every ownership cycle;
+it is an advanced override, not the usual way to stop costs when selling.
+Legacy replacements without a lifetime remain cash purchases with existing
+initial debt and bills continuing. Waiting is supported after retirement only;
+pre-retirement conditional events remain skipped with a visible warning.
+
+A skipped initial asset generates no purchase, proceeds from selling the old home/trade-in, loan payments, ownership costs or resale.
 Each later scheduled replacement gets a fresh rule check, even if the first
 purchase was skipped. Without a lifetime, replacements are cash purchases;
 existing debt continues and no loan for a skipped initial purchase is created.
 Skipping a replacement does not cancel existing bills.
 
 Results report each conditional event's probability of buying at least once,
-never buying, and average purchase count. Purchases outside the simulation
+never buying, and average purchase count. Both interfaces show purchase-count
+and first-purchase-year charts, on-time/later probabilities, and the joint
+probability of purchasing **and funding the whole retirement plan**. The latter
+uses the complete simulated horizon; it is an outcome, never an eligibility
+rule. Average delay is among paths that buy at least once, not all paths. Purchases outside the simulation
 horizon are excluded from the outcome summary. Read risk reductions alongside purchase
 probabilities: never buying the optional item is different from funding it.
 
@@ -82,6 +106,40 @@ reuse the original trade-in offset. A skipped cycle cannot produce resale cash;
 a later scheduled cycle can still pass its own conditions. `endDate` remains an
 absolute stop date for annual costs across cycles. Replacements are optional:
 lifetime alone means buy once, use, then sell.
+
+
+## Planning views and expense entry
+
+The Plan page separates **Before retirement** from **Retirement**. Classification
+uses calendar months, matching the simulation: an expense in the retirement
+month belongs to Retirement regardless of its day. Both views edit the same
+saved event list; ongoing costs cross retirement without being entered twice.
+
+Before retirement shows a yearly cash-needs chart and a funding table by expense,
+including a clearly hypothetical Epic cash target. This schedule reconciles to
+the existing conservative deduction from projected taxable retirement wealth.
+It does not calculate working-life wages, investment returns, stock-sale lots or
+stock-sale taxes. There is no new working-life Monte Carlo or automatic sale.
+
+Retirement core assumptions come before expense entry. Results lead with the
+probability of funding the whole plan, distinguish liquidity shortfalls from
+exhaustion, and show the wealth chart before purchase outcomes. A skipped wish
+must not make a plan look as though it delivered the wish.
+
+Asset purchases default to cash, with financing fields shown only when selected.
+Ownership costs stop at sale automatically; a separate earlier cost cutoff is
+advanced. College and other recurring expenses use `durationYears` to preserve their duration
+when the start moves, including when editing a saved event. It cannot combine
+with an absolute `endDate`. Existing plans with `endDate` keep their fixed cutoff.
+Trade-in, explicit resale and special funding assumptions are optional details.
+
+The MCP card opens **Results**, with **Edit assumptions** and **Compare dates**
+as separate views in the same active card. Running or comparing expenses returns
+to results; the with/without table stays visible there. Date comparison has its
+own view and uses the current draft's full assumption snapshot. Chat-specified
+parameters, including spouse DOB, remain in subsequent runs even if they have no
+visible input. Saving stays explicit and separate from what-if runs. No streaming,
+async-task support, or cross-card communication is required for this workflow.
 
 ## What the app must calculate (deterministic and auditable)
 

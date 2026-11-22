@@ -5,7 +5,7 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
-RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v2.html"
+RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v3.html"
 
 _EVENT_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -19,7 +19,8 @@ _EVENT_SCHEMA = {
         "date": {"type": "string", "description": "YYYY-MM-DD"},
         "amountM": {"type": "number", "description": "Purchase or one-time expense in millions of dollars"},
         "annualCostM": {"type": "number", "description": "Additional recurring annual cost in $M, not already in normal spending"},
-        "endDate": {"type": "string"},
+        "endDate": {"type": "string", "description": "Absolute recurring-cost cutoff; cannot combine with durationYears"},
+        "durationYears": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Recurring non-asset expense duration from actual start; e.g. 4 years of tuition. Cannot combine with endDate."},
         "downPaymentPct": {"type": "number", "description": "Fraction paid upfront; required for financing"},
         "loanRate": {"type": "number", "description": "Annual nominal loan rate as a fraction"},
         "inflationRate": {"type": "number", "description": "Annual inflation for real fixed mortgage payments; default 0.025"},
@@ -30,11 +31,13 @@ _EVENT_SCHEMA = {
         "replacementEveryYears": {"type": "number"},
         "replacementCostM": {"type": "number", "description": "Optional repeat cost; 0 or omitted means repeat original amount"},
         "funding": {"type": "string", "enum": ["epic", "brokerage", "cash", "mixed"]},
+        "conditionFailure": {"type": "string", "enum": ["skip", "defer"], "description": "Requires condition. Default skip checks only on scheduled dates. Defer retries monthly until eligible; ownership, debt, sale and replacements follow actual purchase dates."},
+        "deadlineDate": {"type": "string", "description": "Optional last date to initiate a deferred purchase or replacement (YYYY-MM-DD). Requires conditionFailure=defer."},
         "lifetimeYears": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Vehicle ownership years before automatic sale; cannot combine with explicit resale. Each replacement starts a new ownership period."},
         "depreciationRate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Annual nominal depreciation during lifetime; 0 retains nominal price. Resale is deflated by inflationRate (default 2.5%)."},
         "condition": {
             "type": "object", "additionalProperties": False, "minProperties": 1,
-            "description": "All rules must hold immediately before the dated purchase, using only current portfolio state. Otherwise skip it, with no ownership costs or resale proceeds. Pre-retirement conditional ownership periods are skipped with a warning; saving remains allowed. Replacements are checked again; existing ownership costs and debt continue.",
+            "description": "All rules must hold immediately before purchase, using only current portfolio state. conditionFailure chooses skip (default) or monthly defer. No costs or resale until purchased. Pre-retirement conditional ownership periods are skipped with a warning. Existing bills continue.",
             "properties": {
                 "requireFullSpending": {"type": "boolean", "description": "Only buy when the normal spending ramp is not cutting regular spending"},
                 "minPortfolioM": {"type": "number", "minimum": 0, "maximum": 1000, "description": "Minimum current portfolio net of unpaid taxes, in retirement-year $M"},

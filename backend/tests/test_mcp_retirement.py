@@ -433,3 +433,66 @@ def test_moving_retirement_past_conditional_purchase_does_not_block_saves(mcp, c
     assert saved["defaultSpend"] == 210
     assert saved["plannedEvents"] == [event]
     assert saved["retirementDate"] == "2037-01-01"
+
+@pytest.mark.parametrize("extra", [
+    {"conditionFailure": "defer", "deadlineDate": "2039-01-01"},
+    {"conditionFailure": "skip"},
+])
+def test_purchase_failure_policy_round_trips_through_save(mcp, client, extra):
+    event = {"id": "car-wait", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
+             "amountM": 0.2, "condition": {"minStartingWealthRatio": 1.4}, **extra}
+    mcp.call("update_retirement_params", changes={"plannedEvents": [event]})
+    assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
+
+
+@pytest.mark.parametrize("extra", [
+    {"conditionFailure": "retry"}, {"conditionFailure": []},
+    {"conditionFailure": "defer", "deadlineDate": "2036-12-01"},
+    {"conditionFailure": "defer", "deadlineDate": "bad-date"},
+    {"conditionFailure": "skip", "deadlineDate": "2039-01-01"},
+    {"deadlineDate": "2039-01-01"},
+])
+def test_invalid_purchase_failure_policy_is_rejected(extra):
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
+             "amountM": 0.2, "condition": {"minPortfolioM": 5}, **extra}
+    with pytest.raises(ValueError):
+        validate_changes({"plannedEvents": [event]})
+
+
+def test_failure_policy_cannot_be_used_without_conditions():
+    with pytest.raises(ValueError):
+        validate_changes({"plannedEvents": [{"id": "car", "title": "Car", "kind": "vehicle",
+                          "date": "2037-01-01", "amountM": 0.2, "conditionFailure": "defer"}]})
+
+@pytest.mark.parametrize("spouse_dob", ["1990-04-01", None, ""])
+def test_run_preserves_resolved_spouse_birthdate_for_card_reruns(client, db_session, monkeypatch, tmp_path, spouse_dob):
+    from types import SimpleNamespace
+    from scaffold.models import User
+    from app import retirement_simulation as sim
+    register_user(client)
+    owner = db_session.query(User).first()
+    runtime = tmp_path / "retirement_runner.mjs"
+    runtime.write_text("")
+    runtime.with_name("retirement.math.mjs").write_text("")
+    monkeypatch.setattr(sim, "RUNNER", runtime)
+    monkeypatch.setattr(sim.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0, stdout="{}"))
+    with user_key(owner):
+        owner.retirement_params = {"epicExit": 5, "retirementDate": "2032-01-02",
+                                   "includeSpouse": True, "spouseDOB": "1980-01-01"}
+        answer = sim.run(owner, overrides={"spouseDOB": spouse_dob})
+    assert answer["assumptions"]["spouseDOB"] == (spouse_dob or None)
+
+@pytest.mark.parametrize("duration", [0, 1.5, 51])
+def test_invalid_recurring_duration_is_rejected(duration):
+    with pytest.raises(ValueError):
+        validate_changes({"plannedEvents": [{"id": "college", "title": "College", "kind": "education",
+                         "date": "2044-08-01", "amountM": 0, "durationYears": duration}]})
+
+
+def test_saved_tuition_duration_round_trips_and_cannot_mix_with_absolute_end(mcp, client):
+    event = {"id": "college", "title": "College", "kind": "education", "date": "2044-08-01",
+             "amountM": 0, "annualCostM": 0.1, "durationYears": 4}
+    mcp.call("update_retirement_params", changes={"plannedEvents": [event]})
+    assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
+    with pytest.raises(ValueError):
+        validate_changes({"plannedEvents": [{**event, "endDate": "2048-07-01"}]})

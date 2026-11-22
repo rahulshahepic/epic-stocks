@@ -27,6 +27,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(outcomes.getByText('2044-08-01 · required expense, no market condition')).toBeVisible()
     await expect(outcomes.getByLabel('320 paths make 0 conditional purchases, 32.00%')).toBeVisible()
     await expect(card.locator('#plot')).toContainText('Portfolio ($M, retirement-year dollars)')
+    await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
     await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
     await expect(outcomes.getByText('70.00%', { exact: true })).toBeVisible()
     await expect(outcomes.getByLabel('300 paths make 0 conditional purchases, 30.00%')).toBeVisible()
@@ -50,6 +51,7 @@ test('an unfunded plan does not show purchase odds', async ({ page }) => {
 
 test('what-if runs do not save, and saving is explicit', async ({page}) => {
   const card=await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
   await card.getByLabel('Annual spending ($K)').fill('220')
   await card.getByRole('button',{name:'Run simulation'}).click()
   await expect(card.getByRole('status')).toContainText('Changes are not saved')
@@ -64,6 +66,7 @@ test('what-if runs do not save, and saving is explicit', async ({page}) => {
 
 test('date comparison renders two scenarios without saving', async ({page}) => {
   const card=await retirementHost(page)
+  await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
   await card.getByLabel('Compare against').fill('2032-07-02')
   await card.getByRole('button',{name:'Compare retirement dates'}).click()
   await expect(card.getByRole('table')).toBeVisible()
@@ -80,7 +83,8 @@ for(const theme of ['light','dark'] as const){
   test('retirement card mobile accessibility '+theme,async ({page})=>{
     await page.setViewportSize({width:375,height:812})
     const card=await retirementHost(page,theme)
-    await expect(card.getByRole('button',{name:'Run simulation'})).toBeVisible()
+    await expect(card.getByRole('button',{name:'Edit assumptions'})).toBeVisible()
+    await expect(card.locator('#editView')).toBeHidden()
     const frame=page.frames()[1]
     expect(await frame.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
     const audit=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()
@@ -91,10 +95,12 @@ for(const theme of ['light','dark'] as const){
 
 test('life events in MCP card are read-only and passed to the planner', async ({page}) => {
   const card=await retirementHost(page)
-  await card.locator('#lifeEventsDetails summary').click()
+  await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
   await card.locator('#eventKind').selectOption('travel')
   await card.locator('#eventTitle').fill('Disney vacation')
   await card.locator('#eventDate').fill('2034-07-01')
+  await card.locator('#eventBasis').selectOption('retirement')
   await card.locator('#eventAmount').fill('25000')
   await card.getByRole('button',{name:'Add planned event'}).click()
   await expect(card.getByText('Disney vacation', {exact:false})).toBeVisible()
@@ -129,7 +135,9 @@ test('MCP card with unfunded pre-retirement purchase hides misleading odds and w
 
 test('MCP card converts a current sticker price without recording a sale', async ({page}) => {
   const card = await retirementHost(page)
-  await card.locator('#lifeEventsDetails summary').click()
+  await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
+  await card.locator('#eventAdvanced summary').click()
   await card.locator('#eventTodayPrice').fill('100000')
   await card.locator('#eventInflation').fill('0')
   await card.getByRole('button', { name: 'Convert to retirement-year dollars' }).click()
@@ -138,4 +146,82 @@ test('MCP card converts a current sticker price without recording a sale', async
     params:{name?:string}
   }[]}).pluginCalls)
   expect(calls.some(c => c.params.name === 'update_retirement_params' || c.params.name === 'apply_changes')).toBe(false)
+})
+
+test('results open without a form; editing preserves chat parameters and returns to results', async ({ page }) => {
+  const initial = { ...retirementSnapshot, assumptions: { ...retirementSnapshot.assumptions,
+    ssMonthly: 3100, stockPct: 0.735, bondPct: 0.165 } }
+  const card = await retirementHost(page, 'light', { initial })
+  await expect(card.locator('#resultsView')).toBeVisible()
+  await expect(card.locator('#editView')).toBeHidden()
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.getByLabel('Annual spending ($K)').fill('220')
+  await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+  await expect(card.locator('#editView')).toBeHidden()
+  await expect(card.locator('#resultsView')).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { overrides?: Record<string, unknown> }
+  } }[] }).pluginCalls)
+  expect(calls.find(c => c.params.name === 'refresh_retirement_view')?.params.arguments?.overrides)
+    .toMatchObject({ defaultSpend: 220, ssMonthly: 3100, stockPct: 0.735, bondPct: 0.165 })
+})
+
+test('the expense comparison remains visible after leaving the editor', async ({ page }) => {
+  const card = await retirementHost(page, 'light', { initial: purchaseSnapshot })
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
+  await card.getByRole('button', { name: 'Compare with / without events' }).click()
+  await expect(card.locator('#editView')).toBeHidden()
+  await expect(card.locator('#eventResults')).toBeVisible()
+  await expect(card.locator('#eventResults')).toContainText('Without events')
+})
+
+test('waiting rules survive car editing, and changing type removes stale ownership fields', async ({ page }) => {
+  const card = await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
+  await card.locator('#eventKind').selectOption('vehicle')
+  await card.locator('#eventBasis').selectOption('retirement')
+  await card.locator('#eventAmount').fill('200000')
+  await card.locator('#eventLifetime').fill('10')
+  await expect(card.locator('#eventDepreciation')).toBeVisible()
+  await card.locator('#eventRule').selectOption('conditional')
+  await card.locator('#eventMinRatio').pressSequentially('140')
+  await expect(card.locator('#eventMinRatio')).toHaveValue('140')
+  await card.locator('#eventFailure').selectOption('defer')
+  await card.locator('#eventDeadline').fill('2040-01-01')
+  await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
+  await card.locator('#eventList').getByRole('button', { name: 'Edit', exact: true }).click()
+  await expect(card.locator('#eventFailure')).toHaveValue('defer')
+  await card.locator('#eventKind').selectOption('education')
+  await card.getByRole('button', { name: 'Update event', exact: true }).click()
+  await card.getByRole('button', { name: 'Compare with / without events' }).click()
+  await expect(card.getByRole('status')).toContainText('Life-event comparison complete')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { events?: Record<string, unknown>[] }
+  } }[] }).pluginCalls)
+  const event = calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events?.[0]
+  expect(event).toMatchObject({ kind: 'education', conditionFailure: 'defer', deadlineDate: '2040-01-01', condition: { minStartingWealthRatio: 1.4 } })
+  expect(event).not.toHaveProperty('lifetimeYears')
+  expect(event).not.toHaveProperty('saleOffsetM')
+})
+
+test('editing saved tuition preserves four years when the start date moves', async ({ page }) => {
+  const initial = { ...retirementSnapshot, assumptions: { ...retirementSnapshot.assumptions,
+    plannedEvents: [{ id: 'college-duration', title: 'College', kind: 'education',
+      date: '2044-08-01', amountM: 0, annualCostM: 0.1, durationYears: 4 }] } }
+  const card = await retirementHost(page, 'light', { initial })
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
+  await card.locator('#eventList').getByRole('button', { name: 'Edit', exact: true }).click()
+  await expect(card.locator('#eventDuration')).toHaveValue('4')
+  await card.locator('#eventDate').fill('2045-08-01')
+  await card.getByRole('button', { name: 'Update event' }).click()
+  await card.getByRole('button', { name: 'Compare with / without events' }).click()
+  await expect(card.getByRole('status')).toContainText('Life-event comparison complete')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { events?: Record<string, unknown>[] }
+  } }[] }).pluginCalls)
+  expect(calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events?.[0])
+    .toMatchObject({ date: '2045-08-01', durationYears: 4 })
 })

@@ -86,10 +86,10 @@ export const purchaseSnapshot = {
   ] },
   result: { ...retirementSnapshot.result,
     eventOutcomes: [
-      { eventId: 'car', title: 'Sports car', purchaseProbability: 0.5, skippedProbability: 0.5, meanPurchases: 0.5 },
-      { eventId: 'replacement', title: 'Replacement sports car', purchaseProbability: 0.58, skippedProbability: 0.42, meanPurchases: 0.58 },
+      { eventId: 'car', title: 'Sports car', purchaseProbability: 0.5, skippedProbability: 0.5, meanPurchases: 0.5, onTimeProbability: 0.3, delayedProbability: 0.2, fundedPurchaseProbability: 0.48, meanDelayMonths: 12, firstPurchaseByYear: [{ year: 2035, probability: 0.3 }, { year: 2037, probability: 0.2 }] },
+      { eventId: 'replacement', title: 'Replacement sports car', purchaseProbability: 0.58, skippedProbability: 0.42, meanPurchases: 0.58, onTimeProbability: 0.4, delayedProbability: 0.18, fundedPurchaseProbability: 0.55, meanDelayMonths: 10, firstPurchaseByYear: [{ year: 2045, probability: 0.4 }, { year: 2047, probability: 0.18 }] },
     ],
-    purchaseSummary: { paths: 1000, pathsWithPurchase: 680, purchaseProbability: 0.68, meanPurchases: 1.08,
+    purchaseSummary: { paths: 1000, pathsWithPurchase: 680, purchaseProbability: 0.68, fundedPurchaseProbability: 0.65, meanPurchases: 1.08,
       distribution: [{ purchases: 0, paths: 320, probability: 0.32 }, { purchases: 1, paths: 280, probability: 0.28 }, { purchases: 2, paths: 400, probability: 0.4 }] },
   },
 }
@@ -112,7 +112,7 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
       if(msg.method==='ui/initialize')reply({hostContext:{theme,displayMode:'inline',availableDisplayModes:['inline','fullscreen']}})
       if(msg.method==='ui/notifications/initialized')frame.contentWindow?.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:initial}},'*')
       if(msg.method==='tools/call'){
-        if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map(s=>({...initial,...s,retirementDate:s.overrides.retirementDate}))}})}
+        if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map((s,index)=>({...initial,...s,retirementDate:s.overrides.retirementDate,result:index===0?initial.result:{...initial.result,pctFundingShortfall:.019,pctExhausted:.008,startingTotalM:8.05,medianFinalM:13.2}}))}})}
         else if(msg.params.name==='plan_life_events')reply({structuredContent:{baseline:initial,withEvents:{...initial,result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})
         else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
         else reply({structuredContent:refreshed ?? initial})

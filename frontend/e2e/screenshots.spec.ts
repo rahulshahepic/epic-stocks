@@ -55,7 +55,7 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean } = {}
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))
   }
-  await page.screenshot({ path: `${OUT}/${name}.png`, ...opts })
+  await page.screenshot({ path: `${OUT}/${name}.png`, ...opts, ...(opts.fullPage ? { style: '[aria-label="Mobile navigation"]{visibility:hidden!important}' } : {}) })
 }
 
 test.describe('Screenshots', () => {
@@ -98,6 +98,42 @@ test.describe('Screenshots', () => {
     })
   })
 
+  test('MCP assumptions editor - light - mobile', async ({ page }) => {
+    await page.setViewportSize(MOBILE)
+    const card = await retirementHost(page, 'light')
+    await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
+    await expect(card.locator('#resultsView')).toBeHidden()
+    await shoot(page, 'mcp-retirement-editor-light-mobile', { fullPage: true })
+  })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test('retirement purchase outcomes - ' + theme + ' - mobile', async ({ page }) => {
+      await authedPage(page, MOBILE, theme)
+      await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `purchase-outcomes-${theme}@screenshots.example.test`, name: 'Planning Demo' } })
+      const params = { retirementDate: '2032-01-01', epicExit: 5, paths: 1000, seed: 1729,
+        currentAge: 45, endAge: 85, defaultSpend: 160, minSpend: 100,
+        plannedEvents: [
+          { id: 'car', title: 'Sports car', kind: 'vehicle', date: '2035-01-01', amountM: 0.2, annualCostM: 0.015, lifetimeYears: 10, replacementEveryYears: 10, depreciationRate: 0, condition: { minStartingWealthRatio: 1.4 }, conditionFailure: 'defer' },
+          { id: 'college', title: 'Four years of private college', kind: 'education', date: '2044-08-01', amountM: 0, annualCostM: 0.1, endDate: '2048-07-01' },
+          { id: 'renovation', title: 'Renovation before retirement', kind: 'renovation', date: '2029-01-01', amountM: 0.1, funding: 'epic' },
+        ] }
+      expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params } })).ok()).toBe(true)
+      await page.goto(`${BASE}/retirement`)
+      await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+      const outcomes = page.getByRole('region', { name: 'Planned purchase outcomes' })
+      await expect(outcomes.getByText('Optional purchases per retirement')).toBeVisible()
+      const core = page.getByText('Will the money last?', { exact: true })
+      expect(await core.evaluate((el, report) => !!(el.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING), await outcomes.elementHandle())).toBe(true)
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Planned purchase outcomes"]').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
+      await outcomes.screenshot({ path: `${OUT}/retirement-purchase-outcomes-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByRole('button', { name: 'Before retirement', exact: true }).click()
+      await expect(page.getByRole('region', { name: 'Before retirement funding schedule' })).toContainText('$100,000')
+      await shoot(page, `before-retirement-${theme}-mobile`, { fullPage: true })
+    })
+  }
+
   // Portable MCP Apps retirement resource, rendered in the synthetic MCP host.
   // Synthetic balances only; capture both themes and sizes for PR visual review.
   for (const theme of ['light', 'dark'] as const) {
@@ -116,11 +152,25 @@ test.describe('Screenshots', () => {
   test('MCP Apps retirement card - comparison - light - desktop', async ({ page }) => {
     await page.setViewportSize(DESKTOP)
     const card = await retirementHost(page, 'light')
+    await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
     await card.getByLabel('Compare against').fill('2032-07-02')
     await card.getByRole('button', { name: 'Compare retirement dates' }).click()
     await expect(card.getByRole('cell', { name: '2032-07-02' })).toBeVisible()
     await expect(card.getByRole('status')).toContainText('Neither scenario was saved')
     await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
+  })
+
+  test('MCP retirement comparison - light - mobile', async ({ page }) => {
+    await page.setViewportSize(MOBILE)
+    const card = await retirementHost(page, 'light')
+    await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
+    await card.getByLabel('Compare against').fill('2032-07-02')
+    await card.getByRole('button', { name: 'Compare retirement dates', exact: true }).click()
+    await expect(card.locator('#comparison')).toContainText('98.10%')
+    expect(await page.frames()[1].evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+    expect(audit.violations).toEqual([])
+    await shoot(page, 'mcp-retirement-comparison-light-mobile', { fullPage: true })
   })
 
   for (const theme of ['light', 'dark'] as const) {
@@ -745,6 +795,8 @@ test.describe('Screenshots', () => {
     // The Monte Carlo run below can take well over the 30s per-test default,
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
+    const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
@@ -801,12 +853,19 @@ test.describe('Screenshots', () => {
       await page.getByRole('button', { name: /Add planned expense/ }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
       await page.getByLabel(/Purchase price \(/).fill('250000')
+      await page.locator('summary').filter({ hasText: /^Ownership and costs/ }).click()
       await page.getByLabel('Sell car after N years (optional)').fill('15')
       await page.getByLabel('Annual depreciation (% nominal; 0 = flat price)').fill('0')
+      await page.getByLabel(/Annual ownership costs/).fill('15000')
+      await page.locator('[aria-label="Life events and major purchases"]').screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.locator('summary').filter({ hasText: /^Purchase rule/ }).click()
+      await expect(page.locator('summary').filter({ hasText: /^Ownership and costs/ }).locator('..')).not.toHaveAttribute('open', '')
       await page.getByLabel('Buy only when conditions hold').check()
-      await page.getByLabel(/Minimum portfolio as %/).fill('120')
+      await page.getByLabel(/Minimum portfolio as %/).pressSequentially('140')
+      await expect(page.getByLabel(/Minimum portfolio as %/)).toHaveValue('140')
+      await page.getByLabel('If conditions are not met').selectOption('defer')
       await page.getByRole('heading', { name: 'Life events & major purchases' }).click()
-      await expect(page.getByText(/Convert today's price to .* purchasing power/)).toBeVisible()
+      await expect(page.getByLabel(/Purchase price/)).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
       const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
         .withTags(['wcag2a', 'wcag2aa']).analyze()
@@ -824,6 +883,10 @@ test.describe('Screenshots', () => {
       })
       await page.locator('[aria-label="Life events and major purchases"]')
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
+      await page.getByRole('button', { name: 'Add event', exact: true }).click()
+      await expect(page.getByText(/Otherwise wait and check monthly/)).toBeVisible()
+      await page.locator('[aria-label="Life events and major purchases"]')
+        .screenshot({ path: `${OUT}/life-events-review-light-${label}.png` })
     })
   }
 

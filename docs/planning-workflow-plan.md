@@ -26,8 +26,10 @@ One feature PR to staging covers the shared simulator, web planner and MCP card.
 ## Completed validation
 
 - TypeScript build-mode type checking and full ESLint pass.
-- Frontend: 683 tests across 44 files pass without unhandled errors.
-- Backend: 120 retirement/MCP/UI/write tests pass.
+- Frontend: 684 tests across 44 files pass without unhandled errors.
+- Backend: 122 retirement/MCP/UI/write tests pass, including two real Node/Python
+  parity cases for saved spending targets below saved or derived floors. These
+  integration cases require installed frontend dependencies; Python-only CI skips them.
 - Browser: 26 portable MCP workflow/accessibility tests cover explicit input
   provenance, date-specific projections, spending floors and financing rates.
 - Screenshots: 17 affected planning capture/accessibility cases pass, including
@@ -47,3 +49,7 @@ cleanup and an unmount regression test. No sale calculations were changed.
 Working-life income, investment returns and a multi-sale lot/tax forecast remain
 outside this PR. The new funding schedule explicitly describes the existing
 conservative retirement-wealth deduction and never creates transactions.
+
+The shared simulator and spending preview cap an effective spending floor at its
+target, so lowering the target cannot make spending rise when wealth falls. Raw
+saved values remain intact, and the website explains the effective cap.

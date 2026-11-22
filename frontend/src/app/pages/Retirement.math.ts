@@ -88,6 +88,7 @@ export const SPEND_RAMP_FLOOR = 0.5
 // insurance). Pure function so the UI can show worked examples that match
 // the math exactly.
 export function projectedSpend(wealthRatio: number, defaultSpend: number, minSpend: number): number {
+  minSpend = Math.min(minSpend, defaultSpend)
   const t = Math.max(0, Math.min(1, (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
   return minSpend + t * (defaultSpend - minSpend)
 }
@@ -2224,7 +2225,9 @@ export function simulate(params: SimParams): SimResult {
   const wB = 1 - wS
 
   const defaultSpendK = params.defaultSpend
-  const minSpendK = params.minSpend
+  // Saved/auto-derived floors can exceed an edited target. Both the browser
+  // and MCP runtime must use the target as the maximum effective floor.
+  const minSpendK = Math.min(params.minSpend, defaultSpendK)
   const hiK = params.healthInsurance
 
   const ssAdj = ssAdjustment(params.claimAge, params.fra)

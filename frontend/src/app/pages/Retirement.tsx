@@ -145,7 +145,7 @@ function SpendRampInfo({
     portfolio: startingTotal * r,
     spend: projectedSpend(r, defaultSpend, minSpend),
   }))
-  const flat = defaultSpend > 0 && minSpend === defaultSpend
+  const flat = defaultSpend > 0 && minSpend >= defaultSpend
   return (
     <>
       <p className="mb-1">
@@ -1230,7 +1230,9 @@ function RetirementAccount() {
               min={0}
               step={5}
               suffix="$K/yr"
-              hint="What you'd cut down to in a bad year · auto-set to 2% of your portfolio"
+              hint={params.minSpend > params.defaultSpend
+                ? `Effective floor is capped at your $${params.defaultSpend}K spending target.`
+                : "What you'd cut down to in a bad year · auto-set to 2% of your portfolio"}
               info={
                 <SpendRampInfo
                   defaultSpend={params.defaultSpend}

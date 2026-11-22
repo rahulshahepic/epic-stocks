@@ -22,6 +22,16 @@ from tests.test_mcp_admin import WRITE, _admin_session
 ADMIN = {"ADMIN_EMAIL": "admin@example.com"}
 
 
+@pytest.fixture(autouse=True)
+def fresh_maintenance_cache():
+    """Maintenance state is cached per process for a second; a test that turns
+    it on must not leak into the next one in a serial run."""
+    from scaffold import maintenance
+    maintenance._cache = None
+    yield
+    maintenance._cache = None
+
+
 @pytest.fixture()
 def session(client):
     with patch.dict(os.environ, ADMIN):

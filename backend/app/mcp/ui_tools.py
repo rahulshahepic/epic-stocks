@@ -9,16 +9,21 @@ from .read_tools import _opt_date
 from .accounts import ACCOUNT_PROPERTY
 from .tools import REGISTRY, Tool, ToolContext, object_schema, register
 
-RESOURCE_URI = "ui://epic-stocks/portfolio-v3.html"
+RESOURCE_VERSION = 3
+RESOURCE_URI = f"ui://epic-stocks/portfolio-v{RESOURCE_VERSION}.html"
+# Published resource URIs can outlive a deployment in cached tool descriptors.
+RESOURCE_URIS = frozenset(f"ui://epic-stocks/portfolio-v{v}.html" for v in range(1, RESOURCE_VERSION + 1))
 MIME_TYPE = "text/html;profile=mcp-app"
 VIEWS = {"summary": "get_dashboard", "grants": "list_grants", "loans": "list_loans", "events": "list_events"}
 
 
-def resource_descriptor() -> dict:
-    return {"uri": RESOURCE_URI, "name": "epic-stocks-portfolio", "title": "Epic Stocks portfolio", "mimeType": MIME_TYPE}
+def resource_descriptor(uri: str = RESOURCE_URI) -> dict:
+    if uri not in RESOURCE_URIS:
+        raise ValueError("Unknown portfolio resource")
+    return {"uri": uri, "name": "epic-stocks-portfolio", "title": "Epic Stocks portfolio", "mimeType": MIME_TYPE}
 
 
-def resource_contents() -> dict:
+def resource_contents(uri: str = RESOURCE_URI) -> dict:
     ui = {"prefersBorder": True, "csp": {"connectDomains": [], "resourceDomains": []}}
     origin = os.getenv("CHATGPT_UI_ORIGIN", "")
     if origin:
@@ -27,7 +32,7 @@ def resource_contents() -> dict:
             raise ValueError("CHATGPT_UI_ORIGIN must be an HTTPS origin")
         ui["domain"] = origin.rstrip("/")
     return {
-        **resource_descriptor(),
+        **resource_descriptor(uri),
         "text": Path(__file__).with_name("portfolio.html").read_text(encoding="utf-8"),
         "_meta": {
             "ui": ui,

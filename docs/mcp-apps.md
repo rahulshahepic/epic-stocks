@@ -31,6 +31,20 @@ Epic Stocks exposes **one OAuth-protected Streamable HTTP MCP server** at `https
 
 `backend/app/mcp/transport.py` lists and serves these resources. HTML/CSS/JS is bundled in the resource, with no third-party script or direct account API fetch. CSP, OAuth scopes, account isolation, revocation and server-side rate limits still apply. The `openai/ui` metadata enables optional ChatGPT display/entrypoint enhancements; the **basic MCP Apps protocol is shared**. Do not assume fullscreen, sidebar, host file selection, persistence or mobile presentation is identical across clients.
 
+Clients can cache a tool descriptor after its resource version changes. Discovery
+advertises only the current portfolio/retirement URI, but `resources/read` retains
+every published version as a compatibility alias. The returned content URI matches
+the requested URI and serves the current compatible component. Aliases enforce the
+same scope and revocation checks; arbitrary paths and unknown versions are refused.
+Increment the version constant for future component releases so earlier versions
+remain in the bounded allowlist automatically.
+
+Test the loading boundary as well as the component: authenticate a synthetic MCP
+connection, read the resource named by cached metadata, then render that returned
+HTML in the browser harness. Direct `srcdoc` captures alone miss resource routing
+failures. Neither these tests nor successful simulation calls prove a real ChatGPT
+or iOS host rendered the app; record actual host observations separately.
+
 ## Host support and verification
 
 **Three different claims must stay separate:** a vendor documents support for MCP Apps; Epic Stocks connects to that host through MCP; someone actually opened and exercised **our** card in that host. MCP tool support alone does **not** imply inline HTML cards.

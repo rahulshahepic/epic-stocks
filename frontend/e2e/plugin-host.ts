@@ -77,9 +77,26 @@ export const retirementSnapshot = {
     wealthByAge:[{age:48,p10:7.7,p50:7.7,p90:7.7},{age:68,p10:4,p50:10,p90:20},{age:91,p10:2,p50:12.4,p90:40}]},
 }
 
-export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light') {
+export const purchaseSnapshot = {
+  ...retirementSnapshot,
+  assumptions: { ...retirementSnapshot.assumptions, plannedEvents: [
+    { id: 'car', title: 'Sports car', kind: 'vehicle', date: '2035-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 } },
+    { id: 'replacement', title: 'Replacement sports car', kind: 'vehicle', date: '2045-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 } },
+    { id: 'college', title: 'Private college', kind: 'education', date: '2044-08-01', amountM: 0.1 },
+  ] },
+  result: { ...retirementSnapshot.result,
+    eventOutcomes: [
+      { eventId: 'car', title: 'Sports car', purchaseProbability: 0.5, skippedProbability: 0.5, meanPurchases: 0.5 },
+      { eventId: 'replacement', title: 'Replacement sports car', purchaseProbability: 0.58, skippedProbability: 0.42, meanPurchases: 0.58 },
+    ],
+    purchaseSummary: { paths: 1000, pathsWithPurchase: 680, purchaseProbability: 0.68, meanPurchases: 1.08,
+      distribution: [{ purchases: 0, paths: 320, probability: 0.32 }, { purchases: 1, paths: 280, probability: 0.28 }, { purchases: 2, paths: 400, probability: 0.4 }] },
+  },
+}
+
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object } = {}) {
   await page.goto('/login')
-  await page.evaluate(({html,initial,theme}) => {
+  await page.evaluate(({html,initial,theme,refreshed}) => {
     document.body.innerHTML=''
     const frame=document.createElement('iframe')
     frame.title='Epic Stocks retirement plugin'
@@ -98,14 +115,14 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
         if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map(s=>({...initial,...s,retirementDate:s.overrides.retirementDate}))}})}
         else if(msg.params.name==='plan_life_events')reply({structuredContent:{baseline:initial,withEvents:{...initial,result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})
         else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
-        else reply({structuredContent:initial})
+        else reply({structuredContent:refreshed ?? initial})
       }
       if(msg.method==='ui/request-display-mode')reply({mode:msg.params.mode})
       if(msg.method==='ui/notifications/size-changed')frame.style.height=msg.params.height+'px'
     })
     frame.srcdoc=html
     document.body.append(frame)
-  },{html:retirementHtml,initial:retirementSnapshot,theme})
+  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed})
   const widget=page.frameLocator('iframe')
   await widget.getByText('97.00%',{exact:true}).waitFor()
   return widget

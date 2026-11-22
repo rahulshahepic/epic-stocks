@@ -1641,6 +1641,13 @@ export interface EventOutcome {
   skippedProbability: number
   meanPurchases: number
 }
+export interface PurchaseSummary {
+  paths: number
+  pathsWithPurchase: number
+  purchaseProbability: number
+  meanPurchases: number
+  distribution: Array<{ purchases: number; paths: number; probability: number }>
+}
 export interface PlannedEvent {
   id: string
   title: string
@@ -2085,6 +2092,7 @@ export function quantile(sorted: ArrayLike<number>, q: number): number {
 
 export interface SimResult {
   eventOutcomes?: EventOutcome[]
+  purchaseSummary?: PurchaseSummary
   eventWarnings?: string[]
   fanYears: number[]
   fanAges: number[]
@@ -2117,6 +2125,7 @@ export function simulate(params: SimParams): SimResult {
   const events = vehicleOwnershipPeriods(params.plannedEvents ?? [], startDate, months)
   const planned = planCashFlows(events.filter(e => !e.condition), startDate, months, params.asOfDate)
   const eventWarnings = planCashFlows(params.plannedEvents ?? [], startDate, months, params.asOfDate).warnings
+  const purchaseCounts = new Map<number, number>()
   const outcomeGroups = (params.plannedEvents ?? []).filter(e => e.condition).map(event => ({
     eventId: event.id, title: event.title, boughtPaths: 0, totalPurchases: 0,
     inHorizon: events.some(e => (e.sourceEventId ?? e.id) === event.id &&
@@ -2239,6 +2248,7 @@ export function simulate(params: SimParams): SimResult {
   }) / 1_000_000
 
   for (let i = 0; i < N; i++) {
+    let pathPurchases = 0
     const owned = new Uint8Array(conditional.length)
     const purchasedGroups = new Uint8Array(outcomeGroups.length)
     let cash = startingCash
@@ -2413,6 +2423,7 @@ export function simulate(params: SimParams): SimResult {
             netWealth + 1e-12 >= (rule.minPortfolioM ?? 0) &&
             ratio + 1e-12 >= (rule.minStartingWealthRatio ?? 0) && !firstShortfallMonth[i]
           if (buy) {
+            pathPurchases++
             outcomeGroups[c.group].totalPurchases++
             if (!purchasedGroups[c.group]) { purchasedGroups[c.group] = 1; outcomeGroups[c.group].boughtPaths++ }
             if (initial) owned[j] = 1
@@ -2566,6 +2577,7 @@ export function simulate(params: SimParams): SimResult {
       }
     }
 
+    purchaseCounts.set(pathPurchases, (purchaseCounts.get(pathPurchases) ?? 0) + 1)
     finalWealth[i] = Math.max(0, assets() - taxArrears)
     ruined[i] = firstShortfallMonth[i] ? 1 : 0
     if (hadLiquidityShortfall) liquidityShortfalls++
@@ -2603,6 +2615,15 @@ export function simulate(params: SimParams): SimResult {
     medianFinalM,
     p10FinalM,
     eventWarnings,
+    purchaseSummary: outcomeGroups.some(g => g.inHorizon) ? {
+      paths: N,
+      pathsWithPurchase: N - (purchaseCounts.get(0) ?? 0),
+      purchaseProbability: 1 - (purchaseCounts.get(0) ?? 0) / N,
+      meanPurchases: [...purchaseCounts].reduce((sum, [count, paths]) => sum + count * paths, 0) / N,
+      distribution: [...purchaseCounts].sort(([a], [b]) => a - b).map(([purchases, paths]) => ({
+        purchases, paths, probability: paths / N,
+      })),
+    } : undefined,
     eventOutcomes: outcomeGroups.filter(g => g.inHorizon).map(g => ({
       eventId: g.eventId, title: g.title,
       purchaseProbability: g.boughtPaths / N,

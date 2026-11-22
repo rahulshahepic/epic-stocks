@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, retirementHost } from './plugin-host'
+import { pluginHost, retirementHost, purchaseSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -59,6 +59,14 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean } = {}
 }
 
 test.describe('Screenshots', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test('MCP purchase results - ' + theme + ' - mobile', async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const card = await retirementHost(page, theme, { initial: purchaseSnapshot })
+      await expect(card.locator('#purchaseSummary')).toContainText('68.00%')
+      await card.locator('main').screenshot({ path: `${OUT}/mcp-purchase-results-${theme}-mobile.png` })
+    })
+  }
   // These seed data, wait for networkidle and capture whole pages, so they run
   // far longer than an assertion test. A dozen of them sat at 29.3-30.1s
   // against the config's 30s, which is not a passing test so much as one that

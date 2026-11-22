@@ -191,12 +191,15 @@ class McpAudit(Base):
 class AdminActionRequest(Base):
     """A change an admin's AI assistant asked for, waiting for the admin.
 
-    Anything that lets more assistants connect — a new redirect rule, a rule
-    switched back on, AI connections resumed — is never done by a tool call.
-    The assistant reads text strangers wrote (refused registrations, problem
-    reports), so a planted instruction could otherwise open the door by
-    itself. The tool files a row here; an admin approves it in the browser,
-    where the same validation runs again.
+    Anything that widens access or changes what every user sees — a new
+    redirect rule, a rule switched back on, an unblock, maintenance ended, a
+    site feature switched — is never done by a tool call alone. The assistant
+    reads text strangers wrote (refused registrations, problem reports), so a
+    planted instruction could otherwise open the door by itself. The tool
+    files a row here and a one-time code goes to the filing admin's own
+    devices (their push and email settings); the change runs when that code
+    comes back through `admin_approve_request`, or when an admin approves it
+    in the browser. The same validation runs again either way.
 
     No user_id: the requester is a connection (`grant_id`, no foreign key so
     the record outlives a disconnect), the decider is recorded by email. The
@@ -216,6 +219,12 @@ class AdminActionRequest(Base):
     decided_by: Mapped[str | None] = mapped_column(String, nullable=True)
     requested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # The out-of-band approval code: only its keyed hash, bound to the request,
+    # its payload and the admin it was sent to. Cleared when used.
+    approval_code_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    approval_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approval_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    approval_codes_sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class AdminActionJournal(Base):

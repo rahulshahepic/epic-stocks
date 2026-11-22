@@ -1,27 +1,47 @@
-"""Changes an admin's AI assistant asked for, which an admin approves in the browser.
+"""Changes an admin's AI assistant asked for, which an admin then approves.
 
 The admin MCP's write tools make reversible, access-narrowing changes directly.
-Anything that would let more assistants connect is filed here instead: the
-assistant reads text strangers wrote, so a planted instruction must not be able
-to widen access on its own. Approval re-runs the same validation as the admin
-page and records who decided.
+Anything that widens access or changes what every user sees is filed here
+instead: the assistant reads text strangers wrote, so a planted instruction
+must not be able to make such a change on its own. Approval takes either an
+admin in the browser, or a one-time code sent to the filing admin's own
+devices (following their push and email settings) and handed back to the
+assistant. The model never sees the code unless the person gives it, so text
+it read cannot approve anything. Approval re-runs the same validation as the
+admin page and records who decided.
 """
+import hashlib
+import hmac
 import json
+import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import admin_journal
+from . import admin_actions, admin_journal
 from .models import AdminActionRequest, OAuthRedirectHost
 from .settings import (
     RuleConflict, add_redirect_rule, invalidate, normalize_rule, rule_state, set_rule_enabled,
 )
 
+logger = logging.getLogger(__name__)
+
 ADD_RULE = "add_redirect_rule"
 ENABLE_RULE = "enable_redirect_rule"
-ACTIONS = (ADD_RULE, ENABLE_RULE)
+UNBLOCK_EMAIL = "unblock_email"
+UNBLOCK_SENDING = "unblock_invite_sending"
+END_MAINTENANCE = "end_maintenance"
+SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
+GRANT_CONTENT_ADMIN = "grant_content_admin"
+ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN)
+TARGET_TYPES = {ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
+                UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
+                END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
+                GRANT_CONTENT_ADMIN: "user"}
 
 PENDING, APPROVED, REJECTED, EXPIRED, FAILED, CANCELLED = (
     "pending", "approved", "rejected", "expired", "failed", "cancelled")
@@ -30,6 +50,14 @@ MAX_PENDING_REQUESTS = 20
 REQUEST_TTL = timedelta(days=7)
 MAX_REASON_LEN = 300
 KEEP_DECIDED = 100
+APPROVAL_CODE_TTL = timedelta(minutes=15)
+CODE_DIGITS = 8
+MAX_CODE_ATTEMPTS = 5
+MAX_CODES_PER_REQUEST = 5
+# Across every request, per admin: a model fed planted text could otherwise
+# file request after request, buzzing the admin's phone and guessing each code.
+MAX_CODES_PER_HOUR = 10
+MAX_WRONG_CODES_PER_HOUR = 10
 
 
 def _now() -> datetime:
@@ -89,6 +117,12 @@ CONSEQUENCES = {
                "after a user approves the consent screen."),
     ENABLE_RULE: ("Clients registered under this rule can authorize and refresh again, and new "
                   "registrations matching it are accepted."),
+    UNBLOCK_EMAIL: "This address can sign in again.",
+    UNBLOCK_SENDING: "This account can send sharing invitations again.",
+    END_MAINTENANCE: "Every user can reach their data and make changes again.",
+    SET_FLEXIBLE_PAYOFF: ("Changes how loan payoffs are sized for every account, which changes "
+                          "computed figures on every dashboard."),
+    GRANT_CONTENT_ADMIN: "This account can edit the company content tables every user's schedule starts from.",
 }
 
 
@@ -98,6 +132,16 @@ def describe(row: AdminActionRequest) -> str:
         return f"Allow {payload['match_type']} redirect {payload['pattern']} as “{payload['label']}”"
     if row.action == ENABLE_RULE:
         return f"Switch redirect rule {payload.get('pattern', payload['rule_id'])} back on"
+    if row.action == UNBLOCK_EMAIL:
+        return f"Unblock sign-in for {payload['email']}"
+    if row.action == UNBLOCK_SENDING:
+        return f"Let {payload['email']} send invitations again"
+    if row.action == END_MAINTENANCE:
+        return "End maintenance mode"
+    if row.action == SET_FLEXIBLE_PAYOFF:
+        return f"Turn flexible loan payoff {'on' if payload['active'] else 'off'}"
+    if row.action == GRANT_CONTENT_ADMIN:
+        return f"Make {payload['email']} a content admin"
     return row.action
 
 
@@ -113,12 +157,23 @@ def as_dict(row: AdminActionRequest) -> dict:
     }
 
 
-def file_request(db: Session, action: str, args: dict, *, reason, client_name: str | None,
-                 grant_id: int | None, actor_email: str | None = None) -> tuple[AdminActionRequest, bool]:
-    """Validate and queue a request. Returns (row, created). Raises ValueError."""
-    expire_stale(db)
-    if reason is not None and not isinstance(reason, str):
-        raise ValueError("reason must be text")
+def _int_arg(args: dict, name: str, hint: str) -> int:
+    value = args.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be an integer {hint}")
+    return value
+
+
+def _target_id(payload: dict) -> int | None:
+    for key in ("rule_id", "block_id", "user_id"):
+        if key in payload:
+            return payload[key]
+    return None
+
+
+def _validate(db: Session, action: str, args: dict) -> dict:
+    from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock
+
     if action == ADD_RULE:
         label = _clean(args.get("label"), 60)
         if not label:
@@ -130,27 +185,60 @@ def file_request(db: Session, action: str, args: dict, *, reason, client_name: s
         if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == pattern).first():
             raise ValueError(f"{pattern} is already on the list; use admin_ai_connections to see "
                              "whether it is switched off")
-        payload = {"label": label, "match_type": kind, "pattern": pattern}
-    elif action == ENABLE_RULE:
-        rule_id = args.get("rule_id")
-        if isinstance(rule_id, bool) or not isinstance(rule_id, int):
-            raise ValueError("rule_id must be an integer from admin_ai_connections")
-        rule = db.get(OAuthRedirectHost, rule_id)
+        return {"label": label, "match_type": kind, "pattern": pattern}
+    if action == ENABLE_RULE:
+        rule = db.get(OAuthRedirectHost, _int_arg(args, "rule_id", "from admin_ai_connections"))
         if rule is None:
             raise ValueError("No redirect rule with that id")
         if rule.enabled:
             raise ValueError("That rule is already on")
-        payload = {"rule_id": rule.id, "label": rule.label, "pattern": rule.pattern,
-                   "match_type": rule.match_type}
-    else:
-        raise ValueError(f"Unknown action '{action}'")
+        return {"rule_id": rule.id, "label": rule.label, "pattern": rule.pattern,
+                "match_type": rule.match_type}
+    if action == UNBLOCK_EMAIL:
+        email = args.get("email")
+        if not isinstance(email, str) or len(email) > 254:
+            raise ValueError("email must be the blocked address")
+        entry = db.query(BlockedEmail).filter(BlockedEmail.email == email.strip().lower()).first()
+        if entry is None:
+            raise ValueError("That address is not blocked")
+        return {"block_id": entry.id, "email": entry.email}
+    if action in (UNBLOCK_SENDING, GRANT_CONTENT_ADMIN):
+        user = admin_actions._user_by_email(db, args.get("account_email"))
+        if action == UNBLOCK_SENDING:
+            if not db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first():
+                raise ValueError("That account is not blocked from sending")
+        elif user.is_content_admin:
+            raise ValueError("That account is already a content admin")
+        return {"user_id": user.id, "email": user.email}
+    if action == END_MAINTENANCE:
+        from scaffold.maintenance import is_maintenance_active
+        if not is_maintenance_active():
+            raise ValueError("Maintenance mode is not on")
+        return {}
+    if action == SET_FLEXIBLE_PAYOFF:
+        active = args.get("active")
+        if not isinstance(active, bool):
+            raise ValueError("active must be true or false")
+        row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+        if bool(row.flexible_payoff_enabled if row else False) == active:
+            raise ValueError(f"Flexible loan payoff is already {'on' if active else 'off'}")
+        return {"active": active}
+    raise ValueError(f"Unknown action '{action}'")
 
+
+def file_request(db: Session, action: str, args: dict, *, reason, client_name: str | None,
+                 grant_id: int | None, actor_email: str | None = None) -> tuple[AdminActionRequest, bool]:
+    """Validate and queue a request. Returns (row, created). Raises ValueError."""
+    expire_stale(db)
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("reason must be text")
+    payload = _validate(db, action, args)
     body = json.dumps(payload, sort_keys=True)
     # Intent first (fails closed), committed before the lock is taken, so the
     # journal's own commit cannot release the lock between check and insert.
     journal_id = admin_journal.begin(
         db, via="mcp", action=f"request_{action}", actor_email=actor_email, grant_id=grant_id,
-        client_name=client_name, target_type="redirect_rule", target_id=payload.get("rule_id"),
+        client_name=client_name, target_type=TARGET_TYPES[action], target_id=_target_id(payload),
     )
     try:
         _lock(db)
@@ -179,7 +267,8 @@ def file_request(db: Session, action: str, args: dict, *, reason, client_name: s
     db.refresh(row)
     admin_journal.finish(db, journal_id, outcome=admin_journal.OK, request_id=row.id,
                          after={"request_id": row.id, "status": PENDING, **{
-                             k: payload[k] for k in ("label", "match_type", "pattern", "rule_id")
+                             k: payload[k] for k in ("label", "match_type", "pattern", "rule_id",
+                                                     "email", "active")
                              if k in payload}})
     return row, True
 
@@ -254,8 +343,12 @@ def _not_pending(db: Session, request_id: int):
 
 
 def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict | None]:
-    """Carry out an approved request without committing. Returns
-    (outcome text, before, after) for the journal. Raises on failure."""
+    """Carry out an approved request without committing, so the claim, the
+    change and the request's final status commit together. Returns (outcome
+    text, before, after) for the journal. Raises on failure."""
+    from sqlalchemy import text as _sql
+    from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock, User
+
     payload = json.loads(row.payload)
     if row.action == ADD_RULE:
         kind, pattern = normalize_rule(payload["pattern"], payload["match_type"])
@@ -268,11 +361,58 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         before = rule_state(rule)
         rule = set_rule_enabled(db, payload["rule_id"], True, commit=False)
         return f"Switched {rule.pattern} on", before, rule_state(rule)
+    # The rest re-check current state, so a request that went stale (already
+    # unblocked, maintenance already off) fails rather than acting twice.
+    if row.action == UNBLOCK_EMAIL:
+        entry = db.get(BlockedEmail, payload["block_id"])
+        if entry is None:
+            raise ValueError("That address is no longer blocked")
+        db.delete(entry)
+        return (f"Unblocked {payload['email']}", {"id": entry.id, "email": entry.email, "blocked": True},
+                {"id": entry.id, "email": entry.email, "blocked": False})
+    if row.action == UNBLOCK_SENDING:
+        block = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == payload["user_id"]).first()
+        if block is None:
+            raise ValueError("That account is no longer blocked from sending")
+        db.delete(block)
+        state = {"id": payload["user_id"], "email": payload["email"]}
+        return (f"{payload['email']} can send invitations again", {**state, "sending_blocked": True},
+                {**state, "sending_blocked": False})
+    if row.action == END_MAINTENANCE:
+        db.execute(_sql("UPDATE system_settings SET value = 'false' WHERE key = 'maintenance_active'"))
+        return "Maintenance mode ended", {"maintenance": True}, {"maintenance": False}
+    if row.action == SET_FLEXIBLE_PAYOFF:
+        settings = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+        if settings is None:
+            settings = GrantProgramSettings(id=1, flexible_payoff_enabled=False)
+            db.add(settings)
+        before = {"flexible_payoff": bool(settings.flexible_payoff_enabled)}
+        if before["flexible_payoff"] == payload["active"]:
+            raise ValueError(f"Flexible loan payoff is already {'on' if payload['active'] else 'off'}")
+        settings.flexible_payoff_enabled = payload["active"]
+        return (f"Flexible loan payoff {'on' if payload['active'] else 'off'}", before,
+                {"flexible_payoff": payload["active"]})
+    if row.action == GRANT_CONTENT_ADMIN:
+        user = db.get(User, payload["user_id"])
+        if user is None:
+            raise ValueError("That account no longer exists")
+        state = {"id": user.id, "email": user.email}
+        before = {**state, "content_admin": bool(user.is_content_admin)}
+        user.is_content_admin = 1
+        return f"{user.email} is a content admin", before, {**state, "content_admin": True}
     raise ValueError(f"Unknown action '{row.action}'")
 
 
+def _after_commit(action: str) -> None:
+    invalidate()
+    if action == END_MAINTENANCE:
+        from scaffold import maintenance
+        maintenance._cache = None
+
+
 def decide(db: Session, request_id: int, *, approve: bool, admin_email: str,
-           via: str = "browser") -> AdminActionRequest | None:
+           via: str = "browser", grant_id: int | None = None,
+           client_name: str | None = None) -> AdminActionRequest | None:
     """Approve (and carry out) or reject a pending request. None if it does not exist.
 
     The journal intent is committed first and fails closed. The claim, the
@@ -289,8 +429,8 @@ def decide(db: Session, request_id: int, *, approve: bool, admin_email: str,
     payload = json.loads(row.payload)
     journal_id = admin_journal.begin(
         db, via=via, action=f"{'approve' if approve else 'reject'}_{row.action}",
-        actor_email=admin_email, target_type="redirect_rule",
-        target_id=payload.get("rule_id"), request_id=row.id,
+        actor_email=admin_email, grant_id=grant_id, client_name=client_name,
+        target_type=TARGET_TYPES.get(row.action), target_id=_target_id(payload), request_id=row.id,
     )
 
     if not approve:
@@ -323,7 +463,7 @@ def decide(db: Session, request_id: int, *, approve: bool, admin_email: str,
         admin_journal.finish(db, journal_id, outcome=admin_journal.FAILED, detail=message)
         db.expire_all()
         return db.get(AdminActionRequest, request_id)
-    invalidate()
+    _after_commit(row.action)
     admin_journal.finish(db, journal_id, outcome=admin_journal.OK, before=before, after=after,
                          target_id=(after or {}).get("id"))
     db.expire_all()
@@ -351,3 +491,131 @@ def cancel(db: Session, request_id: int, *, grant_id: int, actor_email: str | No
     admin_journal.finish(db, journal_id, outcome=admin_journal.OK)
     db.expire_all()
     return db.get(AdminActionRequest, request_id)
+
+
+# ── approval by one-time code ───────────────────────────────────────────────
+# The code goes to the admin's own devices and never into a tool result, the
+# journal or a log. Only a keyed hash is stored, bound to the request, its
+# exact payload and the admin it was sent to, so a code cannot approve a
+# different change or be used from another admin's connection. Attempts are
+# counted before the comparison, so parallel guesses cannot exceed the cap.
+
+class ApprovalError(ValueError):
+    pass
+
+
+def _code_hash(row: AdminActionRequest, email: str, code: str) -> str:
+    from scaffold.auth import JWT_SECRET
+    message = f"approval:{row.id}:{row.action}:{row.payload}:{email.strip().lower()}:{code}"
+    return hmac.new(JWT_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def _recent(db: Session, action: str, email: str) -> int:
+    from .models import AdminActionJournal
+    return db.query(AdminActionJournal).filter(
+        AdminActionJournal.action == action, AdminActionJournal.actor_email == email,
+        AdminActionJournal.at >= _now() - timedelta(hours=1),
+    ).count()
+
+
+def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = None,
+              client_name: str | None = None) -> dict:
+    """Mint a fresh code for a pending request and deliver it to `admin`.
+    Any earlier code for it stops working. Returns where it went."""
+    from .approval_delivery import deliver
+
+    expire_stale(db)
+    row = db.get(AdminActionRequest, request_id)
+    if row is None:
+        raise ApprovalError("No request with that id")
+    if row.status != PENDING:
+        raise ApprovalError(f"This request is already {row.status}")
+    if (row.approval_codes_sent or 0) >= MAX_CODES_PER_REQUEST:
+        raise ApprovalError(f"{MAX_CODES_PER_REQUEST} codes were already sent for this request; "
+                            "approve or reject it in Admin → AI Connections")
+    if _recent(db, "send_approval_code", admin.email) >= MAX_CODES_PER_HOUR:
+        raise ApprovalError(f"{MAX_CODES_PER_HOUR} approval codes were sent in the last hour; "
+                            "approve this one in Admin → AI Connections, or try again later")
+    journal_id = admin_journal.begin(
+        db, via="mcp", action="send_approval_code", actor_email=admin.email, grant_id=grant_id,
+        client_name=client_name, target_type="request", target_id=row.id, request_id=row.id,
+    )
+    code = f"{secrets.randbelow(10 ** CODE_DIGITS):0{CODE_DIGITS}d}"
+    row.approval_code_hash = _code_hash(row, admin.email, code)
+    row.approval_code_expires_at = _now() + APPROVAL_CODE_TTL
+    row.approval_attempts = 0
+    row.approval_codes_sent = (row.approval_codes_sent or 0) + 1
+    db.commit()
+    minutes = int(APPROVAL_CODE_TTL.total_seconds() // 60)
+    try:
+        channels = deliver(
+            db, admin, "Epic Stocks admin approval",
+            f"An assistant asked to: {describe(row)}.\n"
+            f"Code: {code[:4]} {code[4:]}\n"
+            f"It expires in {minutes} minutes and approves only this change. "
+            "Give it to the assistant only if you asked for this yourself.",
+        )
+    except Exception:
+        logger.exception("Could not deliver an approval code")
+        channels = []
+    del code
+    admin_journal.finish(db, journal_id, outcome=admin_journal.OK if channels else admin_journal.FAILED,
+                         after={"request_id": row.id, "channels": channels},
+                         detail=None if channels else "No channel accepted the code")
+    return {"sent_to": channels,
+            "expires_at": _aware(row.approval_code_expires_at).isoformat(),
+            "codes_left": MAX_CODES_PER_REQUEST - row.approval_codes_sent}
+
+
+def approve_with_code(db: Session, request_id: int, code, *, admin_email: str,
+                      grant_id: int | None = None, client_name: str | None = None) -> AdminActionRequest:
+    expire_stale(db)
+    row = db.get(AdminActionRequest, request_id)
+    if row is None:
+        raise ApprovalError("No request with that id")
+    if row.status != PENDING:
+        raise ApprovalError(f"This request is already {row.status}")
+    if not isinstance(code, str):
+        raise ApprovalError(f"code must be the {CODE_DIGITS}-digit code sent to the admin")
+    code = "".join(c for c in code if c.isdigit())
+    if not row.approval_code_hash:
+        raise ApprovalError("No code is outstanding for this request; send one with "
+                            "admin_send_approval_code")
+    if _aware(row.approval_code_expires_at) is None or _aware(row.approval_code_expires_at) < _now():
+        raise ApprovalError("That code has expired; send a new one with admin_send_approval_code")
+    if _recent(db, "wrong_approval_code", admin_email) >= MAX_WRONG_CODES_PER_HOUR:
+        raise ApprovalError("Too many wrong codes in the last hour; approve it in "
+                            "Admin → AI Connections, or try again later")
+    counted = db.query(AdminActionRequest).filter(
+        AdminActionRequest.id == request_id,
+        AdminActionRequest.approval_attempts < MAX_CODE_ATTEMPTS,
+    ).update({AdminActionRequest.approval_attempts: AdminActionRequest.approval_attempts + 1},
+             synchronize_session=False)
+    db.commit()
+    if not counted:
+        raise ApprovalError("Too many wrong codes; send a new one with admin_send_approval_code")
+    db.refresh(row)
+    if len(code) != CODE_DIGITS or not hmac.compare_digest(row.approval_code_hash or "",
+                                                  _code_hash(row, admin_email, code)):
+        left = MAX_CODE_ATTEMPTS - row.approval_attempts
+        try:
+            journal_id = admin_journal.begin(
+                db, via="mcp", action="wrong_approval_code", actor_email=admin_email,
+                grant_id=grant_id, client_name=client_name, target_type="request",
+                target_id=row.id, request_id=row.id)
+            admin_journal.finish(db, journal_id, outcome=admin_journal.FAILED,
+                                 detail=f"{left} attempts left")
+        except Exception:
+            db.rollback()
+        raise ApprovalError(f"That code does not match this request for this admin; {left} "
+                            f"{'try' if left == 1 else 'tries'} left")
+    # Single use: spent before the change runs, whatever its outcome.
+    if not db.query(AdminActionRequest).filter(
+        AdminActionRequest.id == request_id,
+        AdminActionRequest.approval_code_hash == row.approval_code_hash,
+    ).update({AdminActionRequest.approval_code_hash: None}, synchronize_session=False):
+        db.rollback()
+        raise ApprovalError("That code was already used")
+    db.commit()
+    return decide(db, request_id, approve=True, admin_email=admin_email, via="mcp",
+                  grant_id=grant_id, client_name=client_name)

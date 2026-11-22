@@ -14,7 +14,17 @@ from tests.test_oauth_server import code_from, pkce_pair
 
 
 ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
-ADMIN_WRITE_TOOLS = {"admin_set_report_status", "admin_dismiss_refused_redirect", "admin_disable_redirect_rule", "admin_pause_ai_connections", "admin_request_redirect_rule", "admin_request_enable_redirect_rule", "admin_revoke_connection", "admin_cancel_request"}
+ADMIN_WRITE_TOOLS = {
+    "admin_resolve_errors", "admin_set_report_status", "admin_dismiss_refused_redirect",
+    "admin_prune_connector_tables", "admin_recompute_account", "admin_send_test_notification",
+    "admin_disable_redirect_rule", "admin_pause_ai_connections", "admin_revoke_connection",
+    "admin_revoke_account_connections", "admin_block_email", "admin_block_invite_sending",
+    "admin_start_maintenance", "admin_revoke_content_admin",
+    "admin_request_redirect_rule", "admin_request_enable_redirect_rule",
+    "admin_request_unblock_email", "admin_request_unblock_invite_sending",
+    "admin_request_end_maintenance", "admin_request_flexible_payoff", "admin_request_content_admin",
+    "admin_send_approval_code", "admin_approve_request", "admin_reject_request", "admin_cancel_request",
+}
 
 
 def test_admin_oauth_login_resumes_on_its_own_consent_page(client):

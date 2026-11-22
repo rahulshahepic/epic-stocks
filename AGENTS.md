@@ -15,6 +15,12 @@ approving or merging a pull request. It applies to all contributors and agents.
   for each batch (on opening the PR and after each round of fixes). Pushes
   alone do not start it. Leave `Under Review`, `Waiting for Changes` and
   `Ready to merge` to the review session.
+- Finish authorized implementation tasks by merging the feature PR into
+  `staging` once current-head independent review is clear, all required CI
+  passes, and no unresolved feedback or explicit hold remains. This is Rahul's
+  standing authorization for agents authenticated through his account; do not
+  stop at "ready to merge" or ask again for permission to merge to staging.
+  A task-specific instruction to hold, review only, or open a PR only takes precedence.
 - After merging a PR into `staging`, open (or reuse) the `staging` → `main` PR,
   subscribe to its activity, and merge it with a merge commit once all required
   CI and the staging deploy pass and nothing blocks it. If something fails,

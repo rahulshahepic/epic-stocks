@@ -32,6 +32,7 @@ try {
     p10FinalM: result.p10FinalM,
     years: result.years,
     eventOutcomes: result.eventOutcomes,
+    purchaseSummary: result.purchaseSummary,
     finalPercentiles: finalPercentiles(result),
     wealthByAge: computeFanPercentiles(result),
   }

@@ -137,6 +137,28 @@ describe('causal purchase conditions', () => {
     date: '2037-01-01', amountM: 0.2, annualCostM: 0.01,
     resaleDate: '2042-01-01', resaleValueM: 0.1,
     condition: { minPortfolioM: 1000 } }
+  it('counts paths buying anything once while counting every replacement in the distribution', () => {
+    const result = simulate({ ...base, endAge: 70, paths: 20,
+      plannedEvents: [{ ...car, condition: { minPortfolioM: 0 }, amountM: 0.01,
+        annualCostM: 0, resaleDate: undefined, resaleValueM: undefined,
+        lifetimeYears: 10, replacementEveryYears: 10 }] })
+    expect(result.purchaseSummary).toEqual({ paths: 20, pathsWithPurchase: 20,
+      purchaseProbability: 1, meanPurchases: 2,
+      distribution: [{ purchases: 2, paths: 20, probability: 1 }] })
+  })
+  it('separates mandatory expenses from the union of conditional purchase paths', () => {
+    const events = [car, { ...car, id: 'later', date: '2047-01-01', condition: { minStartingWealthRatio: 1.1 } },
+      { id: 'college', title: 'College', kind: 'education' as const, date: '2044-08-01', amountM: 0.1 }]
+    const result = simulate({ ...base, plannedEvents: events })
+    const summary = result.purchaseSummary!
+    expect(summary.distribution.reduce((sum, b) => sum + b.paths, 0)).toBe(base.paths)
+    // The first car can never be bought. College must not inflate ownership.
+    expect(summary.purchaseProbability).toBeCloseTo(result.eventOutcomes![1].purchaseProbability, 12)
+    expect(summary.purchaseProbability).toBeGreaterThan(0)
+    expect(summary.purchaseProbability).toBeLessThan(1)
+    const requiredOnly = simulate({ ...base, plannedEvents: [events[2]] })
+    expect(requiredOnly.purchaseSummary).toBeUndefined()
+  })
   it('skips the whole unpurchased asset, including debt, costs and resale proceeds', () => {
     const baseline = simulate(base)
     const skipped = simulate({ ...base, plannedEvents: [{ ...car,

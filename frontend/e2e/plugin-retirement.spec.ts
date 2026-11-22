@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { retirementHost, retirementSnapshot } from './plugin-host'
+import { retirementHost, retirementSnapshot, purchaseSnapshot } from './plugin-host'
 
 test('retirement card shows distinct shortfall and exhaustion risks', async ({page}) => {
   const card=await retirementHost(page)
@@ -9,6 +9,43 @@ test('retirement card shows distinct shortfall and exhaustion risks', async ({pa
   await expect(card.getByText('1.00%',{exact:true})).toBeVisible()
   await expect(card.getByText('$7.70M',{exact:true})).toBeVisible()
   await expect(card.getByRole('img',{name:'Median wealth and 10th to 90th percentile range by age'})).toBeVisible()
+})
+
+for (const theme of ['light', 'dark'] as const) {
+  test('purchase charts stay visible outside the editor and update after running ' + theme, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    const refreshed = { ...purchaseSnapshot, result: { ...purchaseSnapshot.result,
+      purchaseSummary: { ...purchaseSnapshot.result.purchaseSummary, pathsWithPurchase: 700,
+        purchaseProbability: 0.7, distribution: [{ purchases: 0, paths: 300, probability: 0.3 }, { purchases: 1, paths: 300, probability: 0.3 }, { purchases: 2, paths: 400, probability: 0.4 }] },
+    } }
+    const card = await retirementHost(page, theme, { initial: purchaseSnapshot, refreshed })
+    const outcomes = card.getByRole('region', { name: 'Planned purchase outcomes' })
+    await expect(card.locator('#lifeEventsDetails')).not.toHaveAttribute('open', '')
+    await expect(outcomes.getByText('68.00%', { exact: true })).toBeVisible()
+    await expect(outcomes.getByLabel('Sports car purchase probability', { exact: true })).toHaveAttribute('value', '0.5')
+    await expect(outcomes.getByText('50.00% bought · 50.00% never bought')).toBeVisible()
+    await expect(outcomes.getByText('2044-08-01 · required expense, no market condition')).toBeVisible()
+    await expect(outcomes.getByLabel('320 paths make 0 conditional purchases, 32.00%')).toBeVisible()
+    await expect(card.locator('#plot')).toContainText('Portfolio ($M, retirement-year dollars)')
+    await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+    await expect(outcomes.getByText('70.00%', { exact: true })).toBeVisible()
+    await expect(outcomes.getByLabel('300 paths make 0 conditional purchases, 30.00%')).toBeVisible()
+    expect(await page.frames()[1].evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+    expect(audit.violations).toEqual([])
+  })
+}
+
+test('an unfunded plan does not show purchase odds', async ({ page }) => {
+  const card = await retirementHost(page, 'light', { initial: purchaseSnapshot })
+  await page.evaluate(initial => document.querySelector('iframe')?.contentWindow?.postMessage({
+    jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: {
+      ...initial, result: { ...initial.result, modelFeasible: false, preRetirementFundingGapM: 2 },
+    } },
+  }, '*'), purchaseSnapshot)
+  await expect(card.locator('#purchaseResults')).toContainText('Fund the pre-retirement cash gap')
+  await expect(card.locator('#purchaseSummary')).toBeEmpty()
+  await expect(card.locator('#purchaseDistribution')).toBeEmpty()
 })
 
 test('what-if runs do not save, and saving is explicit', async ({page}) => {

@@ -392,7 +392,7 @@ export default function Dashboard() {
           <span className="shrink-0 text-xs text-cs-muted">Jump to:</span>
           {([
             { label: 'Today', mode: 'today' as const },
-            { label: 'Last event', mode: 'last-event' as const, title: 'Jump to your last scheduled event' },
+            { label: 'Last event', mode: 'last-event' as const, title: 'Jump to your last event, excluding tentative price estimates' },
           ]).map(({ label, mode, title }) => (
             <button
               key={label}

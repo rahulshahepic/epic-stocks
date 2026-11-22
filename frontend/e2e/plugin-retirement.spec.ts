@@ -75,7 +75,10 @@ test('date comparison renders two scenarios without saving', async ({page}) => {
   const calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:{name?:string;arguments?:{scenarios?:{overrides?:{retirementDate?:string};recalculate_exit?:boolean}[]}}}[]}).pluginCalls)
   const compare=calls.find(c=>c.params.name==='compare_retirement_scenarios')
   expect(compare?.params.arguments?.scenarios?.map(s=>s.overrides?.retirementDate)).toEqual(['2032-01-02','2032-07-02'])
-  expect(compare?.params.arguments?.scenarios?.every(s=>s.recalculate_exit===false)).toBe(true)
+  expect(compare?.params.arguments?.scenarios?.every(s=>s.recalculate_exit===true)).toBe(true)
+  await expect(card.locator('#projectExit')).not.toBeChecked()
+  await expect(card.locator('#compareProjectExit')).toBeChecked()
+  await expect(card.locator('#comparison')).toContainText('date-specific projection')
   expect(calls.some(c=>c.params.name==='update_retirement_params')).toBe(false)
 })
 
@@ -312,4 +315,43 @@ test('financing requires a supplied rate and permits an intentional zero rate', 
     name?: string; arguments?: { events?: Record<string, unknown>[] }
   } }[] }).pluginCalls)
   expect(calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events?.[0]).toMatchObject({ loanRate: 0, loanYears: 5 })
+})
+
+for (const initiallyProjected of [false, true]) {
+  test(`fixed-exit comparison is explicit and independent of the single-run checkbox (${initiallyProjected})`, async ({ page }) => {
+    const initial = { ...retirementSnapshot, exitSource: initiallyProjected ? 'projected_exit' : 'saved_exit',
+      assumptions: { ...retirementSnapshot.assumptions, epicExit: initiallyProjected ? 9 : 6 } }
+    const card = await retirementHost(page, 'light', { initial })
+    await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
+    await expect(card.locator('#compareProjectExit')).toBeChecked()
+    await card.getByRole('button', { name: 'Compare retirement dates', exact: true }).click()
+    await expect(card.locator('#compare')).toBeVisible()
+    await card.getByLabel('Project Epic exit separately for each date').uncheck()
+    await expect(card.locator('#compare')).toBeHidden()
+    await expect(card.locator('#compareExitBasis')).toContainText('saved Epic exit assumption')
+    await card.getByRole('button', { name: 'Compare retirement dates', exact: true }).click()
+    await expect(card.locator('#comparison')).toContainText('Epic exit $6.00M · fixed input')
+    const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+      name?: string; arguments?: { scenarios?: { recalculate_exit?: boolean; overrides?: Record<string, unknown> }[] }
+    } }[] }).pluginCalls)
+    const comparisons = calls.filter(c => c.params.name === 'compare_retirement_scenarios')
+    expect(comparisons[0].params.arguments?.scenarios?.every(s => s.recalculate_exit === true)).toBe(true)
+    expect(comparisons[1].params.arguments?.scenarios?.every(s => s.recalculate_exit === false)).toBe(true)
+    expect(comparisons[1].params.arguments?.scenarios?.every(s => !('epicExit' in (s.overrides ?? {})))).toBe(true)
+    expect(calls.some(c => c.params.name === 'update_retirement_params')).toBe(false)
+    await expect(card.locator('#projectExit')).toBeChecked({ checked: initiallyProjected })
+    await card.getByLabel('Compare against').fill('2033-01-02')
+    await expect(card.locator('#compare')).toBeHidden()
+  })
+}
+
+test('comparison permission errors stay visible without a silent fixed-exit fallback', async ({ page }) => {
+  const card = await retirementHost(page, 'light', { comparisonFailure: 'Date-specific projections require equity:read permission.' })
+  await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
+  await card.getByRole('button', { name: 'Compare retirement dates', exact: true }).click()
+  await expect(card.locator('#compareError')).toContainText('equity:read')
+  await expect(card.locator('#compare')).toBeHidden()
+  await expect(card.locator('#compareProjectExit')).toBeChecked()
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: { name?: string } }[] }).pluginCalls)
+  expect(calls.filter(c => c.params.name === 'compare_retirement_scenarios')).toHaveLength(1)
 })

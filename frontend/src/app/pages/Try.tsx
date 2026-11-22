@@ -20,6 +20,7 @@ import {
 } from '../../scaffold/components/ui/icons.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { vestedBy } from '../vesting.ts'
+import { lastTimelineDate } from './Dashboard.math.ts'
 
 type Stage = 'upload' | 'analyzing' | 'preview'
 type Tab = 'dashboard' | 'events'
@@ -524,9 +525,7 @@ export default function Try() {
   }
 
   // ── Preview: the app itself, on data that only exists in this tab ──────────
-  const lastEventDate = result.timeline.length
-    ? result.timeline[result.timeline.length - 1].date
-    : today
+  const lastEventDate = lastTimelineDate(result.timeline)
   const errors = result.findings.filter(f => f.severity === 'error').length
   const tabClass = (active: boolean) =>
     `rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${

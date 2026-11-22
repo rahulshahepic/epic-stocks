@@ -182,6 +182,10 @@ The preview then says what an account adds that a one-off read cannot: notificat
 
 The dashboard is split into two stacked sections that share a single **As of** date picker (**Today** and **Last event** quick buttons). Dark mode is supported and follows your system preference.
 
+**Last event** ignores tentative share-price estimates, so extending price assumptions
+does not move that shortcut past your last vesting, payment or sale. Confirmed
+price updates still count. Estimates remain visible in the timeline and charts.
+
 #### "Up to this date"
 
 Summary cards showing everything that has happened through the selected date:
@@ -333,6 +337,13 @@ The MCP card opens results without a form. **Edit assumptions** and **Compare da
 are separate views; running returns to results. Chat-specified assumptions survive
 reruns, and saving remains a separate explicit action. See [MCP Apps](docs/mcp-apps.md).
 
+**Compare dates** projects Epic exit proceeds separately for each date by default,
+using your saved price estimates, vesting, debt and taxes. Its projection control
+is separate from the single-run editor. Turn it off explicitly to hold Epic exit
+proceeds fixed; each result shows the amount used. Other starting account balances
+stay fixed, and pre-retirement purchases reduce the later starting portfolio;
+working-life savings and investment returns are not modeled.
+
 **Life events and major purchases:** The Retirement tab and MCP Apps card can
 compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
 eldercare, renovations, gifts and repeat vacations. Set dates, upfront and
@@ -359,7 +370,7 @@ for the limits and the AI/app division of responsibilities.
 | --- | --- |
 | ![A140% conditional purchase](screenshots/life-events-planner-light-mobile.png) | ![A saved purchase plan](screenshots/life-events-review-light-mobile.png) |
 
-[Ownership controls](screenshots/life-events-ownership-light-mobile.png) · [MCP date comparison](screenshots/mcp-retirement-comparison-light-mobile.png)
+[Ownership controls](screenshots/life-events-ownership-light-mobile.png) · [MCP date comparison](screenshots/mcp-retirement-comparison-light-mobile.png) · [Dark comparison](screenshots/mcp-retirement-comparison-dark-mobile.png)
 
 
 | Life-event planner: mobile | Life-event planner: desktop |

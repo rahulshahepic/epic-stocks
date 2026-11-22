@@ -160,9 +160,9 @@ test.describe('Screenshots', () => {
     await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
   })
 
-  test('MCP retirement comparison - light - mobile', async ({ page }) => {
+  for (const theme of ['light', 'dark'] as const) test(`MCP retirement comparison - ${theme} - mobile`, async ({ page }) => {
     await page.setViewportSize(MOBILE)
-    const card = await retirementHost(page, 'light')
+    const card = await retirementHost(page, theme)
     await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
     await card.getByLabel('Compare against').fill('2032-07-02')
     await card.getByRole('button', { name: 'Compare retirement dates', exact: true }).click()
@@ -170,7 +170,7 @@ test.describe('Screenshots', () => {
     expect(await page.frames()[1].evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
     expect(audit.violations).toEqual([])
-    await shoot(page, 'mcp-retirement-comparison-light-mobile', { fullPage: true })
+    await shoot(page, `mcp-retirement-comparison-${theme}-mobile`, { fullPage: true })
   })
 
   for (const theme of ['light', 'dark'] as const) {

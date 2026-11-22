@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost } from './plugin-host'
+import { pluginHost, retirementHost, purchaseSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -59,6 +59,14 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean } = {}
 }
 
 test.describe('Screenshots', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test('MCP purchase results - ' + theme + ' - mobile', async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const card = await retirementHost(page, theme, { initial: purchaseSnapshot })
+      await expect(card.locator('#purchaseSummary')).toContainText('68.00%')
+      await card.locator('main').screenshot({ path: `${OUT}/mcp-purchase-results-${theme}-mobile.png` })
+    })
+  }
   // These seed data, wait for networkidle and capture whole pages, so they run
   // far longer than an assertion test. A dozen of them sat at 29.3-30.1s
   // against the config's 30s, which is not a passing test so much as one that
@@ -88,6 +96,31 @@ test.describe('Screenshots', () => {
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296
       }
     })
+  })
+
+  // Portable MCP Apps retirement resource, rendered in the synthetic MCP host.
+  // Synthetic balances only; capture both themes and sizes for PR visual review.
+  for (const theme of ['light', 'dark'] as const) {
+    for (const size of ['mobile', 'desktop'] as const) {
+      test(`MCP Apps retirement card - ${theme} - ${size}`, async ({ page }) => {
+        await page.setViewportSize(size === 'mobile' ? MOBILE : DESKTOP)
+        const card = await retirementHost(page, theme)
+        await expect(card.getByText('97.00%', { exact: true })).toBeVisible()
+        await expect(card.getByRole('img', { name: 'Median wealth and 10th to 90th percentile range by age' })).toBeVisible()
+        await expect(card.getByRole('status')).toContainText('Simulation complete')
+        await shoot(page, `mcp-apps-retirement-${theme}-${size}`, { fullPage: true })
+      })
+    }
+  }
+
+  test('MCP Apps retirement card - comparison - light - desktop', async ({ page }) => {
+    await page.setViewportSize(DESKTOP)
+    const card = await retirementHost(page, 'light')
+    await card.getByLabel('Compare against').fill('2032-07-02')
+    await card.getByRole('button', { name: 'Compare retirement dates' }).click()
+    await expect(card.getByRole('cell', { name: '2032-07-02' })).toBeVisible()
+    await expect(card.getByRole('status')).toContainText('Neither scenario was saved')
+    await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
   })
 
   for (const theme of ['light', 'dark'] as const) {
@@ -754,6 +787,62 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'dark')
     await seedRetirement(page)
     await shoot(page, 'retirement-dark-mobile', { fullPage: true })
+  })
+
+  for (const [label, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`life events planner - light - ${label}`, async ({ page }) => {
+      await authedPage(page, viewport, 'light')
+      await page.request.post(`${BASE}/api/auth/test-login`, {
+        data: { email: `life-events-${label}@screenshots.example.test`, name: 'Life Events Demo' },
+      })
+      await page.goto(`${BASE}/retirement`)
+      await page.waitForLoadState('networkidle')
+      await page.getByLabel('Retirement date').fill('2032-01-02')
+      await page.getByRole('button', { name: /Add planned expense/ }).click()
+      await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
+      await page.getByLabel(/Purchase price \(/).fill('250000')
+      await page.getByLabel('Sell car after N years (optional)').fill('15')
+      await page.getByLabel('Annual depreciation (% nominal; 0 = flat price)').fill('0')
+      await page.getByLabel('Buy only when conditions hold').check()
+      await page.getByLabel(/Minimum portfolio as %/).fill('120')
+      await page.getByRole('heading', { name: 'Life events & major purchases' }).click()
+      await expect(page.getByText(/Convert today's price to .* purchasing power/)).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
+        .withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      // The sticky site header and fixed mobile navigation are outside this
+      // component. Hide only that chrome for a focused component screenshot;
+      // otherwise they cover the planner when Playwright scrolls to it.
+      await page.evaluate(() => {
+        const planner = document.querySelector('[aria-label="Life events and major purchases"]')
+        for (const element of document.querySelectorAll<HTMLElement>('body *')) {
+          if (planner?.contains(element)) continue
+          const position = getComputedStyle(element).position
+          if (position === 'fixed' || position === 'sticky') element.style.visibility = 'hidden'
+        }
+      })
+      await page.locator('[aria-label="Life events and major purchases"]')
+        .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
+    })
+  }
+
+  test('conditional purchase before changed retirement - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.request.post(`${BASE}/api/auth/test-login`, {
+      data: { email: 'conditional-warning@screenshots.example.test', name: 'Conditional Demo' },
+    })
+    const params = { retirementDate: '2034-06-01', epicExit: 5, paths: 10, seed: 1729,
+      plannedEvents: [{ id: 'car', title: 'Optional car', kind: 'vehicle',
+        date: '2035-01-01', amountM: 0.2, condition: { requireFullSpending: true } }] }
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...params, retirementDate: '2036-01-01' } } })).ok()).toBe(true)
+    await page.goto(`${BASE}/retirement`)
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+    const warning = page.getByText(/Optional car: conditional ownership periods before retirement are skipped/)
+    await expect(warning).toBeVisible()
+    await warning.screenshot({ path: `${OUT}/conditional-purchase-warning-light-mobile.png` })
   })
 
   test('prices and tentative announcement - light - mobile', async ({ page }) => {

@@ -284,11 +284,65 @@ All math runs locally in your browser — no calculation results are stored. Tax
 
 ---
 
+### Retirement simulations with MCP Apps (ChatGPT and Claude)
+
+The Epic Stocks MCP Apps connector can run the **same 1928–2023 historical block-bootstrap Monte Carlo engine** as the browser. Ask a supported assistant to **show my retirement plan**, **run the retirement simulation**, or **compare retiring this year versus next year**. The portable interactive retirement card shows funding-shortfall probability, portfolio-exhaustion probability, initial and median ending wealth, a percentile fan chart, and what-if controls for date, spending, health insurance, stock/bond allocation and market scenario. The card's **Run simulation** and **Compare** actions do not save anything. **Save these inputs** writes only named fields when the connection has `comp:write` permission.
+
+The connector tools are `get_retirement_params`, `update_retirement_params`, `run_retirement_simulation`, `compare_retirement_scenarios`, `plan_life_events`, `show_retirement` and app-only `refresh_retirement_view`. For retirement-date comparisons, the connector asks the existing `preview-exit` service for **after-tax, after-loan net cash** at each date. These amounts can depend on assumed future Epic share prices and are projections, not current balances. The simulations use a fixed random seed by default for comparable scenarios, at most 100,000 paths each, and return the percentiles in retirement-year purchasing power. Liquidity shortfalls and full portfolio exhaustion are separate metrics.
+
+After **Run simulation**, the card shows a wealth chart with labeled dollar and age axes, plus **Will the planned purchases happen?** above the input editor. Purchase bars show the percentage buying and skipping each conditional event. A distribution chart shows how many paths buy none, one or several purchases, including replacements, and the overall chance of buying at least one. Those overall odds count individual paths once, rather than adding overlapping event probabilities. Required expenses such as college remain listed separately and are never switched off by a purchase condition. These are scheduling probabilities, not a guarantee that all bills are funded. The same results update after **Compare with / without events**. Older hosts without the new summary still show each event's available odds.
+
+![Retirement card with purchase probabilities](screenshots/mcp-purchase-results-light-mobile.png)
+![Retirement purchase results in dark mode](screenshots/mcp-purchase-results-dark-mobile.png)
+
+For the host support matrix, scope requirements and real-host acceptance checklist, see [MCP Apps across assistants](docs/mcp-apps.md). The existing portfolio cards have been user-verified in Claude. The new retirement card still needs a separate Claude-host acceptance test.
+
+The Docker build compiles `frontend/src/app/pages/Retirement.math.ts` into `backend/app/retirement.math.mjs` and copies a Node runtime into the Python image. `backend/app/retirement_runner.mjs` runs the exact compiled calculator as a bounded subprocess through `backend/app/retirement_simulation.py`; `backend/app/mcp/retirement_tools.py` and `retirement_ui.py` expose it to the OAuth-scoped MCP server and versioned `retirement.html` component. No additional network access, secret, database table or environment variable is required.
+
 ### Retirement Simulator
+
+**Conditional purchases and car ownership:** Major purchases can require normal
+spending (no spending cuts), a minimum current portfolio, and/or a minimum
+percentage of starting retirement wealth. The simulator decides using only
+state known on the purchase date, skips failed purchases, and reports how often
+you actually buy. If a later retirement date moves an existing conditional
+purchase before retirement, that ownership period is skipped with a warning;
+you can still save and simulate the rest of the plan
+([example warning](screenshots/conditional-purchase-warning-light-mobile.png)). Existing loan and ownership bills continue once committed.
+For cars, enter ownership lifetime and annual nominal depreciation (including
+zero for a flat nominal price): the model sells at the end, pays remaining debt,
+and stops ownership costs. Each scheduled replacement has its own lifetime and
+conditional decision. These controls are available in the web planner and the
+ChatGPT retirement card; read-only MCP tools accept the same fields. See
+[conditions and lifetimes](docs/life-events-planner.md).
+
+**Life events and major purchases:** The Retirement tab and MCP Apps card can
+compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
+eldercare, renovations, gifts and repeat vacations. Set dates, upfront and
+incremental annual costs, mortgage terms, old-home/trade-in proceeds, optional
+resale, and a hypothetical funding source. The shared simulation engine
+calculates before/after risk using matched seeds. The read-only
+`plan_life_events` MCP tool never creates a stock sale or other transaction.
+Pre-retirement purchases, mortgage payments and incremental recurring costs
+reduce projected retirement wealth; the model does not simulate working-life
+income or actual future tax lots. See [Life events planning](docs/life-events-planner.md)
+for the limits and the AI/app division of responsibilities.
 
 | Mobile | Desktop |
 |--------|---------|
 | ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
+
+| Life-event planner: mobile | Life-event planner: desktop |
+|----------------------------|-----------------------------|
+| ![Major purchase planner on mobile](screenshots/life-events-planner-light-mobile.png) | ![Major purchase planner on desktop](screenshots/life-events-planner-light-desktop.png) |
+
+The planner accepts amounts in the selected retirement year's purchasing power,
+not today's sticker prices. Its built-in converter inflates a current price to
+that year using the stated inflation assumption. If a pre-retirement purchase
+exceeds available modeled taxable funds, the app reports the unfunded gap and
+withholds misleading affordability odds and ending-wealth charts until a
+funding source is modeled. Locked retirement accounts are not silently spent.
+
 
 The **Retirement** tab runs a 100,000-path simulation of your retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time using **block-bootstrapped real returns from 1928–2023 U.S. history**.
 
@@ -590,6 +644,8 @@ Muse's [official connector guide](https://www.meta.com/help/artificial-intellige
 | --- | --- |
 | ![Selectable account permissions](screenshots/oauth-permissions-light-mobile.png) | ![Selectable account permissions in dark mode](screenshots/oauth-permissions-dark-desktop.png) |
 
+Both Claude and ChatGPT can render the shared MCP Apps cards. The existing portfolio cards have been verified in Claude by a user; retirement controls require a separate real-host test. Other connected assistants receive normal MCP tool results unless their inline MCP Apps support is verified. See [MCP Apps compatibility](docs/mcp-apps.md).
+
 The two ZIP formats differ: ChatGPT uses the portable Agent Plugins manifest and MCP config with OAuth dynamic registration; Claude uses its own plugin manifest and HTTP MCP config. Downloads are generated by `backend/scaffold/routers/plugin_downloads.py` from the existing `plugins/epic-stocks/` source. Host-side upload and OAuth still need a phone acceptance test before calling either path verified.
 
 Then name the connector when you ask a question. Both assistants do better when told which tool to use than when left to guess.
@@ -598,7 +654,7 @@ If your ChatGPT is provided by your employer, a workspace admin may need to enab
 
 > **Getting "registration endpoint returned 403"?** Check the Cloudflare security event for that request. A custom challenge rule can block `/oauth/register` or `/admin-oauth/register` before it reaches the app. See [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors).
 
-**Interactive ChatGPT portfolio.** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask ChatGPT to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [the implementation plan, setup and host acceptance steps](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
+**Interactive MCP Apps portfolio (ChatGPT and Claude).** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask the assistant to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [MCP Apps host compatibility and acceptance checks](docs/mcp-apps.md) and [ChatGPT-specific setup](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
 
 **Import inside ChatGPT or Claude.** Attach your documents in the chat and ask the assistant to enter them; it previews with `apply_changes` and saves once you agree, as above. The portfolio card shows each grant's vesting dates.
 
@@ -1610,7 +1666,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
 - **Daily jobs run outside the web process.** `python -m scheduled_jobs` checks whether UTC maintenance (03:00), notifications (07:00), and the admin digest (07:00) are due. A newly installed timer catches up later on the current UTC day, even when the due hour passed before deployment. It stores a runner start/finish heartbeat and the last result of each check, plus the last successful UTC date and timestamp separately for each job in `system_settings`. Admin → Deployment shows the build and these records, warning after 35 minutes without a completed check. Failed jobs retry on the next invocation, and PostgreSQL advisory locks avoid overlap. Digest delivery also records success per admin so a failed recipient can be retried without resending to successful recipients. Hetzner invokes the command every 15 minutes via a systemd timer installed before the app is taken down for deployment. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
-**ChatGPT UI code:** `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+**MCP Apps UI code (ChatGPT and Claude):** `backend/app/mcp/ui_tools.py` and `retirement_ui.py` register scoped, versioned MCP Apps resources; `portfolio.html` and `retirement.html` are the self-contained components. `retirement_tools.py` exposes the Monte Carlo runner and named-field edits. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 
 
 Price entry and tentative announcement on mobile:

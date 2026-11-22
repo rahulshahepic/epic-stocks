@@ -30,8 +30,10 @@ from scaffold.auth import get_admin_emails
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools  # noqa: F401
+from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, retirement_tools  # noqa: F401
 from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
+from .retirement_tools import RETIREMENT_RESOURCE_URI
+from .retirement_ui import retirement_resource_contents, retirement_resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -194,6 +196,9 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
             "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
             "serverInfo": {"name": "epic-stocks", "title": "Epic Stocks", "version": "1"},
             "instructions": (
+                "Use show_retirement for an interactive retirement planner, run_retirement_simulation "
+                "for numeric analysis, and compare_retirement_scenarios for retirement-date decisions. "
+                "Exploratory overrides never save; update_retirement_params writes only with permission.\n\n"
                 "Use show_equity when someone asks to see or browse their "
                 "portfolio; it opens an interactive view. Use the other read "
                 "tools for analysis without opening a card.\n\n"
@@ -249,7 +254,11 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
     if method == "resources/list":
         if admin:
             return _result(request_id, {"resources": []})
-        resources = [resource_descriptor()] if "equity:read" in connector.scopes else []
+        resources = []
+        if "equity:read" in connector.scopes:
+            resources.append(resource_descriptor())
+        if "comp:read" in connector.scopes:
+            resources.append(retirement_resource_descriptor())
         return _result(request_id, {"resources": resources})
 
     if method == "resources/templates/list":
@@ -258,11 +267,15 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
     if method == "resources/read":
         if admin:
             return _error(request_id, INVALID_PARAMS, "Unknown resource")
-        if params.get("uri") != RESOURCE_URI:
-            return _error(request_id, INVALID_PARAMS, "Unknown resource")
-        if "equity:read" not in connector.scopes:
-            return _error(request_id, INVALID_PARAMS, "This resource requires equity:read")
-        return _result(request_id, {"contents": [resource_contents()]})
+        if params.get("uri") == RESOURCE_URI:
+            if "equity:read" not in connector.scopes:
+                return _error(request_id, INVALID_PARAMS, "This resource requires equity:read")
+            return _result(request_id, {"contents": [resource_contents()]})
+        if params.get("uri") == RETIREMENT_RESOURCE_URI:
+            if "comp:read" not in connector.scopes:
+                return _error(request_id, INVALID_PARAMS, "This resource requires comp:read")
+            return _result(request_id, {"contents": [retirement_resource_contents()]})
+        return _error(request_id, INVALID_PARAMS, "Unknown resource")
 
     if method == "tools/call":
         return _call_tool(params, request_id, ctx, admin=admin)

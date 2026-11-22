@@ -145,6 +145,7 @@ def mcp(client):
 # read-only — a client decides how loudly to confirm from these annotations.
 WRITING_TOOLS = {
     "add_compensation", "remove_compensation", "set_retirement_accounts",
+    "update_retirement_params",
     "apply_changes",
 }
 
@@ -554,8 +555,27 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
         },
         "remove_compensation": {"ids": ["nothing-with-this-id"]},
         "set_retirement_accounts": {"roth": 0.25},
+        "update_retirement_params": {"changes": {"defaultSpend": 180}},
+        "plan_life_events": {"events": [{"id": "trip", "title": "Vacation", "kind": "travel",
+                                         "date": "2033-06-01", "amountM": 0.02}],
+                             "recalculate_exit": False},
+        "compare_retirement_scenarios": {"scenarios": [
+            {"name": "First", "recalculate_exit": False},
+            {"name": "Second", "recalculate_exit": False},
+        ]},
     }
     arguments = dict(required.get(name, {}))
+    if name in {"run_retirement_simulation", "compare_retirement_scenarios",
+                "show_retirement", "refresh_retirement_view", "plan_life_events"}:
+        # The backend pytest job has no compiled Node worker. The simulator
+        # itself is exercised by the frontend and Docker jobs.
+        from app.mcp import retirement_tools
+        monkeypatch.setattr(retirement_tools, "run", lambda owner, **kw: {
+            "retirementDate": "2032-01-02", "exitSource": "saved_exit",
+            "assumptions": {"epicExit": 1.0, "defaultSpend": 180},
+            "result": {"pctRuin": 0.02, "pctFundingShortfall": 0.02,
+                       "medianFinalM": 10.0, "p10FinalM": 3.0}, "saved": False,
+        })
     if name == "get_tax_breakdown":
         arguments["sale_id"] = mcp.call("list_sales")["sales"][0]["id"]
     if name == "apply_changes":

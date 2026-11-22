@@ -49,6 +49,7 @@ import {
   type SimResult,
 } from './Retirement.math.ts'
 import { fmt$M, fmtPct } from '../format.ts'
+import LifeEventsPlanner from './LifeEventsPlanner.tsx'
 
 const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
 // .year is yyyymm — extract just the calendar year for display.
@@ -431,6 +432,8 @@ function RetirementAccount() {
     retirementDate: string
     spouseDOB: string | null
   } | null>(null)
+  const [runError, setRunError] = useState('')
+  const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
   const resultDollarYear = completedRun?.retirementDate.slice(0, 4)
@@ -447,7 +450,9 @@ function RetirementAccount() {
     completedRun.spouseDOB !== spouseDOB ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState('')
+  const saveRequestRef = useRef(0)
   const [showRuinTable, setShowRuinTable] = useState(false)
 
   const vid = viewing?.invitationId
@@ -475,6 +480,7 @@ function RetirementAccount() {
     setParamsLoaded(false)
     setParamsError(false)
     setCompletedRun(null)
+    setLifeEventComparison(null)
     setHasRun(false)
     setRunning(false)
     if (runTimer.current) clearTimeout(runTimer.current)
@@ -622,15 +628,23 @@ function RetirementAccount() {
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
+    const request = ++saveRequestRef.current
     setSaveStatus('saving')
+    setSaveError('')
     const t = setTimeout(() => {
       api.saveRetirementParams({
         ...(params as unknown as Record<string, unknown>),
         retirementDate,
         spouseDOB,
       })
-        .then(() => setSaveStatus('saved'))
-        .catch(() => setSaveStatus('idle'))
+        .then(() => {
+          if (request === saveRequestRef.current) setSaveStatus('saved')
+        })
+        .catch((err: unknown) => {
+          if (request !== saveRequestRef.current) return
+          setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
+          setSaveStatus('error')
+        })
     }, 500)
     return () => clearTimeout(t)
   }, [params, retirementDate, spouseDOB, vid])
@@ -662,16 +676,27 @@ function RetirementAccount() {
       spouseBirthDate: spouseDOB ?? undefined,
       glidePoints: params.glidePoints.map(point => ({ ...point })),
     }
+    setRunError('')
     setRunning(true)
     runTimer.current = setTimeout(() => {
       try {
+        const simulated = simulate(runParams)
+        const baseline = runParams.plannedEvents?.length
+          ? simulate({ ...runParams, plannedEvents: [] })
+          : null
+        setLifeEventComparison(baseline ? { baseline, withEvents: simulated } : null)
         setCompletedRun({
-          result: simulate(runParams),
+          result: simulated,
           params: { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) },
           retirementDate,
           spouseDOB,
         })
         setHasRun(true)
+      } catch (error) {
+        setCompletedRun(null)
+        setLifeEventComparison(null)
+        setHasRun(false)
+        setRunError(error instanceof Error ? error.message : 'Unable to run the retirement simulation.')
       } finally {
         setRunning(false)
         runTimer.current = null
@@ -708,9 +733,17 @@ function RetirementAccount() {
               ? 'Saving…'
               : saveStatus === 'saved'
                 ? 'All inputs saved'
-                : 'Inputs save automatically'}
+                : saveStatus === 'error'
+                  ? 'Save failed'
+                  : 'Inputs save automatically'}
         </span>
       </div>
+
+      {saveStatus === 'error' && !vid && (
+        <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
+          Retirement changes were NOT saved: {saveError}. Fix the invalid event or try again.
+        </p>
+      )}
 
       <div className="rounded-xl border border-cs-border bg-cs-raised ">
         <button
@@ -750,6 +783,20 @@ function RetirementAccount() {
           </div>
         )}
       </div>
+
+      {(result?.eventWarnings ?? []).map((warning, index) => <p key={index} role="note" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{warning}</p>)}
+      {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
+      <LifeEventsPlanner
+        events={params.plannedEvents ?? []}
+        retirementDate={retirementDate}
+        onChange={events => {
+          update('plannedEvents', events)
+          setLifeEventComparison(null)
+        }}
+        comparison={resultsStale ? null : lifeEventComparison}
+        onRun={run}
+        running={running}
+      />
 
       {/* Card 1: Who & when */}
       <Card pad="md">
@@ -1424,13 +1471,23 @@ function RetirementAccount() {
         )}
       </div>
 
-      {result && (
+      {result && resultsStale && (
+        <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Inputs changed. Re-run to update these results; the figures below belong to the previous run.
+        </p>
+      )}
+      {result && result.preRetirementFundingGapM > 1e-9 && (
+        <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          <strong>Purchase plan cannot be funded as entered.</strong> The planned pre-retirement
+          expenses exceed projected taxable funds by {fmt$M(result.preRetirementFundingGapM)}.
+          Retirement-account withdrawals, working-life wages and financing are not modeled.
+          No retirement probability, wealth chart or purchase affordability result is valid
+          until this gap is funded. Reduce the purchase or add a documented funding source,
+          then re-run the simulation.
+        </p>
+      )}
+      {result && result.preRetirementFundingGapM <= 1e-9 && (
         <>
-          {resultsStale && (
-            <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-              Inputs changed. Re-run to update these results; the charts still show the previous run.
-            </p>
-          )}
           {(() => {
             const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
             const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)

@@ -20,6 +20,15 @@ current head SHA, relevant tests, and unresolved discussions, not just the PR
 description. Record the reviewer, head SHA, findings and validation in the PR.
 A new push requires checking the changed diff again.
 
+**Request the automated review with the `Needs Review` label.** Pushes do not
+start a review; the label does. Add `Needs Review` once your last commit for a
+batch is pushed: when you open the PR, and again after each round of fixes.
+Add it once per batch, after the final push, never per commit, so the reviewer
+sees the finished state. If you cannot add labels, say so in the PR; the daily
+review run still picks it up. Leave `Under Review`, `Waiting for Changes` and
+`Ready to merge` to the review session: `Under Review` means a review is in
+progress, and only the reviewer sets or clears it.
+
 Only `@rahulshahepic` is a code owner. When a collaborator merges a PR, it must
 have a current approving code-owner review from that account, following the
 assistant review. Collaborators must not treat their own or each other's
@@ -42,6 +51,59 @@ Review clearance does not expand the task's permission to merge or deploy.
 Follow Rahul's instructions for the current task. Do not manufacture an approval,
 approve your own implementation in the same session, disable CI, dismiss genuine
 blocking feedback to force a merge, or push directly to protected branches.
+
+## Promoting staging to main
+
+Merging a feature PR into `staging` is not the end of the job. Whoever merges it
+(a review session or any agent acting through Rahul's account) then, in the same
+run, does the steps below. This section is Rahul's standing instruction for the
+promotion step. It is the explicit permission to merge `staging` into `main`
+that the paragraph above otherwise requires. It gives no permission to deploy.
+
+1. Opens a PR from `staging` to `main`, or reuses the one already open. Never
+   open a second one, and never use a branch other than `staging` as the
+   source; `require-staging-source` fails anything else.
+2. Subscribes to that PR's activity, so CI results and comments come back to
+   the session instead of being polled for.
+3. Merges it with a merge commit (not squash or rebase, so `staging` and `main`
+   keep a common ancestry and later promotions don't conflict) once **all** of these hold for its current head:
+   - every required check has passed (backend, frontend, e2e, caddy-validate,
+     dependency-review, require-staging-source);
+   - the `Deploy` workflow run for this exact `staging` head finished
+     successfully. That run is the only thing that applies migrations and
+     health-checks against a real database before production, so a run that is
+     still in progress, failed or missing means wait or stop, not merge;
+   - it has no merge conflicts with `main`. Being `behind` `main` is normal and
+     does not block. Each promotion's merge commit lands only on `main`, so
+     `staging` is always at least one commit behind, and `main` deliberately
+     does not require branches to be up to date (Setup step 2). If GitHub
+     reports actual conflicts (`dirty`), stop and notify. The fix is a
+     history-only PR that merges `main` into `staging` with no tree change, as
+     #639 did, reviewed and merged with a merge commit like any other.
+     Promotion resumes after its staging `Deploy` run succeeds;
+   - no review thread is unresolved, no `Waiting for Changes` label is set,
+     and no comment from Rahul asks to hold the release;
+   - every feature PR it carries was cleared by its assistant review. The
+     evidence is that the PR had `Ready to merge` when it merged, or carries an
+     assistant review comment naming the head SHA that merged. A carried PR
+     with neither blocks the promotion.
+4. If a check fails or a blocker appears, does not merge. It comments on the
+   PR with what failed and notifies Rahul. It never retries CI with an empty
+   commit, and never fixes the failure by pushing directly to `staging` or
+   `main`. A fix goes through a feature PR to `staging` like any other change.
+
+Merging to `main` does not by itself release to production. The deploy job runs in
+the `production` environment, which waits for Rahul's approval in the CD
+pipeline (see step 9 of "Setup in GitHub"). An agent never approves, re-runs or
+otherwise pushes that deployment along; leaving it for Rahul is the expected end
+state of a promotion.
+
+That approval rule is what makes automatic promotion safe, and it lives in
+GitHub settings, not in this repository. After merging, the agent checks the
+`main` Deploy run. It should show **Waiting** for review. If the deploy job is
+running or has finished without an approval, the gate is missing. The agent
+then notifies Rahul at once, and no agent promotes again until Rahul confirms
+the rule is restored.
 
 ## What GitHub can enforce
 
@@ -74,10 +136,14 @@ These files document the desired setup; merging them does not activate rulesets.
    Keep `main protection` and `staging protection` active with **no bypass
    actors**. Preserve their existing checks and up-to-date requirements:
    
-   | Branch | Required checks |
-   | --- | --- |
-   | staging | backend, frontend, e2e, caddy-validate, dependency-review |
-   | main | backend, frontend, e2e, caddy-validate, dependency-review, require-staging-source |
+   | Branch | Required checks | Require branches to be up to date |
+   | --- | --- | --- |
+   | staging | backend, frontend, e2e, caddy-validate, dependency-review | On |
+   | main | backend, frontend, e2e, caddy-validate, dependency-review, require-staging-source | **Off** |
+
+   Keep it off for `main`. Every promotion's merge commit exists only on `main`,
+   so the next promotion PR is always `behind`. With the requirement on, no
+   promotion could merge without a back-merge PR first.
 
 3. Select **New ruleset -> New branch ruleset**. Name it **Owner review**.
    Leave enforcement **Disabled** while configuring. Alternatively import
@@ -112,6 +178,21 @@ These files document the desired setup; merging them does not activate rulesets.
    Rahul should have a review-bypass merge path, while a failing required CI
    check must still block Rahul. Inspect the merge box using each actor's
    session; a blocked API request alone does not prove all cases.
+
+9. Open **Settings → Environments → `production`** and configure the release
+   gate that automatic promotion relies on:
+
+   | Setting | Value |
+   | --- | --- |
+   | Required reviewers | `rahulshahepic` |
+   | Prevent self-review | Off |
+   | Deployment branches and tags | Selected branches: `main` only |
+
+   Prevent self-review stays off because agents merge as Rahul, so the run is
+   triggered by Rahul. With it on, Rahul could not approve his own production
+   deploys. Leave `staging` without required reviewers.
+   Verify after the next promotion that the `main` Deploy run shows
+   **Waiting** for review before anything reaches the server.
 
 After a transfer, role change, or new agent identity, audit the actual bypass
 actors again. Do not infer privileges from an agent's name.

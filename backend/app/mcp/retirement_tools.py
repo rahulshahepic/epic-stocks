@@ -5,7 +5,7 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
-RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v3.html"
+RETIREMENT_RESOURCE_URI = "ui://epic-stocks/retirement-v4.html"
 
 _EVENT_SCHEMA = {
     "type": "object", "additionalProperties": False,

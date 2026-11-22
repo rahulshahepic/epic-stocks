@@ -94,9 +94,9 @@ export const purchaseSnapshot = {
   },
 }
 
-export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[] } = {}) {
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string } = {}) {
   await page.goto('/login')
-  await page.evaluate(({html,initial,theme,refreshed,refreshResponses}) => {
+  await page.evaluate(({html,initial,theme,refreshed,refreshResponses,comparisonFailure}) => {
     document.body.innerHTML=''
     const frame=document.createElement('iframe')
     frame.title='Epic Stocks retirement plugin'
@@ -113,7 +113,7 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
       if(msg.method==='ui/initialize')reply({hostContext:{theme,displayMode:'inline',availableDisplayModes:['inline','fullscreen']}})
       if(msg.method==='ui/notifications/initialized')frame.contentWindow?.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:initial}},'*')
       if(msg.method==='tools/call'){
-        if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map((s,index)=>({...initial,...s,retirementDate:s.overrides.retirementDate,result:index===0?initial.result:{...initial.result,pctFundingShortfall:.019,pctExhausted:.008,startingTotalM:8.05,medianFinalM:13.2}}))}})}
+        if(msg.params.name==='compare_retirement_scenarios'){if(comparisonFailure){reply({isError:true,content:[{type:'text',text:comparisonFailure}]});return}const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string;epicExit?:number};recalculate_exit:boolean}[]};reply({structuredContent:{scenarios:args.scenarios.map((s,index)=>({...initial,...s,retirementDate:s.overrides.retirementDate,exitSource:s.recalculate_exit?'projected_exit':'saved_exit',assumptions:{...initial.assumptions,...s.overrides,epicExit:s.recalculate_exit?6+index*.35:s.overrides.epicExit??6},result:index===0?initial.result:{...initial.result,pctFundingShortfall:.019,pctExhausted:.008,startingTotalM:8.05,medianFinalM:13.2}}))}})}
         else if(msg.params.name==='plan_life_events'){const args=msg.params.arguments as {events:unknown[];overrides?:Record<string,unknown>};reply({structuredContent:{baseline:initial,withEvents:{...initial,inputOverrides:{...args.overrides,plannedEvents:args.events},assumptions:{...initial.assumptions,...args.overrides,plannedEvents:args.events},result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})}
         else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
         else {if(refreshResponses?.[refreshIndex]){reply({structuredContent:refreshResponses[refreshIndex++]});return}const args=msg.params.arguments as {overrides?:Record<string,unknown>;recalculate_exit?:boolean},source=refreshed??initial,overrides=args.overrides??{};reply({structuredContent:{...source,retirementDate:overrides.retirementDate??source.retirementDate,exitSource:args.recalculate_exit?'projected_exit':'saved_exit',inputOverrides:overrides,assumptions:{...source.assumptions,...overrides,...(args.recalculate_exit?{epicExit:9}:{})}}})}
@@ -123,7 +123,7 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
     })
     frame.srcdoc=html
     document.body.append(frame)
-  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses})
+  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses,comparisonFailure:options.comparisonFailure})
   const widget=page.frameLocator('iframe')
   await widget.getByText('97.00%',{exact:true}).waitFor()
   return widget

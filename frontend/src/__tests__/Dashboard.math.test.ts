@@ -39,6 +39,24 @@ describe('timeline dates', () => {
     expect(lastTimelineDate([event({ date: '2024-01-01' }), event({ date: '2033-01-01' })]))
       .toBe('2033-01-01')
   })
+
+  it('ignores only tentative share prices, preserving future transactions and confirmed prices', () => {
+    const vest = event({ date: '2030-01-01', event_type: 'Vesting', price_is_estimate: true })
+    const estimate = event({ date: '2042-01-01', event_type: 'Share Price', is_estimate: true })
+    expect(lastTimelineDate([vest, estimate])).toBe('2030-01-01')
+    const payoff = event({ date: '2035-01-01', event_type: 'Loan Payoff', is_projected: true, price_is_estimate: true })
+    expect(lastTimelineDate([vest, payoff, estimate])).toBe('2035-01-01')
+    const confirmed = event({ date: '2043-01-01', event_type: 'Share Price', is_estimate: false })
+    expect(lastTimelineDate([vest, estimate, confirmed])).toBe('2043-01-01')
+    expect(maxTimelineDate([vest, estimate], null)).toBe('2042-01-01')
+  })
+
+  it('falls back to today when the timeline contains only price estimates', () => {
+    const today = new Date().toLocaleDateString('en-CA')
+    expect(lastTimelineDate([event({ date: '2042-01-01', event_type: 'Share Price', is_estimate: true })])).toBe(today)
+    expect(lastTimelineDate([event({ date: '2042-01-01', event_type: 'Share Price', price_is_estimate: true })])).toBe(today)
+    expect(lastTimelineDate(null)).toBe(today)
+  })
 })
 
 it('does not call last year stale before the expected announcement', () => {

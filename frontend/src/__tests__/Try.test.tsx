@@ -251,6 +251,15 @@ describe('Try — preview', () => {
     expect(screen.getByRole('button', { name: 'Last event' })).toBeInTheDocument()
   })
 
+  it('does not jump to a distant tentative price when choosing Last event', async () => {
+    mockFetch({ ...CLEAN, timeline: [...CLEAN.timeline,
+      event({ date: '2199-01-01', event_type: 'Share Price', is_estimate: true })] })
+    renderTry()
+    await upload()
+    await userEvent.click(await screen.findByRole('button', { name: 'Last event' }))
+    expect(screen.getByLabelText('As of')).toHaveValue(FUTURE)
+  })
+
   it('switches to the events timeline on the Events tab', async () => {
     mockFetch(CLEAN)
     renderTry()

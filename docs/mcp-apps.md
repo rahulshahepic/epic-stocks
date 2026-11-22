@@ -27,7 +27,7 @@ Epic Stocks exposes **one OAuth-protected Streamable HTTP MCP server** at `https
 | Resource | Server files | Scope |
 | --- | --- | --- |
 | `ui://epic-stocks/portfolio-v3.html` | `backend/app/mcp/ui_tools.py`, `portfolio.html` | `equity:read` |
-| `ui://epic-stocks/retirement-v3.html` | `backend/app/mcp/retirement_tools.py`, `retirement_ui.py`, `retirement.html` | `comp:read` |
+| `ui://epic-stocks/retirement-v4.html` | `backend/app/mcp/retirement_tools.py`, `retirement_ui.py`, `retirement.html` | `comp:read` |
 
 `backend/app/mcp/transport.py` lists and serves these resources. HTML/CSS/JS is bundled in the resource, with no third-party script or direct account API fetch. CSP, OAuth scopes, account isolation, revocation and server-side rate limits still apply. The `openai/ui` metadata enables optional ChatGPT display/entrypoint enhancements; the **basic MCP Apps protocol is shared**. Do not assume fullscreen, sidebar, host file selection, persistence or mobile presentation is identical across clients.
 
@@ -60,6 +60,16 @@ Retirement responses distinguish resolved `assumptions` for display from explici
 edited fields without persisting derived defaults. A date-specific Epic projection
 is saved only when selected explicitly and already run for the current date.
 
+Date comparisons default to **Project Epic exit separately for each date**. This
+uses saved future price estimates, vesting, debt and taxes and requires
+`equity:read`. The comparison control is independent of the single-run projection
+checkbox. An explicit opt-out holds the saved or caller-supplied Epic exit amount
+fixed, with the actual amount labeled in each result. Projection failures remain
+visible; the card never silently falls back to fixed proceeds. Other starting
+account balances stay fixed, and purchases before each retirement date are deducted
+without modeling working-life savings or market returns. Changing the comparison
+date or mode clears stale comparison results. None of these actions saves inputs.
+
 For the ChatGPT package build and host-specific rollout, see [ChatGPT plugin instructions](chatgpt-plugin.md) and [portable plugin packaging](../plugins/epic-stocks/README.md). For Claude, the Connect your AI page provides its custom connector and ZIP installation paths.
 
 ## Acceptance checklist for each host
@@ -83,7 +93,7 @@ The existing Claude verification establishes that **the existing portfolio cards
 
 ## Retirement workflow and purchase deferral
 
-The retirement-v3 resource separates results, assumption editing and retirement-date
+The retirement-v4 resource separates results, assumption editing and retirement-date
 comparison within one active card. It preserves complete what-if assumptions across
 reruns, including chat-specified fields without form controls. It does not depend
 on communication between independent cards. A comparison uses one draft snapshot;

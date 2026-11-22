@@ -37,8 +37,8 @@ export function findStalePrice(prices: PriceEntry[] | null) {
   return newest.effective_date.slice(0, 4) < year ? newest : null
 }
 
-/** The last date on the timeline, projections included — what "Last event" jumps to. */
+/** Last substantive event or confirmed price; tentative prices do not move the shortcut. */
 export function lastTimelineDate(events: TimelineEvent[] | null) {
-  if (!events?.length) return localToday()
-  return events[events.length - 1].date
+  const substantive = events?.filter(e => e.event_type !== 'Share Price' || !(e.is_estimate || e.price_is_estimate))
+  return substantive?.at(-1)?.date ?? localToday()
 }

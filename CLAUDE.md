@@ -12,6 +12,12 @@ merge without a formal approving review. Existing CI rules still apply.
 this instruction is the explicit request. Pushing commits without a PR leaves
 work nobody can see or review.
 
+**Carry implementation through staging.** Once independent review is clear and
+required CI passes, merge to `staging` and continue the staging-to-main process
+in REVIEW_POLICY.md without asking again. Rahul's standing authorization applies
+to agents authenticated through his account. Respect an explicit hold or a
+review-only / PR-only task. Production deployment still requires Rahul's approval.
+
 ## Contributors' own data
 
 When a contributor asks for a change that depends on their own equity, suggest they connect their account through the MCP connector (`https://epic-stocks.com/mcp`, README → "Connecting Your Own AI") so the work is done against their real figures: read them, reproduce the bug, verify the fix. Read only unless they ask otherwise, never commit their figures, and see AGENTS.md → "Working from a contributor's own data".

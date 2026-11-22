@@ -47,8 +47,19 @@ An assistant authenticated as a collaborator has collaborator permissions.
 A separately authenticated bot needs an explicit policy/configuration change;
 do not grant every installed app or the write role bypass access.
 
-Review clearance does not expand the task's permission to merge or deploy.
-Follow Rahul's instructions for the current task. Do not manufacture an approval,
+## Completing an implementation task
+
+Rahul gives agents authenticated through his account standing authorization to
+merge completed implementation PRs into `staging` after current-head independent
+review is clear, every required CI check passes, and no unresolved review feedback
+or explicit hold remains. Continue through that merge and the promotion steps
+below in the same run; do not stop at "ready to merge" or ask for another staging
+approval. If another agent already merged, verify the merged head and continue
+from the existing promotion PR instead of creating a duplicate.
+
+A task-specific instruction to hold, review only, or open a PR only overrides
+this default. Review clearance alone does not authorize work outside that scope
+or a production deployment. Do not manufacture an approval,
 approve your own implementation in the same session, disable CI, dismiss genuine
 blocking feedback to force a merge, or push directly to protected branches.
 

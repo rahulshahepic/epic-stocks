@@ -26,9 +26,10 @@ One feature PR to staging covers the shared simulator, web planner and MCP card.
 ## Completed validation
 
 - TypeScript build-mode type checking and full ESLint pass.
-- Frontend: 682 tests across 44 files pass without unhandled errors.
-- Backend: 117 retirement/MCP/UI/write tests pass.
-- Browser: 22 portable MCP workflow/accessibility tests pass.
+- Frontend: 683 tests across 44 files pass without unhandled errors.
+- Backend: 120 retirement/MCP/UI/write tests pass.
+- Browser: 26 portable MCP workflow/accessibility tests cover explicit input
+  provenance, date-specific projections, spending floors and financing rates.
 - Screenshots: 17 affected planning capture/accessibility cases pass, including
   light/dark mobile, desktop, date comparison, 140% entry, separate ownership
   controls and the saved expense review. Captures were inspected visually.

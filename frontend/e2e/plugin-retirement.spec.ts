@@ -149,7 +149,7 @@ test('MCP card converts a current sticker price without recording a sale', async
 })
 
 test('results open without a form; editing preserves chat parameters and returns to results', async ({ page }) => {
-  const initial = { ...retirementSnapshot, assumptions: { ...retirementSnapshot.assumptions,
+  const initial = { ...retirementSnapshot, inputOverrides: { ssMonthly: 3100, stockPct: 0.735, bondPct: 0.165 }, assumptions: { ...retirementSnapshot.assumptions,
     ssMonthly: 3100, stockPct: 0.735, bondPct: 0.165 } }
   const card = await retirementHost(page, 'light', { initial })
   await expect(card.locator('#resultsView')).toBeVisible()
@@ -224,4 +224,92 @@ test('editing saved tuition preserves four years when the start date moves', asy
   } }[] }).pluginCalls)
   expect(calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events?.[0])
     .toMatchObject({ date: '2045-08-01', durationYears: 4 })
+})
+
+test('projected exits and derived defaults never become inputs when projection is switched off', async ({ page }) => {
+  const projected = { ...retirementSnapshot, exitSource: 'projected_exit', inputOverrides: {},
+    assumptions: { ...retirementSnapshot.assumptions, epicExit: 9, defaultSpend: 270, minSpend: 180,
+      stateLTCGRate: 0.07, spouseCurrentAge: 45, spouseFra: 67 } }
+  const restored = { ...retirementSnapshot, retirementDate: '2033-01-02', inputOverrides: { retirementDate: '2033-01-02' } }
+  const card = await retirementHost(page, 'light', { refreshResponses: [projected, restored] })
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#projectExit').check()
+  await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+  await expect(card.locator('#resultsView')).toBeVisible()
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await expect(card.locator('#spend')).toHaveValue('270')
+  await card.locator('#projectExit').uncheck()
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('No changed inputs to save')
+  await card.locator('#date').fill('2033-01-02')
+  await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+  await expect(card.getByRole('status')).toContainText('Simulation complete')
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { overrides?: Record<string, unknown>; changes?: Record<string, unknown>; recalculate_exit?: boolean }
+  } }[] }).pluginCalls)
+  const runs = calls.filter(c => c.params.name === 'refresh_retirement_view')
+  expect(runs[0].params.arguments?.overrides).toEqual({})
+  expect(runs[1].params.arguments).toEqual({ account: 'me', overrides: { retirementDate: '2033-01-02' }, recalculate_exit: false })
+  expect(calls.find(c => c.params.name === 'update_retirement_params')?.params.arguments?.changes)
+    .toEqual({ retirementDate: '2033-01-02' })
+})
+
+test('saving a projected exit requires a completed projection for the selected date', async ({ page }) => {
+  const projected = { ...retirementSnapshot, exitSource: 'projected_exit', inputOverrides: {},
+    assumptions: { ...retirementSnapshot.assumptions, epicExit: 9 } }
+  const card = await retirementHost(page, 'light', { refreshResponses: [projected] })
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#projectExit').check()
+  await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+  await expect(card.locator('#resultsView')).toBeVisible()
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#date').fill('2033-01-02')
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('Run the date-specific Epic exit projection before saving it')
+  await card.locator('#date').fill('2032-01-02')
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { changes?: Record<string, unknown> }
+  } }[] }).pluginCalls)
+  const saves = calls.filter(c => c.params.name === 'update_retirement_params')
+  expect(saves).toHaveLength(1)
+  expect(saves[0].params.arguments?.changes).toMatchObject({ epicExit: 9 })
+})
+
+test('lowering spending does not send a resolved spending floor or other derived values', async ({ page }) => {
+  const card = await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#spend').fill('50')
+  await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
+  await expect(card.locator('#resultsView')).toBeVisible()
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { overrides?: Record<string, unknown>; changes?: Record<string, unknown> }
+  } }[] }).pluginCalls)
+  expect(calls.find(c => c.params.name === 'refresh_retirement_view')?.params.arguments?.overrides).toEqual({ defaultSpend: 50 })
+  expect(calls.find(c => c.params.name === 'update_retirement_params')?.params.arguments?.changes).toEqual({ defaultSpend: 50 })
+})
+
+test('financing requires a supplied rate and permits an intentional zero rate', async ({ page }) => {
+  const card = await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit assumptions' }).click()
+  await card.locator('#lifeEventsDetails > summary').click()
+  await card.locator('#eventKind').selectOption('vehicle')
+  await card.locator('#eventAmount').fill('100000')
+  await card.locator('#eventPayment').selectOption('finance')
+  await expect(card.locator('#eventRate')).toHaveValue('')
+  await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
+  await expect(card.getByRole('status')).toContainText('Enter the loan interest rate')
+  await card.locator('#eventRate').fill('0')
+  await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
+  await card.getByRole('button', { name: 'Compare with / without events' }).click()
+  await expect(card.getByRole('status')).toContainText('Life-event comparison complete')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { events?: Record<string, unknown>[] }
+  } }[] }).pluginCalls)
+  expect(calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events?.[0]).toMatchObject({ loanRate: 0, loanYears: 5 })
 })

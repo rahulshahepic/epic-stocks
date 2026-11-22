@@ -51,18 +51,20 @@ export default function PurchaseResults({ events, comparison }: {
           </div></div>
         </div>
       </>}
-      {(result.eventOutcomes ?? []).map(outcome => <div key={outcome.eventId} className="space-y-2 border-t border-cs-border pt-3 text-xs text-cs-text">
-        <h3 className="text-sm font-semibold">{outcome.title}</h3>
-        <meter min={0} max={1} value={outcome.purchaseProbability} className="h-4 w-full accent-cs-brand" aria-label={`${outcome.title} purchase probability`} />
-        <p>{percent(outcome.purchaseProbability)} bought · {percent(outcome.skippedProbability)} never bought</p>
-        <p>{percent(outcome.onTimeProbability)} on time · {percent(outcome.delayedProbability)} later · {percent(outcome.fundedPurchaseProbability)} bought with the whole plan funded</p>
-        <p>Average purchases: {outcome.meanPurchases.toFixed(2)}. Average delay among buyers: {outcome.meanDelayMonths.toFixed(0)} months.</p>
-        <div className="space-y-1" role="img" aria-label={`${outcome.title} first purchase timing`}>
-          {timingBins(outcome.firstPurchaseByYear ?? []).map(bin => <div key={bin.label} className="flex items-center gap-2">
-            <span className="w-20 shrink-0">{bin.label}</span><div className="h-3 flex-1 rounded bg-cs-surface"><div className="h-3 rounded bg-cs-brand" style={{ width: `${bin.probability * 100}%` }} /></div><span className="w-14 text-right">{percent(bin.probability)}</span>
-          </div>)}
-        </div>
-      </div>)}
+      {(result.eventOutcomes ?? []).map(outcome => {
+        const waiting = events.find(e => e.id === outcome.eventId)?.conditionFailure === 'defer'
+        return <div key={outcome.eventId} className="space-y-2 border-t border-cs-border pt-3 text-xs text-cs-text">
+          <h3 className="text-sm font-semibold">{outcome.title}</h3>
+          <meter min={0} max={1} value={outcome.purchaseProbability} className="h-4 w-full accent-cs-brand" aria-label={`${outcome.title} purchase probability`} />
+          <p>{percent(outcome.purchaseProbability)} bought · {percent(outcome.skippedProbability)} never bought</p>
+          <p>{percent(outcome.onTimeProbability)} {waiting ? 'on time' : 'initial purchase'} · {percent(outcome.delayedProbability)} {waiting ? 'after waiting' : 'first bought at a replacement'} · {percent(outcome.fundedPurchaseProbability)} bought with the whole plan funded</p>
+          <p>Average purchases: {outcome.meanPurchases.toFixed(2)}. {waiting ? 'Average delay' : 'Average time to first ownership'} among buyers: {outcome.meanDelayMonths.toFixed(0)} months.</p>
+          <div className="space-y-1" role="img" aria-label={`${outcome.title} first purchase timing`}>
+            {timingBins(outcome.firstPurchaseByYear ?? []).map(bin => <div key={bin.label} className="flex items-center gap-2">
+              <span className="w-20 shrink-0">{bin.label}</span><div className="h-3 flex-1 rounded bg-cs-surface"><div className="h-3 rounded bg-cs-brand" style={{ width: `${bin.probability * 100}%` }} /></div><span className="w-14 text-right">{percent(bin.probability)}</span>
+            </div>)}
+          </div>
+        </div>})}
       {events.filter(event => !event.condition).map(event => <p key={event.id} className="text-xs text-cs-text"><strong>{event.title}</strong> · {event.date} · required expense, no market condition</p>)}
     </>}
     <p className="text-xs text-cs-muted">Purchase odds count decisions to buy, not guaranteed affordability. Read them alongside funding shortfalls. Required expenses remain in every path. Comparisons use the same market paths.</p>

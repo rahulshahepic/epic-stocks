@@ -127,6 +127,7 @@ exhaustion, and show the wealth chart before purchase outcomes. A skipped wish
 must not make a plan look as though it delivered the wish.
 
 Asset purchases default to cash, with financing fields shown only when selected.
+Financing requires an explicit interest rate; enter 0% deliberately for an interest-free loan.
 Ownership costs stop at sale automatically; a separate earlier cost cutoff is
 advanced. College and other recurring expenses use `durationYears` to preserve their duration
 when the start moves, including when editing a saved event. It cannot combine
@@ -136,9 +137,13 @@ Trade-in, explicit resale and special funding assumptions are optional details.
 The MCP card opens **Results**, with **Edit assumptions** and **Compare dates**
 as separate views in the same active card. Running or comparing expenses returns
 to results; the with/without table stays visible there. Date comparison has its
-own view and uses the current draft's full assumption snapshot. Chat-specified
+own view and uses the current draft's explicit overrides. Chat-specified
 parameters, including spouse DOB, remain in subsequent runs even if they have no
-visible input. Saving stays explicit and separate from what-if runs. No streaming,
+visible input. Resolved assumptions are display values, while `inputOverrides` records
+only supplied parameters. Derived spending floors, ages and projected Epic exits
+are recalculated rather than carried into later runs or saves. Saving a projected
+exit requires an explicit selection and a completed projection for that date.
+Saving stays explicit and separate from what-if runs. No streaming,
 async-task support, or cross-card communication is required for this workflow.
 
 ## What the app must calculate (deterministic and auditable)

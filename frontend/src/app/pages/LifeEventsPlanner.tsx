@@ -111,6 +111,8 @@ export default function LifeEventsPlanner({
         delete event.loanRate
         if (!event.lifetimeYears) delete event.inflationRate
         event.downPaymentPct = 1
+      } else if (event.loanRate == null) {
+        setError('Enter the loan interest rate, including 0% for interest-free financing.'); return
       }
     }
     if (!event.condition) { delete event.conditionFailure; delete event.deadlineDate }
@@ -314,8 +316,8 @@ export default function LifeEventsPlanner({
                           className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                       </label>
                       <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Loan interest rate (%)
-                        <PercentInput min="0" max="100" step="0.1" value={draft.loanRate ?? 0}
-                          onChange={value => set('loanRate', value ?? 0)}
+                        <PercentInput min="0" max="100" step="0.1" value={draft.loanRate}
+                          onChange={value => set('loanRate', value)}
                           className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                       </label>
 

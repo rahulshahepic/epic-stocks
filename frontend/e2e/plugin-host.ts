@@ -71,7 +71,7 @@ export async function pluginHost(page: Page, options: { view?: keyof typeof snap
 
 const retirementHtml = readFileSync(fileURLToPath(new URL('../../backend/app/mcp/retirement.html', import.meta.url)), 'utf8')
 export const retirementSnapshot = {
-  retirementDate:'2032-01-02',exitSource:'saved_exit',saved:false,
+  retirementDate:'2032-01-02',exitSource:'saved_exit',saved:false,inputOverrides:{} as Record<string, unknown>,
   assumptions:{epicExit:6,taxableAdditional:1,traditional:.5,roth:.2,defaultSpend:180,minSpend:100,healthInsurance:25,stockPct:.7,bondPct:.2,scenario:'cautious',currentAge:48,endAge:91,paths:1000,seed:1729},
   result:{paths:1000,startingTotalM:7.7,pctFundingShortfall:.03,pctExhausted:.01,medianFinalM:12.4,
     wealthByAge:[{age:48,p10:7.7,p50:7.7,p90:7.7},{age:68,p10:4,p50:10,p90:20},{age:91,p10:2,p50:12.4,p90:40}]},
@@ -80,8 +80,8 @@ export const retirementSnapshot = {
 export const purchaseSnapshot = {
   ...retirementSnapshot,
   assumptions: { ...retirementSnapshot.assumptions, plannedEvents: [
-    { id: 'car', title: 'Sports car', kind: 'vehicle', date: '2035-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 } },
-    { id: 'replacement', title: 'Replacement sports car', kind: 'vehicle', date: '2045-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 } },
+    { id: 'car', title: 'Sports car', kind: 'vehicle', date: '2035-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 }, conditionFailure: 'defer' },
+    { id: 'replacement', title: 'Replacement sports car', kind: 'vehicle', date: '2045-01-02', amountM: 0.2, condition: { minStartingWealthRatio: 1.1 }, conditionFailure: 'defer' },
     { id: 'college', title: 'Private college', kind: 'education', date: '2044-08-01', amountM: 0.1 },
   ] },
   result: { ...retirementSnapshot.result,
@@ -94,14 +94,15 @@ export const purchaseSnapshot = {
   },
 }
 
-export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object } = {}) {
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[] } = {}) {
   await page.goto('/login')
-  await page.evaluate(({html,initial,theme,refreshed}) => {
+  await page.evaluate(({html,initial,theme,refreshed,refreshResponses}) => {
     document.body.innerHTML=''
     const frame=document.createElement('iframe')
     frame.title='Epic Stocks retirement plugin'
     frame.style.cssText='width:100%;height:1000px;border:0;display:block'
     document.body.style.margin='0'
+    let refreshIndex=0
     const calls: {method:string;params:Record<string,unknown>}[]=[]
     Object.assign(window,{pluginCalls:calls})
     window.addEventListener('message',event=>{
@@ -113,16 +114,16 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
       if(msg.method==='ui/notifications/initialized')frame.contentWindow?.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:initial}},'*')
       if(msg.method==='tools/call'){
         if(msg.params.name==='compare_retirement_scenarios'){const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string}}[]};reply({structuredContent:{scenarios:args.scenarios.map((s,index)=>({...initial,...s,retirementDate:s.overrides.retirementDate,result:index===0?initial.result:{...initial.result,pctFundingShortfall:.019,pctExhausted:.008,startingTotalM:8.05,medianFinalM:13.2}}))}})}
-        else if(msg.params.name==='plan_life_events')reply({structuredContent:{baseline:initial,withEvents:{...initial,result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})
+        else if(msg.params.name==='plan_life_events'){const args=msg.params.arguments as {events:unknown[];overrides?:Record<string,unknown>};reply({structuredContent:{baseline:initial,withEvents:{...initial,inputOverrides:{...args.overrides,plannedEvents:args.events},assumptions:{...initial.assumptions,...args.overrides,plannedEvents:args.events},result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})}
         else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
-        else reply({structuredContent:refreshed ?? initial})
+        else {if(refreshResponses?.[refreshIndex]){reply({structuredContent:refreshResponses[refreshIndex++]});return}const args=msg.params.arguments as {overrides?:Record<string,unknown>;recalculate_exit?:boolean},source=refreshed??initial,overrides=args.overrides??{};reply({structuredContent:{...source,retirementDate:overrides.retirementDate??source.retirementDate,exitSource:args.recalculate_exit?'projected_exit':'saved_exit',inputOverrides:overrides,assumptions:{...source.assumptions,...overrides,...(args.recalculate_exit?{epicExit:9}:{})}}})}
       }
       if(msg.method==='ui/request-display-mode')reply({mode:msg.params.mode})
       if(msg.method==='ui/notifications/size-changed')frame.style.height=msg.params.height+'px'
     })
     frame.srcdoc=html
     document.body.append(frame)
-  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed})
+  },{html:retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses})
   const widget=page.frameLocator('iframe')
   await widget.getByText('97.00%',{exact:true}).waitFor()
   return widget

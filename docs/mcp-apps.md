@@ -55,6 +55,11 @@ The [official MCP Apps announcement](https://blog.modelcontextprotocol.io/posts/
 4. The card opens **Results** without a form. Choose **Edit assumptions**, change spending or date, and choose **Run simulation** to return to results. This does not save. **Compare dates** opens a separate comparison view and runs two scenarios without saving. **Save these inputs** changes the stored scenario only with write permission and an explicit click.
 5. After deploying a new resource or adding tools, refresh the assistant's connector/tool metadata, and reconnect if the host needs it. Check actual host behavior before claiming a new client is verified.
 
+Retirement responses distinguish resolved `assumptions` for display from explicit
+`inputOverrides` for later runs and saves. The card preserves chat overrides and
+edited fields without persisting derived defaults. A date-specific Epic projection
+is saved only when selected explicitly and already run for the current date.
+
 For the ChatGPT package build and host-specific rollout, see [ChatGPT plugin instructions](chatgpt-plugin.md) and [portable plugin packaging](../plugins/epic-stocks/README.md). For Claude, the Connect your AI page provides its custom connector and ZIP installation paths.
 
 ## Acceptance checklist for each host

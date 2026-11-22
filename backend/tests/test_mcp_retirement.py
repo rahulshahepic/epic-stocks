@@ -496,3 +496,46 @@ def test_saved_tuition_duration_round_trips_and_cannot_mix_with_absolute_end(mcp
     assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
     with pytest.raises(ValueError):
         validate_changes({"plannedEvents": [{**event, "endDate": "2048-07-01"}]})
+
+
+def test_card_inputs_exclude_projected_exit_and_derived_defaults(client, db_session, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from scaffold.models import User
+    from app import retirement_simulation as sim
+    register_user(client)
+    owner = db_session.query(User).first()
+    runtime = tmp_path / 'retirement_runner.mjs'
+    runtime.write_text('')
+    runtime.with_name('retirement.math.mjs').write_text('')
+    monkeypatch.setattr(sim, 'RUNNER', runtime)
+    monkeypatch.setattr(sim.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout='{}'))
+    monkeypatch.setattr(sim, '_projected_exit', lambda owner, on: 9)
+    with user_key(owner):
+        owner.retirement_params = {'epicExit': 6, 'retirementDate': '2032-01-02'}
+        projected = sim.run(owner, overrides={'ssMonthly': 3100}, recalculate_exit=True)
+        assert projected['assumptions']['epicExit'] == 9
+        assert projected['inputOverrides'] == {'ssMonthly': 3100}
+        assert not {'epicExit', 'minSpend', 'currentAge', 'stateLTCGRate', 'paths', 'seed'} & projected['inputOverrides'].keys()
+        restored = sim.run(owner, overrides=projected['inputOverrides'], recalculate_exit=False)
+        assert restored['assumptions']['epicExit'] == 6
+        assert owner.retirement_params == {'epicExit': 6, 'retirementDate': '2032-01-02'}
+
+
+@pytest.mark.parametrize('saved_floor', [None, 100])
+def test_lower_spending_caps_the_effective_saved_or_derived_floor(client, db_session, saved_floor):
+    from scaffold.models import User
+    register_user(client)
+    owner = db_session.query(User).first()
+    with user_key(owner):
+        owner.retirement_params = {'epicExit': 6, 'retirementDate': '2032-01-02'}
+        if saved_floor is not None:
+            owner.retirement_params = {**owner.retirement_params, 'minSpend': saved_floor}
+        params, _, _ = prepare(owner, overrides={'defaultSpend': 50})
+        assert params['minSpend'] == 50
+        # A later run of the saved lower spending target normalizes the floor,
+        # without writing derived values back to the owner's settings.
+        owner.retirement_params = {**owner.retirement_params, 'defaultSpend': 50}
+        params, _, _ = prepare(owner)
+        assert params['minSpend'] == 50
+        if saved_floor is not None:
+            assert owner.retirement_params['minSpend'] == saved_floor

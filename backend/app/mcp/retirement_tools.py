@@ -92,7 +92,8 @@ _RUN_INPUT = object_schema({
 _RESULT = object_schema({
     "retirementDate": {"type": "string"},
     "exitSource": {"type": "string"},
-    "assumptions": {"type": "object"},
+    "assumptions": {"type": "object", "description": "Resolved values for display, including defaults and computed projections. Never reuse as input overrides."},
+    "inputOverrides": {"type": "object", "description": "Only explicitly supplied overrides. Preserve these across interactive runs; derived assumptions are not user inputs."},
     "result": {"type": "object"},
     "saved": {"type": "boolean"},
 }, ["retirementDate", "exitSource", "assumptions", "result", "saved"])

@@ -265,8 +265,6 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
         validate_changes(base)
     patch = validate_changes(overrides) if overrides else {}
     params = {**base, **patch}
-    if "defaultSpend" in patch and "minSpend" not in patch and params.get("minSpend", 0) > patch["defaultSpend"]:
-        params["minSpend"] = patch["defaultSpend"]
     retirement_date = _date(params.get("retirementDate", date.today().isoformat()), "retirementDate")
     if owner.date_of_birth:
         params["currentAge"] = _age(owner.date_of_birth, retirement_date)
@@ -288,6 +286,8 @@ def prepare(owner, *, overrides=None, recalculate_exit=False):
     if total_k > 0:
         params.setdefault("defaultSpend", math.floor(total_k * 0.03 + 0.5))
         params.setdefault("minSpend", math.floor(total_k * 0.02 + 0.5))
+    if "minSpend" not in patch and params.get("minSpend", 0) > params.get("defaultSpend", 0):
+        params["minSpend"] = params["defaultSpend"]
     # Match the browser's TaxSettings refresh rather than stale saved values.
     # An explicit what-if override remains an intentional scenario input.
     if "stateLTCGRate" not in patch:
@@ -335,6 +335,7 @@ def run(owner, *, overrides=None, recalculate_exit=False):
     return {
         "retirementDate": on.isoformat(),
         "exitSource": exit_source,
+        "inputOverrides": dict(overrides or {}),
         "assumptions": {**{k: v for k, v in params.items() if k in EDITABLE},
                         "spouseDOB": params.get("spouseBirthDate")},
         "result": summary,

@@ -265,20 +265,12 @@ def admin_users(
 
 @router.post("/users/{user_id}/content-admin", status_code=204)
 def admin_grant_content_admin(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.is_content_admin = 1
-    db.commit()
+    _admin_action(lambda a: a.set_content_admin(db, _browser(admin), user_id, True))
 
 
 @router.delete("/users/{user_id}/content-admin", status_code=204)
 def admin_revoke_content_admin(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.is_content_admin = 0
-    db.commit()
+    _admin_action(lambda a: a.set_content_admin(db, _browser(admin), user_id, False))
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -309,16 +301,16 @@ def list_blocked(admin: User = Depends(get_admin_user), db: Session = Depends(ge
 
 @router.post("/blocked", response_model=BlockedEmailOut, status_code=201)
 def block_email(body: BlockEmailRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    from scaffold.oauth import admin_actions
     email = body.email.strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
-    existing = db.query(BlockedEmail).filter(BlockedEmail.email == email).first()
-    if existing:
+    if db.query(BlockedEmail).filter(BlockedEmail.email == email).first():
         raise HTTPException(status_code=409, detail="Email already blocked")
-    entry = BlockedEmail(email=email, reason=body.reason)
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
+    try:
+        entry = admin_actions.block_email(db, _browser(admin), email, body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     return BlockedEmailOut(
         id=entry.id, email=entry.email, reason=entry.reason,
         blocked_at=entry.blocked_at.isoformat() if entry.blocked_at else "",
@@ -327,11 +319,7 @@ def block_email(body: BlockEmailRequest, admin: User = Depends(get_admin_user), 
 
 @router.delete("/blocked/{block_id}", status_code=204)
 def unblock_email(block_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    entry = db.get(BlockedEmail, block_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Blocked entry not found")
-    db.delete(entry)
-    db.commit()
+    _admin_action(lambda a: a.unblock_email(db, _browser(admin), block_id))
 
 
 class ErrorLogOut(BaseModel):
@@ -343,6 +331,14 @@ class ErrorLogOut(BaseModel):
     error_message: str | None
     traceback: str | None
     user_id: int | None
+    resolved_at: str | None = None
+    resolved_by: str | None = None
+    resolved_note: str | None = None
+
+
+class ErrorResolveRequest(BaseModel):
+    resolved: bool = True
+    note: str | None = Field(None, max_length=300)
 
 
 @router.get("/errors", response_model=list[ErrorLogOut])
@@ -361,7 +357,18 @@ def admin_errors(
         error_message=e.error_message,
         traceback=e.traceback,
         user_id=e.user_id,
+        resolved_at=e.resolved_at.isoformat() if e.resolved_at else None,
+        resolved_by=e.resolved_by,
+        resolved_note=e.resolved_note,
     ) for e in entries]
+
+
+@router.patch("/errors/{error_id}", status_code=204)
+def resolve_error(error_id: int, body: ErrorResolveRequest, admin: User = Depends(get_admin_user),
+                  db: Session = Depends(get_db)):
+    """Mark one error resolved (or reopen it). The row and traceback are kept."""
+    _admin_action(lambda a: a.set_errors_resolved(db, _browser(admin), error_ids=[error_id],
+                                                  resolved=body.resolved, note=body.note))
 
 
 @router.delete("/errors", status_code=204)
@@ -793,7 +800,7 @@ def get_maintenance(admin: User = Depends(get_admin_user)):
 
 @router.post("/maintenance", response_model=MaintenanceStatus)
 def set_maintenance_endpoint(body: MaintenanceRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    set_maintenance(db, body.active)
+    _admin_action(lambda a: a.set_maintenance(db, _browser(admin), body.active))
     return MaintenanceStatus(active=body.active)
 
 
@@ -998,6 +1005,17 @@ def delete_mcp_host(host_id: int, admin: User = Depends(get_admin_user),
 def _browser(admin: User):
     from scaffold.oauth.admin_actions import Actor
     return Actor(via="browser", email=admin.email)
+
+
+def _admin_action(call):
+    """Run a shared, journalled admin action for a browser endpoint."""
+    from scaffold.oauth import admin_actions
+    try:
+        return call(admin_actions)
+    except admin_actions.NotFound as exc:
+        raise HTTPException(404, str(exc).strip("'\"")) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
 
 
 def _decide_request(db: Session, request_id: int, admin: User, approve: bool) -> McpStatus:
@@ -1245,14 +1263,7 @@ def get_flexible_payoff(admin: User = Depends(get_admin_user), db: Session = Dep
 
 @router.post("/flexible-payoff", response_model=FlexiblePayoffStatus)
 def set_flexible_payoff(body: FlexiblePayoffRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    from scaffold.models import GrantProgramSettings
-    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
-    if not row:
-        row = GrantProgramSettings(id=1, flexible_payoff_enabled=body.active)
-        db.add(row)
-    else:
-        row.flexible_payoff_enabled = body.active
-    db.commit()
+    _admin_action(lambda a: a.set_flexible_payoff(db, _browser(admin), body.active))
     return FlexiblePayoffStatus(active=body.active)
 
 
@@ -1491,25 +1502,15 @@ class SendingBlockRequest(BaseModel):
 
 @router.post("/users/{user_id}/block-sending", status_code=201)
 def block_sending(user_id: int, body: SendingBlockRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(404, "User not found")
-    existing = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user_id).first()
-    if existing:
+    if db.get(User, user_id) and db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user_id).first():
         raise HTTPException(409, "User is already blocked from sending")
-    block = InviteSendingBlock(user_id=user_id, reason=body.reason)
-    db.add(block)
-    db.commit()
+    _admin_action(lambda a: a.block_sending(db, _browser(admin), user_id, body.reason))
     return {"blocked": True}
 
 
 @router.delete("/users/{user_id}/block-sending", status_code=204)
 def unblock_sending(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    block = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user_id).first()
-    if not block:
-        raise HTTPException(404, "No sending block found for this user")
-    db.delete(block)
-    db.commit()
+    _admin_action(lambda a: a.unblock_sending(db, _browser(admin), user_id))
 
 
 # ============================================================

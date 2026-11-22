@@ -328,6 +328,11 @@ class ErrorLog(Base):
     # Short opaque id handed to the client in the 500 body. A user report that
     # carries one points straight at this row.
     error_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Triage, not deletion: a resolved row keeps its traceback for the record,
+    # and the admin connector's scan lists only unresolved ones by default.
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_note: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class UserReport(Base):

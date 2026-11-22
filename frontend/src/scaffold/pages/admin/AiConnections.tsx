@@ -211,14 +211,15 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
             Requests from AI assistants <span className="text-cs-muted">({requests.length} waiting)</span>
           </h4>
           <p className="mt-0.5 text-xs text-cs-muted">
-            Changes an admin&apos;s assistant asked for that would let more assistants connect.
-            Nothing changes until you approve. Approve only what you asked for yourself.
+            Changes an admin&apos;s assistant asked for that widen access or change what everyone sees.
+            Nothing changes until you approve here or give the assistant the code sent to your push devices.
+            Approve only what you asked for yourself.
           </p>
           <ul className="mt-2 space-y-2" aria-label="Pending requests from AI assistants">
             {requests.map((entry) => (
               <li key={entry.id} className="rounded-md border border-cs-border p-2.5">
                 <p className="text-xs font-medium text-cs-text">
-                  {entry.action === 'enable_redirect_rule' ? 'Switch a redirect rule back on' : 'Allow a new redirect address'}
+                  {REQUEST_TITLES[entry.action] ?? entry.description}
                 </p>
                 <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
                   {entry.label && (<><dt className="text-cs-muted">Name</dt><dd className="text-cs-text">{entry.label}</dd></>)}
@@ -402,6 +403,16 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       )}
     </AdminSection>
   )
+}
+
+const REQUEST_TITLES: Record<string, string> = {
+  add_redirect_rule: 'Allow a new redirect address',
+  enable_redirect_rule: 'Switch a redirect rule back on',
+  unblock_email: 'Unblock an address',
+  unblock_invite_sending: 'Let an account send invitations again',
+  end_maintenance: 'End maintenance mode',
+  set_flexible_payoff: 'Change flexible loan payoff',
+  grant_content_admin: 'Make an account a content admin',
 }
 
 function hostLabel(uri: string): string {

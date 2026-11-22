@@ -833,8 +833,8 @@ The admin MCP advertises `admin:read` and `admin:write`, has its own `/admin-oau
 **Write tools (`admin:write`, opt-in at consent).** The tools read text strangers wrote (problem reports, client names, refused addresses), so what a tool call may do depends on what a planted instruction could do with it:
 
 - **Housekeeping runs directly.** It is reversible or only removes clutter.
-- **Narrowing changes preview first.** The first call shows exactly what will change and returns a `confirm` value; the second call with that value makes the change. Undoing one is a widening change.
-- **Widening changes need your code.** Anything that widens access or changes what every user sees is filed as a request, and a one-time 8-digit code is sent to the filing admin's own devices, following their notification settings: every device subscribed to push, and email when email notifications are on. The change runs only when that code comes back through `admin_approve_request`, or when an admin approves the request in the browser. The assistant never sees the code unless you type it in, so nothing it read can approve anything. Codes expire after 15 minutes, work once, allow 5 tries (and 10 wrong codes per admin per hour across all requests), are bound to the exact request, its payload and the admin they were sent to, and are stored only as a keyed hash; at most 5 are sent per request and 10 per admin per hour. If no channel accepts the code (no push device, email off), the tool says so and the browser approval still works. `admin_send_test_notification` checks where codes will arrive.
+- **Narrowing changes preview first.** The first call shows exactly what will change and returns a `confirm` value bound to that change and valid for about 10 minutes; the second call with that value makes the change. Undoing one is a widening change.
+- **Widening changes need your code.** Anything that widens access or changes what every user sees is filed as a request, and a one-time 8-digit code is sent to the filing admin's own push devices (every device they subscribed). When their email notifications are on, email gets a notice with a link to the browser approval but **never the code**: an assistant that also holds an email connector could otherwise read its own code and approve itself. The change runs only when that code comes back through `admin_approve_request`, or when an admin approves the request in the browser. The assistant never sees the code unless you type it in, so nothing it read can approve anything. Codes expire after 15 minutes, work once, allow 5 tries (and 10 wrong codes per admin per hour across all requests), are bound to the exact request, its payload and the admin they were sent to, and are stored only as a keyed hash; at most 5 are sent per request and 10 per admin per hour. If no push device accepts the code, none is left redeemable, the tool says so, and the browser approval still works. `admin_send_test_notification` checks where codes will arrive.
 
 | Tool | What it does |
 |------|--------------|
@@ -859,7 +859,7 @@ The admin MCP advertises `admin:read` and `admin:write`, has its own `/admin-oau
 | `admin_request_end_maintenance` | *Widening.* Turn maintenance mode off |
 | `admin_request_flexible_payoff` | *Widening.* Turn flexible loan payoff on or off. Both directions are requests because the switch changes computed figures on every dashboard |
 | `admin_request_content_admin` | *Widening.* Make an account a content admin |
-| `admin_approve_request` | Approve and carry out a pending request with the code from your devices |
+| `admin_approve_request` | Approve and carry out a pending request with the code from your push devices |
 | `admin_send_approval_code` | Send a fresh code for a pending request; any earlier code for it stops working |
 | `admin_reject_request` | Reject a pending request; nothing changes |
 | `admin_cancel_request` | Withdraw a still-pending request this connection filed |

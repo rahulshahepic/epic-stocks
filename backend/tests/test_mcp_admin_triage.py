@@ -45,9 +45,11 @@ class Inbox:
     def __init__(self, channels=("push",)):
         self.channels = list(channels)
         self.messages: list[str] = []
+        self.emails: list[str] = []
 
-    def __call__(self, db, user, title, body):
+    def __call__(self, db, user, title, body, email_body=None):
         self.messages.append(body)
+        self.emails.append(body if email_body is None else email_body)
         return list(self.channels)
 
     @property
@@ -151,6 +153,16 @@ def test_cleanup_recompute_and_test_notification(session, db_session):
 
     out = call("admin_send_test_notification")
     assert out["sent_to"] == [] and "subscribe" in out["note"]
+
+
+def test_a_preview_cannot_be_replayed_after_its_window(session, db_session, monkeypatch):
+    import time as _time
+    client, call = session
+    preview = call("admin_start_maintenance")
+    later = _time.time() + 2 * 600
+    monkeypatch.setattr(_time, "time", lambda: later)
+    assert "expired" in call("admin_start_maintenance", {"confirm": preview["confirm"]}, ok=False)
+    assert client.get("/api/admin/maintenance").json()["active"] is False
 
 
 # ── narrowing: preview, then confirm ────────────────────────────────────────
@@ -436,3 +448,70 @@ def test_codes_and_wrong_guesses_are_capped_per_admin_across_requests(session, d
     code = inbox.messages[0].split("Code: ")[1].splitlines()[0].replace(" ", "")
     assert "last hour" in call("admin_approve_request", {"request_id": request_id, "code": code}, ok=False)
     assert db_session.query(BlockedEmail).count() == 3
+
+
+def test_the_code_never_goes_by_email(session, db_session):
+    """An assistant holding an email connector must not be able to read its own
+    code: email carries a notice and a link, push carries the code."""
+    _, call = session
+    _blocked(db_session)
+    box = Inbox(channels=("push", "email"))
+    with patch("scaffold.oauth.approval_delivery.deliver", box):
+        filed = call("admin_request_unblock_email", {"email": "spam@example.com"})
+    assert filed["approval_code"]["sent_to"] == ["push"]
+    assert filed["approval_code"]["notice_sent_to"] == ["email"]
+    assert box.code not in box.emails[-1] and "never by email" in box.emails[-1]
+
+
+def test_the_real_delivery_keeps_the_code_out_of_the_email(client, db_session):
+    from scaffold.models import EmailPreference, PushSubscription
+    from scaffold.notifications import PushResult
+    register_user(client, "admin@example.com")
+    admin = db_session.query(User).filter(User.email == "admin@example.com").one()
+    db_session.add(PushSubscription(user_id=admin.id, endpoint="https://push.example/1", p256dh="k", auth="a"))
+    pref = db_session.query(EmailPreference).filter_by(user_id=admin.id).first() or EmailPreference(user_id=admin.id)
+    pref.enabled = 1
+    db_session.add(pref)
+    _blocked(db_session)
+    with patch.dict(os.environ, ADMIN):
+        row, _ = admin_requests.file_request(db_session, admin_requests.UNBLOCK_EMAIL,
+                                             {"email": "spam@example.com"}, reason=None,
+                                             client_name="t", grant_id=None)
+        pushed, mailed = [], []
+        with patch("scaffold.notifications.send_push",
+                   side_effect=lambda sub, payload: pushed.append(payload["body"]) or PushResult.SENT), \
+             patch("scaffold.email_sender.email_configured", return_value=True), \
+             patch("scaffold.email_sender.send_email",
+                   side_effect=lambda to, subject, text, html: mailed.append(text + html) or True):
+            sent = admin_requests.send_code(db_session, row.id, admin)
+    assert sent["sent_to"] == ["push"] and sent["notice_sent_to"] == ["email"]
+    code = pushed[0].split("Code: ")[1].splitlines()[0].replace(" ", "")
+    assert len(code) == 8 and code not in mailed[0].replace(" ", "")
+
+
+def test_with_only_email_no_code_is_left_redeemable(session, db_session):
+    _, call = session
+    _blocked(db_session)
+    box = Inbox(channels=("email",))
+    with patch("scaffold.oauth.approval_delivery.deliver", box):
+        filed = call("admin_request_unblock_email", {"email": "spam@example.com"})
+    assert filed["approval_code"]["sent_to"] == [] and "push" in filed["approval_code"]["problem"]
+    assert db_session.get(AdminActionRequest, filed["request"]["id"]).approval_code_hash is None
+    assert "No code is outstanding" in call("admin_approve_request",
+                                            {"request_id": filed["request"]["id"], "code": box.code}, ok=False)
+
+
+def test_stale_maintenance_and_content_admin_requests_fail(session, db_session, inbox):
+    client, call = session
+    call("admin_start_maintenance", {"confirm": call("admin_start_maintenance")["confirm"]})
+    stale = call("admin_request_end_maintenance")
+    stale_code = inbox.code
+    client.post("/api/admin/maintenance", json={"active": False})
+    out = call("admin_approve_request", {"request_id": stale["request"]["id"], "code": stale_code})
+    assert out["request"]["status"] == "failed" and "no longer on" in out["request"]["outcome"]
+
+    user = _user(client, db_session, "member@example.com")
+    filed = call("admin_request_content_admin", {"account_email": user.email})
+    client.post(f"/api/admin/users/{user.id}/content-admin")
+    out = call("admin_approve_request", {"request_id": filed["request"]["id"], "code": inbox.code})
+    assert out["request"]["status"] == "failed" and "already" in out["request"]["outcome"]

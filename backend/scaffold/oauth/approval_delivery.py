@@ -1,8 +1,10 @@
-"""Send an admin a one-time approval code on the channels they chose.
+"""Reach an admin on the channels they chose: their push devices, and email
+when their email notifications are on and the server can send email.
 
-Follows the admin's own notification settings: every device they subscribed
-for push, and email when their email notifications are on and the server can
-send email. Nothing here decides what the code approves; it only delivers it.
+An approval code goes to push only. An assistant that also holds an email
+connector could read its own code out of the inbox and approve itself, so
+the email copy (`email_body`) must never carry one; for approvals it is a
+notice linking to the browser approval instead.
 """
 import html
 import logging
@@ -12,8 +14,9 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
-def deliver(db: Session, user, title: str, body: str) -> list[str]:
-    """Returns the channels that accepted the message, e.g. ["push", "email"]."""
+def deliver(db: Session, user, title: str, body: str, email_body: str | None = None) -> list[str]:
+    """Push `body`; email `email_body` (default `body`). Returns the channels
+    that accepted their message, e.g. ["push", "email"]."""
     from scaffold.email_sender import email_configured, send_email
     from scaffold.models import EmailPreference, PushSubscription
     from scaffold.notifications import PushResult, send_push
@@ -32,6 +35,7 @@ def deliver(db: Session, user, title: str, body: str) -> list[str]:
 
     pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
     if pref and pref.enabled and email_configured():
+        body = body if email_body is None else email_body
         page = (f'<div style="font-family: sans-serif; max-width: 480px;">'
                 f'<h2 style="color: #4472C4;">{html.escape(title)}</h2>'
                 f'<p style="color: #374151; white-space: pre-line;">{html.escape(body)}</p></div>')
@@ -39,5 +43,5 @@ def deliver(db: Session, user, title: str, body: str) -> list[str]:
             if send_email(user.email, title, body, page):
                 channels.append("email")
         except Exception:
-            logger.exception("Could not email an approval code")
+            logger.exception("Could not email an admin notice")
     return channels

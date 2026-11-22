@@ -379,6 +379,9 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         return (f"{payload['email']} can send invitations again", {**state, "sending_blocked": True},
                 {**state, "sending_blocked": False})
     if row.action == END_MAINTENANCE:
+        current = db.execute(_sql("SELECT value FROM system_settings WHERE key = 'maintenance_active'")).scalar()
+        if current != "true":
+            raise ValueError("Maintenance mode is no longer on")
         db.execute(_sql("UPDATE system_settings SET value = 'false' WHERE key = 'maintenance_active'"))
         return "Maintenance mode ended", {"maintenance": True}, {"maintenance": False}
     if row.action == SET_FLEXIBLE_PAYOFF:
@@ -396,8 +399,10 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         user = db.get(User, payload["user_id"])
         if user is None:
             raise ValueError("That account no longer exists")
+        if user.is_content_admin:
+            raise ValueError("That account is already a content admin")
         state = {"id": user.id, "email": user.email}
-        before = {**state, "content_admin": bool(user.is_content_admin)}
+        before = {**state, "content_admin": False}
         user.is_content_admin = 1
         return f"{user.email} is a content admin", before, {**state, "content_admin": True}
     raise ValueError(f"Unknown action '{row.action}'")
@@ -547,6 +552,8 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
     row.approval_codes_sent = (row.approval_codes_sent or 0) + 1
     db.commit()
     minutes = int(APPROVAL_CODE_TTL.total_seconds() // 60)
+    from scaffold.email_sender import app_url
+    link = f"{app_url()}/admin" if app_url() else "Admin → AI Connections"
     try:
         channels = deliver(
             db, admin, "Epic Stocks admin approval",
@@ -554,16 +561,26 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
             f"Code: {code[:4]} {code[4:]}\n"
             f"It expires in {minutes} minutes and approves only this change. "
             "Give it to the assistant only if you asked for this yourself.",
+            email_body=(f"An assistant asked to: {describe(row)}.\n"
+                        "For your safety the approval code is sent only to your push devices, never "
+                        "by email, because an assistant that can read your mail could approve "
+                        f"itself. To approve or reject it here instead, open {link} → AI Connections."),
         )
     except Exception:
         logger.exception("Could not deliver an approval code")
         channels = []
     del code
-    admin_journal.finish(db, journal_id, outcome=admin_journal.OK if channels else admin_journal.FAILED,
+    delivered = "push" in channels
+    if not delivered:
+        # Nobody holds this code, so it must not stay redeemable.
+        row.approval_code_hash = None
+        db.commit()
+    admin_journal.finish(db, journal_id, outcome=admin_journal.OK if delivered else admin_journal.FAILED,
                          after={"request_id": row.id, "channels": channels},
-                         detail=None if channels else "No channel accepted the code")
-    return {"sent_to": channels,
-            "expires_at": _aware(row.approval_code_expires_at).isoformat(),
+                         detail=None if delivered else "No push device accepted the code")
+    return {"sent_to": ["push"] if delivered else [],
+            "notice_sent_to": [c for c in channels if c != "push"],
+            "expires_at": _aware(row.approval_code_expires_at).isoformat() if delivered else None,
             "codes_left": MAX_CODES_PER_REQUEST - row.approval_codes_sent}
 
 

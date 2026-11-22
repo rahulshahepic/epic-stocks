@@ -229,13 +229,12 @@ def block_email(db: Session, actor: Actor, email: str, reason: str | None):
     from scaffold.models import BlockedEmail
 
     email = (email or "").strip().lower() if isinstance(email, str) else ""
-    if not email or "@" not in email or len(email) > 254:
+    if not email:
         raise ValueError("Email required")
     if email in get_admin_emails():
         raise ValueError("An admin's email cannot be blocked")
     if db.query(BlockedEmail).filter(BlockedEmail.email == email).first():
         raise ValueError("Email already blocked")
-    reason = _note(reason)
 
     def change():
         entry = BlockedEmail(email=email, reason=reason)

@@ -212,7 +212,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           </h4>
           <p className="mt-0.5 text-xs text-cs-muted">
             Changes an admin&apos;s assistant asked for that widen access or change what everyone sees.
-            Nothing changes until you approve here or give the assistant the code sent to your devices.
+            Nothing changes until you approve here or give the assistant the code sent to your push devices.
             Approve only what you asked for yourself.
           </p>
           <ul className="mt-2 space-y-2" aria-label="Pending requests from AI assistants">

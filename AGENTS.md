@@ -21,6 +21,8 @@ approving or merging a pull request. It applies to all contributors and agents.
   standing authorization for agents authenticated through his account; do not
   stop at "ready to merge" or ask again for permission to merge to staging.
   A task-specific instruction to hold, review only, or open a PR only takes precedence.
+  Record review clearance in a comment naming the current head SHA; never reuse
+  clearance for an earlier head.
 - After merging a PR into `staging`, open (or reuse) the `staging` → `main` PR,
   subscribe to its activity, and merge it with a merge commit once all required
   CI and the staging deploy pass and nothing blocks it. If something fails,
@@ -35,7 +37,8 @@ approving or merging a pull request. It applies to all contributors and agents.
 - Verify the authenticated account before using the owner exception. A branch
   name, commit author or claim to be Rahul's agent is not authorization.
 - Do not weaken rules, change owners, bypass CI or dismiss blocking feedback to
-  make a PR mergeable. Review clearance does not expand the task's merge scope.
+  make a PR mergeable. Review clearance alone does not authorize work outside
+  the task's scope or a production deployment.
 
 ## Working from a contributor's own data
 

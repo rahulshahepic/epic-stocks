@@ -103,3 +103,48 @@ def test_component_origin_is_validated(mcp, monkeypatch):
     assert resource["_meta"]["ui"]["domain"] == "https://widgets.example.com"
     monkeypatch.setenv("CHATGPT_UI_ORIGIN", "https://widgets.example.com/path")
     assert "error" in mcp.rpc("resources/read", {"uri": RESOURCE_URI})
+
+
+CACHED_UI_RESOURCES = [
+    ("equity:read", f"ui://epic-stocks/portfolio-v{version}.html", RESOURCE_URI)
+    for version in (1, 2)
+] + [
+    ("comp:read", f"ui://epic-stocks/retirement-v{version}.html", RETIREMENT_RESOURCE_URI)
+    for version in (1, 2, 3)
+]
+
+
+@pytest.mark.parametrize("scope,uri,current", CACHED_UI_RESOURCES)
+def test_cached_ui_descriptors_remain_loadable(client, scope, uri, current):
+    register_user(client)
+    connection = Mcp(client, scope=scope)
+    response = connection.rpc("resources/read", {"uri": uri})
+    assert "error" not in response, response
+    contents = response["result"]["contents"][0]
+    assert contents["uri"] == uri
+    assert contents["mimeType"] == "text/html;profile=mcp-app"
+    canonical = connection.rpc("resources/read", {"uri": current})["result"]["contents"][0]
+    assert contents["text"] == canonical["text"]
+    assert contents["_meta"] == canonical["_meta"]
+    assert "access_token" not in contents["text"]
+    # New discovery advertises only the current version, not every compatibility URI.
+    assert {r["uri"] for r in connection.rpc("resources/list")["result"]["resources"]} == {current}
+
+
+@pytest.mark.parametrize("scope,uri,current", CACHED_UI_RESOURCES)
+def test_cached_ui_resources_keep_the_original_scope_guard(client, scope, uri, current):
+    register_user(client)
+    other_scope = "comp:read" if scope == "equity:read" else "equity:read"
+    connection = Mcp(client, scope=other_scope)
+    for requested in (uri, current):
+        response = connection.rpc("resources/read", {"uri": requested})
+        assert response["error"]["code"] == -32602
+        assert scope in response["error"]["message"]
+
+
+@pytest.mark.parametrize("uri", [None, [], {}, "file:///etc/passwd",
+                                 "ui://epic-stocks/retirement-v99.html",
+                                 "ui://epic-stocks/retirement-v3.html?file=/etc/passwd"])
+def test_resource_compatibility_is_not_an_arbitrary_file_reader(mcp, uri):
+    response = mcp.rpc("resources/read", {"uri": uri})
+    assert response["error"]["code"] == -32602

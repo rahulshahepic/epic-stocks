@@ -337,6 +337,10 @@ The MCP card opens results without a form. **Edit assumptions** and **Compare da
 are separate views; running returns to results. Chat-specified assumptions survive
 reruns, and saving remains a separate explicit action. See [MCP Apps](docs/mcp-apps.md).
 
+Previously published MCP UI URLs remain readable after updates, so cached card
+metadata can still load. Refreshing connector metadata discovers the latest
+advertised version; it is not required just to resolve an older card URL.
+
 **Compare dates** projects Epic exit proceeds separately for each date by default,
 using your saved price estimates, vesting, debt and taxes. Its projection control
 is separate from the single-run editor. Turn it off explicitly to hold Epic exit

@@ -34,7 +34,11 @@ test.describe('Accessibility audit', () => {
   }
 
   test('Login page', async ({ page }) => {
-    // Log out first so we can see the login page
+    // Leave the app before logging out. beforeEach leaves the dashboard open
+    // with its fetches in flight; once the cookie is gone they come back 401,
+    // the app sets window.location to /login, and that navigation aborts the
+    // goto below (net::ERR_ABORTED / "interrupted by another navigation").
+    await page.goto('about:blank')
     await page.request.post(`${BASE_URL}/api/auth/logout`).catch(() => {})
     await page.goto(`${BASE_URL}/login`)
     await page.waitForLoadState('networkidle')

@@ -116,6 +116,8 @@ def _run(ctx: ToolContext, args: dict):
     if args.get("recalculate_exit") and EQUITY_READ not in ctx.connector.scopes:
         raise ValueError("Date-specific Epic exit projections require equity:read")
     saved = owner.retirement_params or {}
+    if not isinstance(saved, dict):
+        raise ValueError("Saved retirement settings are invalid")
     missing_exit = "epicExit" not in saved and "epicExit" not in (args.get("overrides") or {})
     mode_auto = (args.get("overrides") or {}).get("epicExitMode", saved.get("epicExitMode")) == "auto" and "epicExit" not in (args.get("overrides") or {})
     if mode_auto and EQUITY_READ not in ctx.connector.scopes and args.get("recalculate_exit") is not False:

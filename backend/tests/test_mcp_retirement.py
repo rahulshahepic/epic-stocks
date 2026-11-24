@@ -605,3 +605,12 @@ def test_run_respects_the_override_exit_mode(mcp, client, monkeypatch, saved_mod
     monkeypatch.setattr('app.mcp.retirement_tools.run', lambda owner, overrides, recalculate_exit: {'recalculated': recalculate_exit})
     result = mcp.call('run_retirement_simulation', overrides={'epicExitMode': override_mode})
     assert result['recalculated'] is expected
+
+
+def test_run_rejects_malformed_saved_plan_shape(mcp, db_session):
+    from scaffold.models import User
+    user = db_session.query(User).first()
+    with user_key(user):
+        user.retirement_params = ['legacy-invalid']
+        db_session.commit()
+    assert 'Saved retirement settings are invalid' in mcp.error('run_retirement_simulation')

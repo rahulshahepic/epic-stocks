@@ -26,6 +26,9 @@ def resolve_account(user: User, ref: str | None, db: Session) -> User:
     a tool error the model can read and explain, rather than a protocol fault.
     """
     if ref in (None, "", ME):
+        from scaffold.synthetic_accounts import requires_synthetic
+        if requires_synthetic() and not user.is_synthetic:
+            raise ValueError("Staging financial access requires setup_test_account; actual accounts are never accessible.")
         return user
     raise ValueError(
         f"Unknown account '{ref}'. This connection can only read your own data; "

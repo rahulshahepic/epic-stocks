@@ -69,7 +69,7 @@ export default function ConnectAi() {
       <h1 className="text-lg font-semibold text-cs-text">Connect your AI</h1>
       {staging && <Card as="section" pad="md">
         <h2 className="text-sm font-semibold text-cs-text">Staging test connector</h2>
-        <p className="mt-2 text-xs text-cs-text-2">Connect as Epic Stocks Staging Test. These downloads use staging OAuth and fictional test data, separately from your production connection.</p>
+        <p className="mt-2 text-xs text-cs-text-2">Connect as Epic Stocks Staging Test. These downloads use staging OAuth. Ask your assistant to verify the account context and set up a fictional test account before reading or editing. Each connection has its own saved test data, separate from your dashboard and production account.</p>
         <a href="/mcp-setup" className="mt-3 inline-block text-xs font-semibold text-cs-brand dark:text-rose-300 underline">Public staging setup guide</a>
       </Card>}
 

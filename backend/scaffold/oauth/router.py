@@ -700,8 +700,8 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
     if not any(_provider_still_allowed(uri) for uri in client_redirect_uris(client)):
         # Switched off since this connection was made. Drop it rather than
         # letting it live out its refresh window.
-        db.delete(grant)
-        db.commit()
+        from .connections import revoke_grant
+        revoke_grant(db, grant)
         return _token_error("invalid_grant", "AI connections from this provider are turned off")
 
     user = db.get(User, grant.user_id)
@@ -709,8 +709,8 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
         return _token_error("invalid_grant", "The account no longer exists")
     if int(grant.session_version) != int(user.session_version):
         # Signed out everywhere since this was authorized.
-        db.delete(grant)
-        db.commit()
+        from .connections import revoke_grant
+        revoke_grant(db, grant)
         return _token_error("invalid_grant", "This connection was signed out. Connect again.")
 
     return _issue(db, request, grant, user)

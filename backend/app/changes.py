@@ -142,7 +142,8 @@ def _fingerprint(user, db) -> str:
 
 
 def confirmation(user, db, changes) -> str:
-    body = json.dumps({"changes": changes, "account": _fingerprint(user, db)}, sort_keys=True, default=str)
+    body = json.dumps({"changes": changes, "user": user.id, "generation": user.session_version,
+                       "account": _fingerprint(user, db)}, sort_keys=True, default=str)
     return hashlib.sha256(body.encode()).hexdigest()[:24]
 
 

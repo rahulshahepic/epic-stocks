@@ -27,10 +27,11 @@ class ToolContext:
     connector: Connector
     db: Session
     extra_content: list[dict] = field(default_factory=list)
+    active_user: Any = None
 
     @property
     def user(self):
-        return self.connector.user
+        return self.active_user if self.active_user is not None else self.connector.user
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class Tool:
     title: str
     description: str
     input_schema: dict[str, Any]
-    scope: str
+    scope: str | None
     handler: Callable[[ToolContext, dict], Any]
     # MCP tool annotations. Most tools here only read; the one that does not
     # still destroys nothing — it stages a proposal the user accepts elsewhere.
@@ -49,6 +50,7 @@ class Tool:
     metadata: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
     blocking_io: bool = False
+    staging_only: bool = False
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -84,8 +86,11 @@ def visible_to(connector: Connector) -> list[Tool]:
     model to promise the user something it cannot deliver.
     """
     admin = connector.user.email.lower() in get_admin_emails()
+    from scaffold.synthetic_accounts import is_staging
     return [t for t in REGISTRY.values()
-            if t.scope in connector.scopes and (t.scope not in ADMIN_SCOPES or admin)]
+            if (t.scope is None or t.scope in connector.scopes)
+            and (not t.staging_only or is_staging())
+            and (t.scope not in ADMIN_SCOPES or admin)]
 
 
 def as_result(payload: Any) -> dict:

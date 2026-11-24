@@ -80,7 +80,7 @@ def require_connector(request: Request, db: Session = Depends(get_db)) -> Connec
         raise _unauthorized(request, "This connection belongs to another MCP server")
 
     user = db.get(User, int(payload["sub"]))
-    if user is None or grant.user_id != user.id:
+    if user is None or user.is_synthetic or grant.user_id != user.id:
         raise _unauthorized(request, "Invalid token")
     if int(payload.get("sv", 0)) != int(user.session_version):
         raise _unauthorized(request, "This connection was signed out")

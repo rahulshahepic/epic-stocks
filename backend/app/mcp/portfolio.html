@@ -15,6 +15,7 @@
 <body>
 <main>
 <header><div class="brand"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 28V8l13-5 13 5v20H3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 23V16m8 7V11m8 12v-7" stroke="currentColor" stroke-width="3"/></svg><div><h1>Epic Stocks</h1><small>Unofficial · Your connected account</small></div></div><button id="expand" hidden>Expand</button></header>
+<p id="syntheticNotice" class="note" role="note" hidden></p>
 <nav aria-label="Portfolio views"><button data-view="summary" aria-pressed="true">Overview</button><button data-view="grants" aria-pressed="false">Grants</button><button data-view="loans" aria-pressed="false">Loans</button><button data-view="events" aria-pressed="false">Events</button></nav>
 <p id="status" role="status" aria-live="polite">Connecting to your portfolio…</p>
 <form id="filters" class="filters" hidden><label>From<input id="from" type="date" required></label><label>Through<input id="through" type="date" required></label><button type="submit">Apply</button></form>
@@ -56,6 +57,10 @@
     $('expand').textContent=hostContext.displayMode === 'fullscreen' ? 'Collapse' : 'Expand';
   }
   function render(snapshot) {
+    const testing = snapshot?.account_context;
+    $('syntheticNotice').hidden = !testing?.synthetic;
+    $('syntheticNotice').textContent = testing?.synthetic ? 'FICTIONAL TEST ACCOUNT · '+testing.scenario+' · fixture v'+testing.fixture_version+' · Changes affect this test account only.' : '';
+
     if(!snapshot || !views.includes(snapshot.view) || !snapshot.data || typeof snapshot.data !== 'object') throw new Error('The portfolio response could not be displayed. Try Refresh.');
     current=snapshot; const data=snapshot.data, root=$('content'); root.replaceChildren();
     document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.view===snapshot.view)));

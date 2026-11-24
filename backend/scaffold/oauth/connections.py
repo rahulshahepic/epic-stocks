@@ -9,8 +9,11 @@ def revoke_grant(db: Session, grant: OAuthGrant) -> None:
     """Delete the grant (every MCP request and refresh loads it, so this is
     immediate) and record the disconnect in the user's activity."""
     user_id, grant_id, name = grant.user_id, grant.id, grant.client_name
-    db.delete(grant)
-    db.commit()
+    from scaffold.synthetic_accounts import account_lock, delete_test_accounts
+    with account_lock(db, user_id):
+        delete_test_accounts(db, grant_id=grant_id)
+        db.delete(grant)
+        db.commit()
     audit.record(db, user_id=user_id, grant_id=grant_id, client_name=name,
                  event=audit.DISCONNECTED)
 

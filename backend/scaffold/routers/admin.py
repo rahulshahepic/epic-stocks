@@ -146,8 +146,8 @@ class BlockedEmailOut(BaseModel):
 @router.get("/stats", response_model=AdminStats)
 def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    total_users = db.query(func.count(User.id)).scalar()
-    active_users = db.query(func.count(User.id)).filter(User.last_login >= cutoff).scalar()
+    total_users = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).scalar()
+    active_users = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).filter(User.last_login >= cutoff).scalar()
     total_grants = db.query(func.count(Grant.id)).scalar()
     total_loans = db.query(func.count(Loan.id)).scalar()
     total_prices = db.query(func.count(Price.id)).scalar()
@@ -252,7 +252,7 @@ def admin_users(
     db: Session = Depends(get_db),
 ):
     admin_emails = get_admin_emails()
-    query = db.query(User)
+    query = db.query(User).filter(User.is_synthetic.is_(False))
     if q:
         query = query.filter(User.email.ilike(f"%{q}%") | User.name.ilike(f"%{q}%"))
     total = query.count()

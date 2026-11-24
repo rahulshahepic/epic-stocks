@@ -27,14 +27,14 @@ from database import get_db
 from scaffold.oauth import audit
 from scaffold.oauth.scopes import ADMIN_SCOPES
 from scaffold.auth import get_admin_emails
-from scaffold.routers.plugin_downloads import site_origin, STAGING
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, retirement_tools  # noqa: F401
+from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, retirement_tools, test_account_tools  # noqa: F401
 from .ui_tools import RESOURCE_URIS, resource_contents, resource_descriptor
 from .retirement_tools import RETIREMENT_RESOURCE_URIS
 from .retirement_ui import retirement_resource_contents, retirement_resource_descriptor
+from scaffold.synthetic_accounts import is_staging, requires_synthetic, tool_account
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -147,7 +147,7 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         ctx = ToolContext(connector=connector, db=db)
         name = params.get("name")
         tool = REGISTRY.get(name) if method == "tools/call" and isinstance(name, str) else None
-        if tool and tool.blocking_io:
+        if tool and (tool.blocking_io or (requires_synthetic() and request.url.path == "/mcp")):
             # Provider timeouts must leave the ASGI event loop available.
             # Authorization and audit still happen inside _dispatch.
             payload = await run_in_threadpool(
@@ -195,11 +195,11 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
         return _result(request_id, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
-            "serverInfo": {"name": "epic-stocks-staging-test" if site_origin() == STAGING else "epic-stocks",
-                           "title": "Epic Stocks Staging Test" if site_origin() == STAGING else "Epic Stocks", "version": "1"},
+            "serverInfo": {"name": "epic-stocks-staging-test" if is_staging() else "epic-stocks",
+                           "title": "Epic Stocks Staging Test" if is_staging() else "Epic Stocks", "version": "1"},
             "instructions": (
-                ("STAGING TEST ENVIRONMENT: Treat figures as fictional test scenarios. Never sync them into production or personal finances.\n\n"
-                 if site_origin() == STAGING else "") +
+                ("STAGING: Call get_account_context first, then list_test_scenarios and setup_test_account if uninitialized. Financial calls fail closed until an isolated synthetic account exists. All reads, writes and widget callbacks use only that fixture. Never sync fictional figures into personal finances or production. Reset requires explicit confirmation. Existing OAuth connections work without reconnecting.\n\n"
+                 if requires_synthetic() else "") +
                 "Use show_retirement for an interactive retirement planner, run_retirement_simulation "
                 "for numeric analysis, and compare_retirement_scenarios for retirement-date decisions. "
                 "Exploratory overrides never save; update_retirement_params writes only with permission.\n\n"
@@ -300,7 +300,7 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
         return _error(request_id, INVALID_PARAMS, "A tool name is required")
 
     tool = REGISTRY.get(name)
-    if tool is None or (tool.scope in ADMIN_SCOPES) != admin:
+    if tool is None or (tool.scope in ADMIN_SCOPES) != admin or (tool.staging_only and not is_staging()):
         return _error(request_id, INVALID_PARAMS, f"Unknown tool '{name}'")
 
     # Recorded before it runs, so a read cannot happen without a record of it.
@@ -311,10 +311,10 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
         grant_id=connector.grant.id,
         client_name=connector.grant.client_name,
         tool=name,
-        scope=tool.scope,
+        scope=tool.scope or "",
     )
 
-    if tool.scope not in connector.scopes:
+    if tool.scope is not None and tool.scope not in connector.scopes:
         audit.finish_tool_call(ctx.db, entry, audit.DENIED)
         return _tool_failure(
             request_id,
@@ -331,14 +331,25 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
         arguments = {}
 
     try:
-        payload = tool.handler(ctx, arguments)
-        result = as_result(payload)
-        result["content"].extend(ctx.extra_content)
-        if tool.output_schema is not None:
-            # Normalize dates exactly as in the text fallback.
-            result["structuredContent"] = json.loads(result["content"][0]["text"])
-        if site_origin() == STAGING and not admin:
-            result.setdefault("_meta", {})["epic-stocks/environment"] = "staging-test-data"
+        # Admin tools retain their original principal and key. Ordinary staging
+        # handlers all share this boundary, including app-only refresh calls.
+        from contextlib import nullcontext
+        with (nullcontext(None) if admin else tool_account(ctx, name)) as status:
+            payload = tool.handler(ctx, arguments)
+            if status and isinstance(payload, dict):
+                payload = {**payload, "account_context": status}
+                # Life-event widgets render a nested simulation result.
+                for key in ("baseline", "withEvents"):
+                    if isinstance(payload.get(key), dict):
+                        payload[key] = {**payload[key], "account_context": status}
+            result = as_result(payload)
+            result["content"].extend(ctx.extra_content)
+            if tool.output_schema is not None:
+                result["structuredContent"] = json.loads(result["content"][0]["text"])
+            if is_staging() and not admin:
+                result.setdefault("_meta", {})["epic-stocks/environment"] = "staging-test-data"
+                if status:
+                    result["_meta"]["epic-stocks/account-context"] = status
         answer = _result(request_id, result)
     except ValueError as exc:
         # A bad argument is a finding the model can act on, not a crash.

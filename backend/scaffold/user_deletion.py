@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 # (table, user_id column) in FK-safe order: children before parents.
 USER_OWNED_TABLES: list[tuple[str, str]] = [
+    ("mcp_test_accounts", "user_id"),
     ("sales", "user_id"),
     ("loan_interest_checkpoints", "user_id"),
     ("loan_payments", "user_id"),
@@ -86,12 +87,30 @@ def delete_financial_data(db, user_id: int) -> None:
 
 
 def delete_user(db, user_id: int) -> None:
+    from scaffold.synthetic_accounts import deletion_lock
+    synthetic = db.execute(text("SELECT is_synthetic FROM users WHERE id=:uid"), {"uid": user_id}).scalar()
+    if synthetic:
+        row = db.execute(text("SELECT user_id FROM mcp_test_accounts WHERE synthetic_id=:uid"), {"uid": user_id}).first()
+        if row:
+            with deletion_lock(db, row[0]):
+                db.execute(text("DELETE FROM mcp_test_accounts WHERE synthetic_id=:uid"), {"uid": user_id})
+                _delete_user(db, user_id)
+        else:
+            _delete_user(db, user_id)
+    else:
+        with deletion_lock(db, user_id):
+            _delete_user(db, user_id)
+
+
+def _delete_user(db, user_id: int) -> None:
     """Erase the account and everything belonging to it.
 
     Does not commit — the caller owns the transaction, so a failure part-way
     through rolls the whole deletion back rather than leaving a half-erased
     account.
     """
+    from scaffold.synthetic_accounts import delete_test_accounts
+    delete_test_accounts(db, user_id=user_id)
     _clear_self_references(db, user_id)
 
     for table, col in USER_OWNED_TABLES:

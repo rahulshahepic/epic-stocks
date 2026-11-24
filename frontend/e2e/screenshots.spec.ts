@@ -859,7 +859,7 @@ test.describe('Screenshots', () => {
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
     const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
-    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)

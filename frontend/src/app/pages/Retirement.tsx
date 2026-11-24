@@ -423,6 +423,8 @@ function RetirementAccount() {
   const [paramsError, setParamsError] = useState(false)
   const [paramsReloadNonce, setParamsReloadNonce] = useState(0)
   const [exitMode, setExitMode] = useState<'auto' | 'manual'>('auto')
+  const [legacyExitDate, setLegacyExitDate] = useState<string | null>(null)
+  const legacyExitHeld = legacyExitDate === retirementDate
   const [exitError, setExitError] = useState('')
   const [exitRetry, setExitRetry] = useState(0)
   const [advancedView, setAdvancedView] = useState(false)
@@ -511,7 +513,9 @@ function RetirementAccount() {
             setSpouseDOB(savedSpouseDOB || null)
           }
           // Treat saved values as user choices: don't auto-overwrite them.
-          setExitMode(rawSaved.epicExitMode === 'auto' ? 'auto' : 'epicExit' in rawSaved ? 'manual' : 'auto')
+          setExitMode(rawSaved.epicExitMode === 'manual' ? 'manual' : 'auto')
+          setLegacyExitDate(!('epicExitMode' in rawSaved) && 'epicExit' in rawSaved
+            ? (typeof savedDate === 'string' && savedDate ? savedDate : today) : null)
           if ('defaultSpend' in rawSaved) defaultSpendOverriddenRef.current = true
           if ('minSpend' in rawSaved) minSpendOverriddenRef.current = true
         }
@@ -523,7 +527,7 @@ function RetirementAccount() {
         setParamsLoaded(false)
         setParamsError(true)
       })
-  }, [vid, paramsReloadNonce])
+  }, [vid, paramsReloadNonce, today])
 
   // Push the age-at-retirement-date into params as the simulation start age.
   // The exit-preview seeds wealth as of `retirementDate`, so the horizon must
@@ -558,7 +562,7 @@ function RetirementAccount() {
   // loading indicator) when the user already has a saved epicExit value.
   useEffect(() => {
     if (!paramsLoaded) return
-    if (exitMode === 'manual') { setExitError(''); setExitPreviewLoading(false); return }
+    if (exitMode === 'manual' || legacyExitHeld) { setExitError(''); setExitPreviewLoading(false); return }
     let cancelled = false
     setExitPreviewLoading(true)
     setExitError('')
@@ -577,7 +581,7 @@ function RetirementAccount() {
     return () => {
       cancelled = true
     }
-  }, [paramsLoaded, retirementDate, vid, exitMode, exitRetry])
+  }, [paramsLoaded, retirementDate, vid, exitMode, exitRetry, legacyExitHeld])
 
   // Pull state tax rates from the user's TaxSettings — federal is bracket-based
   // in the simulator (no user input needed), state is a flat rate from settings.
@@ -645,7 +649,7 @@ function RetirementAccount() {
       api.saveRetirementParams({
         ...(params as unknown as Record<string, unknown>),
         retirementDate,
-        epicExitMode: exitMode,
+        ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
       })
         .then(() => {
@@ -658,7 +662,7 @@ function RetirementAccount() {
         })
     }, 500)
     return () => clearTimeout(t)
-  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError])
+  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
   const taxableTotal = params.epicExit + params.taxableAdditional
@@ -745,13 +749,15 @@ function RetirementAccount() {
         <span className="text-[11px] text-cs-muted">
           {vid
             ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
-            : saveStatus === 'saving'
-              ? 'Saving…'
-              : saveStatus === 'saved'
-                ? 'All inputs saved'
-                : saveStatus === 'error'
-                  ? 'Save failed'
-                  : 'Inputs save automatically'}
+            : exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
+              ? (exitError ? 'Saving paused — resolve exit projection' : 'Refreshing exit amount…')
+              : saveStatus === 'saving'
+                ? 'Saving…'
+                : saveStatus === 'saved'
+                  ? 'All inputs saved'
+                  : saveStatus === 'error'
+                    ? 'Save failed'
+                    : 'Inputs save automatically'}
         </span>
       </div>
 
@@ -811,7 +817,7 @@ function RetirementAccount() {
       </div>
       {planStage === 'before' && <div className="space-y-4">
         <label className="flex flex-col gap-1 text-xs text-cs-text-2">Target retirement date
-          <input type="date" value={retirementDate} onChange={e => setRetirementDate(e.target.value)} className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
+          <input type="date" value={retirementDate} onChange={e => { setLegacyExitDate(null); setRetirementDate(e.target.value) }} className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
         </label>
         <BeforeRetirement events={params.plannedEvents ?? []} retirementDate={retirementDate} />
         <LifeEventsPlanner phase="before"
@@ -867,6 +873,7 @@ function RetirementAccount() {
                 type="date"
                 value={retirementDate}
                 onChange={e => {
+                  setLegacyExitDate(null)
                   setRetirementDate(e.target.value)
                 }}
                 className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
@@ -938,8 +945,9 @@ function RetirementAccount() {
         <Card pad="md">
           <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
           <div className="mb-3 space-y-2">
-            <p className="text-xs text-cs-text-2">{exitMode === 'auto' ? 'Epic exit: projected automatically for the retirement date using saved share prices and future price estimates. No additional Epic share growth is assumed here; edit future prices on the Prices page.' : 'Epic exit: manual amount. Date changes keep this override.'}</p>
-            <button type="button" onClick={() => setExitMode(m => m === 'auto' ? 'manual' : 'auto')} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
+            <p className="text-xs text-cs-text-2">{legacyExitHeld ? 'Saved exit amount kept for this date. Changing the date will project a new amount; choose manual to keep a fixed override.' : exitMode === 'auto' ? 'Epic exit: projected automatically for the retirement date using saved share prices and future price estimates. No additional Epic share growth is assumed here; edit future prices on the Prices page.' : 'Epic exit: manual amount. Date changes keep this override.'}</p>
+            <button type="button" onClick={() => { setLegacyExitDate(null); setExitMode(m => m === 'auto' ? 'manual' : 'auto') }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
+            {legacyExitHeld && <button type="button" onClick={() => setLegacyExitDate(null)} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
             {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => setExitRetry(n => n + 1)} className="underline">Retry exit projection</button></p>}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -947,13 +955,14 @@ function RetirementAccount() {
               label="Epic exit value"
               value={params.epicExit}
               onChange={v => {
+                setLegacyExitDate(null)
                 setExitMode('manual')
                 update('epicExit', v)
               }}
               min={0}
               step={0.1}
               suffix="$M"
-              hint={exitMode === 'manual' ? 'Manual amount; changing the date keeps it.' : exitError ? 'Last successful amount; paused until projection is resolved.' : 'Date-specific projection; editing this amount switches to manual mode.'}
+              hint={legacyExitHeld ? 'Saved amount for this date; refresh or change date to project.' : exitMode === 'manual' ? 'Manual amount; changing the date keeps it.' : exitError ? 'Last successful amount; paused until projection is resolved.' : 'Date-specific projection; editing this amount switches to manual mode.'}
             />
             {!params.advanced && (
               <NumInput

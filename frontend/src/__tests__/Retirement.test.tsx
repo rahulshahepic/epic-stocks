@@ -512,7 +512,7 @@ describe('Retirement page', () => {
   })
 
   it('runs with a warning when retirement moves beyond a conditional purchase', async () => {
-    mockApi({ savedParams: { retirementDate: '2030-06-15', epicExit: 5, paths: 10,
+    mockApi({ savedParams: { retirementDate: '2030-06-15', epicExit: 5, epicExitMode: 'manual', paths: 10,
       plannedEvents: [{ id: 'car', title: 'Car', kind: 'vehicle', date: '2037-01-01',
         amountM: 0.2, condition: { requireFullSpending: true } }] } })
     render(<MemoryRouter><Retirement /></MemoryRouter>)
@@ -528,7 +528,7 @@ describe('Retirement page', () => {
 
   it('keeps result ages and purchasing-power year tied to the run until rerun', async () => {
     mockApi({ savedParams: {
-      retirementDate: '2030-06-15', epicExit: 5, paths: 10, seed: 42,
+      retirementDate: '2030-06-15', epicExit: 5, epicExitMode: 'manual', paths: 10, seed: 42,
       currentAge: 50, endAge: 95, defaultSpend: 100, minSpend: 80,
     } })
     render(<MemoryRouter><Retirement /></MemoryRouter>)
@@ -644,8 +644,19 @@ it('keeps account balances and basis when hiding the breakdown or switching view
   })
 })
 
-it('preserves a legacy manual exit amount when the retirement date changes', async () => {
-  mockApi({ savedParams: { epicExit: 5, retirementDate: '2032-01-01' } })
+it('keeps a legacy amount initially and automatically projects when its date changes', async () => {
+  mockApi({ netCash: 6_000_000, savedParams: { epicExit: 5, retirementDate: '2032-01-01' } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await screen.findByDisplayValue('5')
+  expect(screen.getByText(/Saved exit amount kept for this date/)).toBeVisible()
+  expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
+  fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
+  expect(await screen.findByDisplayValue('6')).toBeVisible()
+  expect(screen.getByText(/Epic exit: projected automatically/)).toBeVisible()
+})
+
+it('preserves an explicitly manual amount when the retirement date changes', async () => {
+  mockApi({ savedParams: { epicExit: 5, epicExitMode: 'manual', retirementDate: '2032-01-01' } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await screen.findByDisplayValue('5')
   fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })

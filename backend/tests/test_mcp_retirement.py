@@ -582,3 +582,26 @@ def test_card_reports_projection_capability(client, monkeypatch, scope, can_proj
     planned = reader.call("plan_life_events", events=events, recalculate_exit=False)
     assert planned["baseline"]["canProjectExit"] is can_project
     assert planned["withEvents"]["canProjectExit"] is can_project
+
+
+def test_manual_exit_write_persists_mode_and_preserves_accounts(mcp, client):
+    client.put("/api/retirement/params", json={"params": {"epicExit": 5, "epicExitMode": "auto", "traditional": 1}})
+    answer = mcp.call("update_retirement_params", changes={"epicExit": 6})
+    saved = client.get("/api/retirement/params").json()["params"]
+    assert saved["epicExitMode"] == "manual"
+    assert saved["traditional"] == 1
+    assert answer["updated"] == ["epicExit"]
+
+
+def test_exit_mode_is_validated():
+    assert validate_changes({"epicExitMode": "auto"})["epicExitMode"] == "auto"
+    with pytest.raises(ValueError, match="epicExitMode"):
+        validate_changes({"epicExitMode": "surprise"})
+
+
+@pytest.mark.parametrize('saved_mode,override_mode,expected', [('auto', 'manual', False), ('manual', 'auto', True)])
+def test_run_respects_the_override_exit_mode(mcp, client, monkeypatch, saved_mode, override_mode, expected):
+    client.put('/api/retirement/params', json={'params': {'epicExit': 5, 'epicExitMode': saved_mode}})
+    monkeypatch.setattr('app.mcp.retirement_tools.run', lambda owner, overrides, recalculate_exit: {'recalculated': recalculate_exit})
+    result = mcp.call('run_retirement_simulation', overrides={'epicExitMode': override_mode})
+    assert result['recalculated'] is expected

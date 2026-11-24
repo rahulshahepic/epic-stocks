@@ -78,7 +78,7 @@ function mockApi(opts: {
       const body = nc == null
         ? null
         : {
-          date: '2026-05-07',
+          date: new URL(url, 'http://localhost').searchParams.get('date'),
           vested_shares: 1000,
           share_price: 100,
           gross_vested: 100000,
@@ -325,7 +325,7 @@ describe('Retirement page', () => {
     await user.type(defaultSpend, '500')
     expect(defaultSpend.value).toBe('500')
     // Now bump additional portfolio: total grows but defaultSpend should stick.
-    const additional = screen.getByLabelText(/^Additional portfolio/) as HTMLInputElement
+    const additional = screen.getByLabelText(/^Taxable brokerage at retirement/) as HTMLInputElement
     await user.clear(additional)
     await user.type(additional, '4')
     expect(defaultSpend.value).toBe('500')
@@ -339,7 +339,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const additional = await screen.findByLabelText(/^Additional portfolio/) as HTMLInputElement
+    const additional = await screen.findByLabelText(/^Taxable brokerage at retirement/) as HTMLInputElement
     // Stage: type a value, then position-cursor-at-start scenario via clear+retype.
     await user.clear(additional)
     await user.type(additional, '02')
@@ -358,6 +358,7 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     await screen.findByLabelText(/^Minimum spend/)
+    await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
     const btn = screen.getByRole('button', { name: /Minimum spend.*explanation/i })
     expect(screen.queryByText(/Want to assume you'd never cut back/)).not.toBeInTheDocument()
     await user.click(btn)
@@ -372,6 +373,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
     const btn = await screen.findByRole('button', { name: /Market outlook explanation/i })
     expect(screen.queryByText(/replay actual stretches of U\.S\. market history/i)).not.toBeInTheDocument()
     await user.click(btn)
@@ -390,7 +392,7 @@ describe('Retirement page', () => {
   })
 
   it('auto-persists the retirement date after a change (PUT to /api/retirement/params)', async () => {
-    mockApi({ netCash: null })
+    mockApi({ netCash: 0 })
     render(
       <MemoryRouter>
         <Retirement />
@@ -466,6 +468,7 @@ describe('Retirement page', () => {
         </ViewingProvider>
       </MemoryRouter>,
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
     const toggle = await screen.findByRole('checkbox', { name: /Include spouse/i }) as HTMLInputElement
     await waitFor(() => expect(toggle.checked).toBe(true))
     expect(toggle.disabled).toBe(true)
@@ -489,6 +492,7 @@ describe('Retirement page', () => {
     // Spouse fields hidden by default.
     expect(screen.queryByLabelText(/Spouse date of birth/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/Spouse.s monthly benefit at age 67/i)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
     const toggle = await screen.findByRole('checkbox', { name: /Include spouse/i })
     await user.click(toggle)
     expect(screen.getByLabelText(/Spouse date of birth/i)).toBeInTheDocument()
@@ -589,7 +593,7 @@ describe('Retirement saved-params load failure', () => {
     // running on defaults would overwrite them. Silently disabling the button
     // just moved the damage onto the user: no message, no retry, no way back
     // short of reloading.
-    mockApi({ netCash: null, paramsFailures: 1, savedParams: { minSpend: 90 } })
+    mockApi({ netCash: 0, paramsFailures: 1, savedParams: { minSpend: 90 } })
     render(
       <MemoryRouter>
         <Retirement />
@@ -616,9 +620,46 @@ it('puts core inputs before expense entry and keeps working-life funding in its 
     plannedEvents: [{ id: 'pre', title: 'Before retirement car', kind: 'vehicle', date: '2030-01-01', amountM: 0.1 }] } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await waitFor(() => expect(screen.getByLabelText(/^Retirement date/)).toHaveValue('2032-01-01'))
+  await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
   expect(screen.getByText('Who & when').compareDocumentPosition(screen.getByRole('heading', { name: 'Life events & major purchases' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(screen.queryByText('Before retirement car')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /^Before retirement$/ }))
   expect(screen.getByRole('region', { name: 'Before retirement funding schedule' })).toHaveTextContent('$100,000')
   expect(screen.getAllByText('Before retirement car').length).toBeGreaterThan(0)
+})
+
+it('keeps account balances and basis when hiding the breakdown or switching views', async () => {
+  mockApi({ savedParams: { epicExit: 5, taxableAdditional: 3, additionalBasis: 1.2,
+    traditional: 1, roth: 0.5, advanced: true, defaultSpend: 150, minSpend: 90 } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await screen.findByDisplayValue('1.2')
+  await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
+  await userEvent.click(screen.getByRole('button', { name: /Hide account breakdown/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Show basic view' }))
+  fireEvent.change(screen.getByLabelText(/^Taxable brokerage at retirement/), {target: {value: '4'}})
+  await waitFor(() => {
+    const saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+      .map(([, init]) => JSON.parse(String(init?.body)).params).filter(Boolean)
+    expect(saved.some(p => p.traditional === 1 && p.roth === 0.5 && p.additionalBasis === 1.2 && p.taxableAdditional === 4)).toBe(true)
+  })
+})
+
+it('preserves a legacy manual exit amount when the retirement date changes', async () => {
+  mockApi({ savedParams: { epicExit: 5, retirementDate: '2032-01-01' } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await screen.findByDisplayValue('5')
+  fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
+  expect(screen.getByText(/Date changes keep this override/)).toBeVisible()
+  expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
+  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5)
+})
+
+it('pauses an automatic plan when projection fails and allows an explicit manual fallback', async () => {
+  mockApi({ netCash: null, savedParams: { epicExit: 5, epicExitMode: 'auto', retirementDate: '2032-01-01' } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  expect(await screen.findByText(/No exit projection is available/)).toBeVisible()
+  expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeDisabled()
+  await userEvent.click(screen.getByRole('button', { name: 'Enter a manual exit amount' }))
+  expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeEnabled()
+  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5)
 })

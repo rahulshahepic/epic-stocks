@@ -422,7 +422,10 @@ function RetirementAccount() {
   // just moves the damage to the user.
   const [paramsError, setParamsError] = useState(false)
   const [paramsReloadNonce, setParamsReloadNonce] = useState(0)
-  const exitOverriddenRef = useRef(false)
+  const [exitMode, setExitMode] = useState<'auto' | 'manual'>('auto')
+  const [exitError, setExitError] = useState('')
+  const [exitRetry, setExitRetry] = useState(0)
+  const [advancedView, setAdvancedView] = useState(false)
   const defaultSpendOverriddenRef = useRef(false)
   const minSpendOverriddenRef = useRef(false)
   const paramsLoadedRef = useRef(false)
@@ -498,6 +501,7 @@ function RetirementAccount() {
           const migrated = migrateLoadedParams(rawSaved)
           // Strip non-SimParams sidecar fields before merging.
           delete (migrated as Record<string, unknown>).retirementDate
+          delete (migrated as Record<string, unknown>).epicExitMode
           delete (migrated as Record<string, unknown>).spouseDOB
           setParams(prev => ({ ...prev, ...migrated }))
           if (typeof savedDate === 'string' && savedDate) {
@@ -507,7 +511,7 @@ function RetirementAccount() {
             setSpouseDOB(savedSpouseDOB || null)
           }
           // Treat saved values as user choices: don't auto-overwrite them.
-          if ('epicExit' in rawSaved) exitOverriddenRef.current = true
+          setExitMode(rawSaved.epicExitMode === 'auto' ? 'auto' : 'epicExit' in rawSaved ? 'manual' : 'auto')
           if ('defaultSpend' in rawSaved) defaultSpendOverriddenRef.current = true
           if ('minSpend' in rawSaved) minSpendOverriddenRef.current = true
         }
@@ -554,24 +558,26 @@ function RetirementAccount() {
   // loading indicator) when the user already has a saved epicExit value.
   useEffect(() => {
     if (!paramsLoaded) return
-    if (exitOverriddenRef.current) return
+    if (exitMode === 'manual') { setExitError(''); setExitPreviewLoading(false); return }
     let cancelled = false
     setExitPreviewLoading(true)
+    setExitError('')
     const fetcher = vid ? api.getSharedPreviewExit(vid, retirementDate) : api.previewExit(retirementDate)
     fetcher
       .then(p => {
-        if (cancelled || !p) return
+        if (cancelled) return
+        if (!p || p.date !== retirementDate) throw new Error('No exit projection is available for this date. Retry, or choose a manual exit amount.')
         const m = Number((p.net_cash / 1_000_000).toFixed(3))
         setParams(prev => ({ ...prev, epicExit: Math.max(0, m) }))
       })
-      .catch(() => {})
+      .catch((error: unknown) => { if (!cancelled) setExitError(error instanceof Error ? error.message : 'Could not project your exit. Retry or choose a manual amount.') })
       .finally(() => {
         if (!cancelled) setExitPreviewLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [paramsLoaded, retirementDate, vid])
+  }, [paramsLoaded, retirementDate, vid, exitMode, exitRetry])
 
   // Pull state tax rates from the user's TaxSettings — federal is bracket-based
   // in the simulator (no user input needed), state is a flat rate from settings.
@@ -631,7 +637,7 @@ function RetirementAccount() {
   // Skips until the initial load completes so we don't save defaults over a
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
-    if (vid || !paramsLoadedRef.current) return
+    if (vid || !paramsLoadedRef.current || (exitMode === 'auto' && (exitPreviewLoading || exitError))) return
     const request = ++saveRequestRef.current
     setSaveStatus('saving')
     setSaveError('')
@@ -639,6 +645,7 @@ function RetirementAccount() {
       api.saveRetirementParams({
         ...(params as unknown as Record<string, unknown>),
         retirementDate,
+        epicExitMode: exitMode,
         spouseDOB,
       })
         .then(() => {
@@ -651,7 +658,7 @@ function RetirementAccount() {
         })
     }, 500)
     return () => clearTimeout(t)
-  }, [params, retirementDate, spouseDOB, vid])
+  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
   const taxableTotal = params.epicExit + params.taxableAdditional
@@ -674,6 +681,10 @@ function RetirementAccount() {
   }, [])
 
   const run = useCallback(() => {
+    if (exitMode === 'auto' && (exitPreviewLoading || exitError)) {
+      setRunError('Resolve the exit projection or choose a manual amount before simulating.')
+      return
+    }
     const runParams = {
       ...params,
       simulationStartDate: retirementDate,
@@ -707,7 +718,7 @@ function RetirementAccount() {
         runTimer.current = null
       }
     }, 30)
-  }, [params, retirementDate, spouseDOB])
+  }, [params, retirementDate, spouseDOB, exitMode, exitPreviewLoading, exitError])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -790,6 +801,10 @@ function RetirementAccount() {
       </div>
 
       {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" aria-pressed={advancedView} onClick={() => setAdvancedView(v => !v)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-medium text-cs-text">{advancedView ? 'Show basic view' : 'Show advanced assumptions'}</button>
+        <p className="text-xs text-cs-muted">One saved plan. Switching views keeps every assumption.</p>
+      </div>
       <div className="flex gap-2" role="group" aria-label="Planning phase">
         <button type="button" aria-pressed={planStage === 'before'} onClick={() => setPlanStage('before')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Before retirement</button>
         <button type="button" aria-pressed={planStage === 'retirement'} onClick={() => setPlanStage('retirement')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Retirement</button>
@@ -852,7 +867,6 @@ function RetirementAccount() {
                 type="date"
                 value={retirementDate}
                 onChange={e => {
-                  exitOverriddenRef.current = false
                   setRetirementDate(e.target.value)
                 }}
                 className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
@@ -866,347 +880,346 @@ function RetirementAccount() {
               </span>
             </label>
           </div>
-          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-cs-border bg-cs-raised px-3 py-2 text-[11px] ">
-            <input
-              type="checkbox"
-              checked={params.includeSpouse}
-              disabled={!!vid}
-              onChange={e => update('includeSpouse', e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-cs-text-2">
-              Include spouse <span className="text-cs-muted">(adds their Social Security, switches to married-filing-jointly tax brackets, and counts each person's health insurance separately)</span>
-            </span>
-          </label>
-          {params.includeSpouse && (
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-cs-text-2">
-                  Spouse date of birth
-                </span>
-                <input
-                  type="date"
-                  value={spouseDOB ?? ''}
-                  disabled={!!vid}
-                  onChange={e => setSpouseDOB(e.target.value || null)}
-                  className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
-                />
-                <span className="text-[10px] text-cs-muted">
-                  {spouseDOB
-                    ? `Age ${ageFromDOB(spouseDOB) ?? '—'} today, ${ageFromDOB(spouseDOB, retirementDate) ?? '—'} at retirement`
-                    : 'Used to time their Social Security and Medicare (kicks in at 65)'}
-                </span>
-              </label>
-            </div>
-          )}
-          <div className="mt-4 border-t border-cs-border pt-3 ">
-            <SliderInput
-              label="Plan until you're"
-              value={params.endAge}
-              onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
-              min={Math.min(params.currentAge + 1, 110)}
-              max={110}
-              step={1}
-              formatValue={v => `age ${v}`}
-              hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
-            />
-            {dobMissing && (
-              <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-                ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
-              </p>
+          <div hidden={!advancedView}>
+            <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-cs-border bg-cs-raised px-3 py-2 text-[11px] ">
+              <input
+                type="checkbox"
+                checked={params.includeSpouse}
+                disabled={!!vid}
+                onChange={e => update('includeSpouse', e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-cs-text-2">
+                Include spouse <span className="text-cs-muted">(adds their Social Security, switches to married-filing-jointly tax brackets, and counts each person's health insurance separately)</span>
+              </span>
+            </label>
+            {params.includeSpouse && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-cs-text-2">
+                    Spouse date of birth
+                  </span>
+                  <input
+                    type="date"
+                    value={spouseDOB ?? ''}
+                    disabled={!!vid}
+                    onChange={e => setSpouseDOB(e.target.value || null)}
+                    className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
+                  />
+                  <span className="text-[10px] text-cs-muted">
+                    {spouseDOB
+                      ? `Age ${ageFromDOB(spouseDOB) ?? '—'} today, ${ageFromDOB(spouseDOB, retirementDate) ?? '—'} at retirement`
+                      : 'Used to time their Social Security and Medicare (kicks in at 65)'}
+                  </span>
+                </label>
+              </div>
             )}
+            <div className="mt-4 border-t border-cs-border pt-3 ">
+              <SliderInput
+                label="Plan until you're"
+                value={params.endAge}
+                onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
+                min={Math.min(params.currentAge + 1, 110)}
+                max={110}
+                step={1}
+                formatValue={v => `age ${v}`}
+                hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
+              />
+              {dobMissing && (
+                <p className="mt-2 text-[10px] text-amber-800 dark:text-amber-300">
+                  ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
+                </p>
+              )}
+            </div>
           </div>
         </Card>
 
         {/* Card 2: Your money */}
         <Card pad="md">
           <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
+          <div className="mb-3 space-y-2">
+            <p className="text-xs text-cs-text-2">{exitMode === 'auto' ? 'Epic exit: projected automatically for the retirement date using saved share prices and future price estimates. No additional Epic share growth is assumed here; edit future prices on the Prices page.' : 'Epic exit: manual amount. Date changes keep this override.'}</p>
+            <button type="button" onClick={() => setExitMode(m => m === 'auto' ? 'manual' : 'auto')} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
+            {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => setExitRetry(n => n + 1)} className="underline">Retry exit projection</button></p>}
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <NumInput
               label="Epic exit value"
               value={params.epicExit}
               onChange={v => {
-                exitOverriddenRef.current = true
+                setExitMode('manual')
                 update('epicExit', v)
               }}
               min={0}
               step={0.1}
               suffix="$M"
-              hint="Pre-filled from your dashboard for the retirement date above — you can override it"
+              hint={exitMode === 'manual' ? 'Manual amount; changing the date keeps it.' : exitError ? 'Last successful amount; paused until projection is resolved.' : 'Date-specific projection; editing this amount switches to manual mode.'}
             />
             {!params.advanced && (
               <NumInput
-                label="Additional portfolio"
+                label="Taxable brokerage at retirement"
                 value={params.taxableAdditional}
                 onChange={v => {
                   setParams(prev => ({
                     ...prev,
                     taxableAdditional: v,
-                    additionalBasis: 0,
                   }))
                 }}
                 min={0}
                 step={0.1}
                 suffix="$M"
-                hint="Pre-existing taxable brokerage — retirement accounts default to $0; open below to split by account type"
+                hint="Taxable assets only. Existing 401(k), Roth and cost basis remain in your plan; open advanced assumptions to edit them."
               />
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (params.advanced) {
-                setParams(prev => ({
-                  ...prev,
-                  advanced: false,
-                  taxableAdditional: prev.taxableAdditional + prev.traditional + prev.roth,
-                  traditional: 0,
-                  roth: 0,
-                  additionalBasis: 0,
-                }))
-              } else {
-                update('advanced', true)
-              }
-            }}
-            className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-cs-brand hover:text-cs-brand-hover dark:text-rose-300 dark:hover:text-rose-200"
-          >
-            <span>{params.advanced ? '▾' : '▸'}</span>
-            <span>{params.advanced ? 'Hide account breakdown' : 'Break out by account type (more accurate taxes)'}</span>
-          </button>
-          {params.advanced && (
-            <div className="mt-3 rounded border border-cs-border bg-cs-raised p-3 ">
-              <p className="mb-2 text-[10px] leading-snug text-cs-text-2">
-                Different account types are taxed very differently — splitting them out makes the simulation match what you'd actually owe each year.
-                {' '}<strong>401(k) and Roth are off-limits until age {RETIREMENT_ACCESS_AGE}</strong> (the IRS hits early withdrawals with a 10% penalty), so if you retire earlier, those years have to be funded from your taxable brokerage and cash.
-                When you sell from your <strong>brokerage</strong>, you only owe tax on the growth — the original money you put in (your "cost basis") comes back tax-free. Your Epic exit money has full basis because it was just sold.
-                <strong> 401(k)</strong> withdrawals are taxed like a paycheck. <strong>Roth</strong> withdrawals are completely tax-free.
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <NumInput
-                  label="Taxable brokerage"
-                  value={params.taxableAdditional}
-                  onChange={v => update('taxableAdditional', Math.max(0, v))}
-                  min={0}
-                  step={0.1}
-                  suffix="$M"
-                  hint="Pre-existing brokerage account"
-                />
-                <NumInput
-                  label="What you originally paid (basis)"
-                  value={params.additionalBasis}
-                  onChange={v => update('additionalBasis', Math.max(0, v))}
-                  min={0}
-                  step={0.1}
-                  suffix="$M"
-                  hint={params.taxableAdditional > 0
-                    ? `Of $${params.taxableAdditional.toFixed(2)}M brokerage. Default = $0 (assumes it's all grown from much less).`
-                    : 'What you originally paid for your brokerage assets · default = $0'}
-                />
-                <NumInput
-                  label="401(k) / Traditional IRA"
-                  value={params.traditional}
-                  onChange={v => update('traditional', Math.max(0, v))}
-                  min={0}
-                  step={0.1}
-                  suffix="$M"
-                  hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · taxed as income`}
-                />
-                <NumInput
-                  label="Roth IRA / Roth 401(k)"
-                  value={params.roth}
-                  onChange={v => update('roth', Math.max(0, v))}
-                  min={0}
-                  step={0.1}
-                  suffix="$M"
-                  hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · withdrawals are tax-free`}
-                />
-              </div>
-              <div className="mt-2 flex justify-end text-[11px] text-cs-text-2">
-                Total: <strong className="ml-1 text-cs-text">${(params.taxableAdditional + params.traditional + params.roth).toFixed(2)}M</strong>
-              </div>
-              {bridgeYears > 0 && hasLockedAssets && (
-                <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-                  ⚠ You'd retire {bridgeYears.toFixed(1)} years before you can touch your 401(k)/Roth. Those bridge years have to come from your cash and brokerage — make sure they can cover it.
+          <div hidden={!advancedView}>
+            <button
+              type="button"
+              onClick={() => {
+                update('advanced', !params.advanced)
+              }}
+              className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-cs-brand hover:text-cs-brand-hover dark:text-rose-300 dark:hover:text-rose-200"
+            >
+              <span>{params.advanced ? '▾' : '▸'}</span>
+              <span>{params.advanced ? 'Hide account breakdown' : 'Break out by account type (more accurate taxes)'}</span>
+            </button>
+            {params.advanced && (
+              <div className="mt-3 rounded border border-cs-border bg-cs-raised p-3 ">
+                <p className="mb-2 text-[10px] leading-snug text-cs-text-2">
+                  Different account types are taxed very differently — splitting them out makes the simulation match what you'd actually owe each year.
+                  {' '}<strong>401(k) and Roth are off-limits until age {RETIREMENT_ACCESS_AGE}</strong> (the IRS hits early withdrawals with a 10% penalty), so if you retire earlier, those years have to be funded from your taxable brokerage and cash.
+                  When you sell from your <strong>brokerage</strong>, you only owe tax on the growth — the original money you put in (your "cost basis") comes back tax-free. Your Epic exit money has full basis because it was just sold.
+                  <strong> 401(k)</strong> withdrawals are taxed like a paycheck. <strong>Roth</strong> withdrawals are completely tax-free.
                 </p>
-              )}
-            </div>
-          )}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <NumInput
+                    label="Taxable brokerage"
+                    value={params.taxableAdditional}
+                    onChange={v => update('taxableAdditional', Math.max(0, v))}
+                    min={0}
+                    step={0.1}
+                    suffix="$M"
+                    hint="Pre-existing brokerage account"
+                  />
+                  <NumInput
+                    label="What you originally paid (basis)"
+                    value={params.additionalBasis}
+                    onChange={v => update('additionalBasis', Math.max(0, v))}
+                    min={0}
+                    step={0.1}
+                    suffix="$M"
+                    hint={params.taxableAdditional > 0
+                      ? `Of $${params.taxableAdditional.toFixed(2)}M brokerage. Default = $0 (assumes it's all grown from much less).`
+                      : 'What you originally paid for your brokerage assets · default = $0'}
+                  />
+                  <NumInput
+                    label="401(k) / Traditional IRA"
+                    value={params.traditional}
+                    onChange={v => update('traditional', Math.max(0, v))}
+                    min={0}
+                    step={0.1}
+                    suffix="$M"
+                    hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · taxed as income`}
+                  />
+                  <NumInput
+                    label="Roth IRA / Roth 401(k)"
+                    value={params.roth}
+                    onChange={v => update('roth', Math.max(0, v))}
+                    min={0}
+                    step={0.1}
+                    suffix="$M"
+                    hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · withdrawals are tax-free`}
+                  />
+                </div>
+                <div className="mt-2 flex justify-end text-[11px] text-cs-text-2">
+                  Total: <strong className="ml-1 text-cs-text">${(params.taxableAdditional + params.traditional + params.roth).toFixed(2)}M</strong>
+                </div>
+                {bridgeYears > 0 && hasLockedAssets && (
+                  <p className="mt-2 text-[10px] text-amber-800 dark:text-amber-300">
+                    ⚠ You'd retire {bridgeYears.toFixed(1)} years before you can touch your 401(k)/Roth. Those bridge years have to come from your cash and brokerage — make sure they can cover it.
+                  </p>
+                )}
+              </div>
+            )}
 
-          <p className="mt-4 mb-2 text-[11px] font-semibold text-cs-text-2">
-            How your money is invested
-          </p>
-          {/* Single unified allocation table. One row = fixed allocation; more rows = shifts over time. */}
-          {(() => {
-            const isVirtual = params.glidePoints.length === 0
-            const displayRows: Array<{ yearsAfter: number; stockPct: number; bondPct: number }> = isVirtual
-              ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
-              : [...params.glidePoints].sort((a, b) => a.yearsAfter - b.yearsAfter)
-            const inputCls = (invalid: boolean) =>
-              `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-cs-border-strong bg-cs-surface '} text-cs-text`
-            return (
-              <div>
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr className="border-b border-cs-border">
-                      <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Years after</th>
-                      <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Stocks %</th>
-                      <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Bonds %</th>
-                      <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Cash %</th>
-                      <th className="pb-1" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRows.map((pt, idx) => {
-                      const cashD = Math.max(0, 100 - Math.round(pt.stockPct * 100) - Math.round(pt.bondPct * 100))
-                      const invalid = Math.round(pt.stockPct * 100) + Math.round(pt.bondPct * 100) > 100
-                      if (isVirtual) {
+            <p className="mt-4 mb-2 text-[11px] font-semibold text-cs-text-2">
+              How your money is invested
+            </p>
+            {/* Single unified allocation table. One row = fixed allocation; more rows = shifts over time. */}
+            {(() => {
+              const isVirtual = params.glidePoints.length === 0
+              const displayRows: Array<{ yearsAfter: number; stockPct: number; bondPct: number }> = isVirtual
+                ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
+                : [...params.glidePoints].sort((a, b) => a.yearsAfter - b.yearsAfter)
+              const inputCls = (invalid: boolean) =>
+                `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-cs-border-strong bg-cs-surface '} text-cs-text`
+              return (
+                <div>
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-cs-border">
+                        <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Years after</th>
+                        <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Stocks %</th>
+                        <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Bonds %</th>
+                        <th className="pb-1 pr-2 text-left font-medium text-cs-text-2">Cash %</th>
+                        <th className="pb-1" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayRows.map((pt, idx) => {
+                        const cashD = Math.max(0, 100 - Math.round(pt.stockPct * 100) - Math.round(pt.bondPct * 100))
+                        const invalid = Math.round(pt.stockPct * 100) + Math.round(pt.bondPct * 100) > 100
+                        if (isVirtual) {
+                          return (
+                            <tr key="v" className="border-b border-cs-border">
+                              <td className="py-1 pr-2 text-cs-muted">At retirement</td>
+                              <td className="py-1 pr-2">
+                                <input type="number" aria-label="Stocks" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
+                                  onChange={e => update('stockPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                                  className={inputCls(invalid)} />
+                              </td>
+                              <td className="py-1 pr-2">
+                                <input type="number" aria-label="Bonds" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
+                                  onChange={e => update('bondPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                                  className={inputCls(invalid)} />
+                              </td>
+                              <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 ' : 'text-cs-muted'}`}>
+                                {invalid ? 'Over 100%' : `${cashD}%`}
+                              </td>
+                              <td />
+                            </tr>
+                          )
+                        }
                         return (
-                          <tr key="v" className="border-b border-cs-border">
-                            <td className="py-1 pr-2 text-cs-muted">At retirement</td>
+                          <tr key={idx} className="border-b border-cs-border">
                             <td className="py-1 pr-2">
-                              <input type="number" aria-label="Stocks" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
-                                onChange={e => update('stockPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                              {pt.yearsAfter === 0
+                                ? <span className="tabular-nums text-cs-muted text-[11px]">At retirement</span>
+                                : (
+                                  <input
+                                    type="number" value={pt.yearsAfter} min={1}
+                                    max={Math.round(params.endAge - params.currentAge)} step={1}
+                                    onChange={e => {
+                                      const newPts = [...params.glidePoints]
+                                      const ri = params.glidePoints.indexOf(pt)
+                                      if (ri >= 0) newPts[ri] = { ...pt, yearsAfter: Math.max(1, Number(e.target.value)) }
+                                      update('glidePoints', newPts)
+                                    }}
+                                    className="w-16 rounded border border-cs-border-strong bg-cs-surface px-1 py-0.5 tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
+                                  />
+                                )
+                              }
+                            </td>
+                            <td className="py-1 pr-2">
+                              <input type="number" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
+                                onChange={e => {
+                                  const newPts = [...params.glidePoints]
+                                  const ri = params.glidePoints.indexOf(pt)
+                                  if (ri >= 0) newPts[ri] = { ...pt, stockPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                                  update('glidePoints', newPts)
+                                }}
                                 className={inputCls(invalid)} />
                             </td>
                             <td className="py-1 pr-2">
-                              <input type="number" aria-label="Bonds" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
-                                onChange={e => update('bondPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                              <input type="number" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
+                                onChange={e => {
+                                  const newPts = [...params.glidePoints]
+                                  const ri = params.glidePoints.indexOf(pt)
+                                  if (ri >= 0) newPts[ri] = { ...pt, bondPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                                  update('glidePoints', newPts)
+                                }}
                                 className={inputCls(invalid)} />
                             </td>
                             <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 ' : 'text-cs-muted'}`}>
                               {invalid ? 'Over 100%' : `${cashD}%`}
                             </td>
-                            <td />
-                          </tr>
-                        )
-                      }
-                      return (
-                        <tr key={idx} className="border-b border-cs-border">
-                          <td className="py-1 pr-2">
-                            {pt.yearsAfter === 0
-                              ? <span className="tabular-nums text-cs-muted text-[11px]">At retirement</span>
-                              : (
-                                <input
-                                  type="number" value={pt.yearsAfter} min={1}
-                                  max={Math.round(params.endAge - params.currentAge)} step={1}
-                                  onChange={e => {
-                                    const newPts = [...params.glidePoints]
-                                    const ri = params.glidePoints.indexOf(pt)
-                                    if (ri >= 0) newPts[ri] = { ...pt, yearsAfter: Math.max(1, Number(e.target.value)) }
+                            <td className="py-1">
+                              {params.glidePoints.length > 1 && (
+                                <button type="button"
+                                  onClick={() => {
+                                    const newPts = params.glidePoints.filter(p => p !== pt)
                                     update('glidePoints', newPts)
                                   }}
-                                  className="w-16 rounded border border-cs-border-strong bg-cs-surface px-1 py-0.5 tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
-                                />
-                              )
-                            }
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input type="number" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
-                              onChange={e => {
-                                const newPts = [...params.glidePoints]
-                                const ri = params.glidePoints.indexOf(pt)
-                                if (ri >= 0) newPts[ri] = { ...pt, stockPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
-                                update('glidePoints', newPts)
-                              }}
-                              className={inputCls(invalid)} />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input type="number" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
-                              onChange={e => {
-                                const newPts = [...params.glidePoints]
-                                const ri = params.glidePoints.indexOf(pt)
-                                if (ri >= 0) newPts[ri] = { ...pt, bondPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
-                                update('glidePoints', newPts)
-                              }}
-                              className={inputCls(invalid)} />
-                          </td>
-                          <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 ' : 'text-cs-muted'}`}>
-                            {invalid ? 'Over 100%' : `${cashD}%`}
-                          </td>
-                          <td className="py-1">
-                            {params.glidePoints.length > 1 && (
-                              <button type="button"
-                                onClick={() => {
-                                  const newPts = params.glidePoints.filter(p => p !== pt)
-                                  update('glidePoints', newPts)
-                                }}
-                                className="text-cs-muted hover:text-rose-600 dark:hover:text-rose-400"
-                                aria-label="Remove">×</button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-                <button type="button"
-                  onClick={() => {
-                    const base: GlidePoint[] = isVirtual
-                      ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
-                      : [...params.glidePoints]
-                    const sorted = [...base].sort((a, b) => a.yearsAfter - b.yearsAfter)
-                    const last = sorted[sorted.length - 1]
-                    const maxYears = Math.round(params.endAge - params.currentAge)
-                    const newYearsAfter = Math.min(last.yearsAfter + 10, maxYears)
-                    update('glidePoints', [
-                      ...base,
-                      { yearsAfter: newYearsAfter, stockPct: Math.max(last.stockPct - 0.1, 0.3), bondPct: Math.min(last.bondPct + 0.1, 0.6) },
-                    ])
-                  }}
-                  className="mt-2 text-[11px] font-medium text-cs-brand hover:text-cs-brand-hover dark:text-rose-300 dark:hover:text-rose-200"
-                >
-                  + Add reallocation
-                </button>
-              </div>
-            )
-          })()}
+                                  className="text-cs-muted hover:text-rose-600 dark:hover:text-rose-400"
+                                  aria-label="Remove">×</button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  <button type="button"
+                    onClick={() => {
+                      const base: GlidePoint[] = isVirtual
+                        ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
+                        : [...params.glidePoints]
+                      const sorted = [...base].sort((a, b) => a.yearsAfter - b.yearsAfter)
+                      const last = sorted[sorted.length - 1]
+                      const maxYears = Math.round(params.endAge - params.currentAge)
+                      const newYearsAfter = Math.min(last.yearsAfter + 10, maxYears)
+                      update('glidePoints', [
+                        ...base,
+                        { yearsAfter: newYearsAfter, stockPct: Math.max(last.stockPct - 0.1, 0.3), bondPct: Math.min(last.bondPct + 0.1, 0.6) },
+                      ])
+                    }}
+                    className="mt-2 text-[11px] font-medium text-cs-brand hover:text-cs-brand-hover dark:text-rose-300 dark:hover:text-rose-200"
+                  >
+                    + Add reallocation
+                  </button>
+                </div>
+              )
+            })()}
 
-          <p className="mt-3 text-[11px] text-cs-muted">
-            Total portfolio: <strong className="tabular-nums text-cs-text">{fmt$M(totalPortfolio)}</strong>
-            {' '}→ stocks {fmt$M(totalPortfolio * params.stockPct)} ·
-            {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
-            {' '}cash {fmt$M(startingCash)}
-          </p>
-          <p className="mt-1 text-[10px] leading-snug text-cs-muted">
-            We assume your cash sits outside your retirement accounts (checking, savings, money market) — your 401(k) and Roth are treated as fully invested in stocks and bonds.
-            If you actually keep stable-value funds inside a 401(k), the simulator will treat that as invested rather than spendable cash.
-            {cashUnderfunded && params.advanced && (
-              <span className="ml-1 text-amber-700 dark:text-amber-300">
-                ⚠ You've asked for more cash than fits in your taxable accounts — the rest stays invested in your 401(k)/Roth.
-              </span>
-            )}
-          </p>
-
-          <div className="mt-4">
-            <label className="mb-1 block text-[11px] font-semibold text-cs-text-2">
-              Annual rebalancing
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(['none', 'tax-advantaged', 'all'] as const).map(opt => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => update('rebalance', opt)}
-                  className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                    params.rebalance === opt
-                      ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
-                      : 'border-cs-border-strong bg-cs-surface text-cs-text-2 hover:bg-cs-raised '
-                  }`}
-                >
-                  {opt === 'none' ? 'None' : opt === 'tax-advantaged' ? 'Tax-advantaged only' : 'All accounts'}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-[10px] text-cs-muted">
-              Tax-advantaged-only rebalances within 401(k)/IRA accounts (no taxable event).
-              All-accounts also rebalances taxable brokerage, realizing capital gains.
+            <p className="mt-3 text-[11px] text-cs-muted">
+              Total portfolio: <strong className="tabular-nums text-cs-text">{fmt$M(totalPortfolio)}</strong>
+              {' '}→ stocks {fmt$M(totalPortfolio * params.stockPct)} ·
+              {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
+              {' '}cash {fmt$M(startingCash)}
             </p>
+            <p className="mt-1 text-[10px] leading-snug text-cs-muted">
+              We assume your cash sits outside your retirement accounts (checking, savings, money market) — your 401(k) and Roth are treated as fully invested in stocks and bonds.
+              If you actually keep stable-value funds inside a 401(k), the simulator will treat that as invested rather than spendable cash.
+              {cashUnderfunded && params.advanced && (
+                <span className="ml-1 text-amber-800 dark:text-amber-300">
+                  ⚠ You've asked for more cash than fits in your taxable accounts — the rest stays invested in your 401(k)/Roth.
+                </span>
+              )}
+            </p>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-[11px] font-semibold text-cs-text-2">
+                Annual rebalancing
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {(['none', 'tax-advantaged', 'all'] as const).map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => update('rebalance', opt)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                      params.rebalance === opt
+                        ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                        : 'border-cs-border-strong bg-cs-surface text-cs-text-2 hover:bg-cs-raised '
+                    }`}
+                  >
+                    {opt === 'none' ? 'None' : opt === 'tax-advantaged' ? 'Tax-advantaged only' : 'All accounts'}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-cs-muted">
+                Tax-advantaged-only rebalances within 401(k)/IRA accounts (no taxable event).
+                All-accounts also rebalances taxable brokerage, realizing capital gains.
+              </p>
+            </div>
           </div>
+          {!advancedView && <p className="mt-3 text-xs text-cs-muted">Other assets at retirement: {fmt$M(params.taxableAdditional + params.traditional + params.roth)}. Stocks {fmtPct(params.stockPct)}, bonds {fmtPct(params.bondPct)}, remainder cash. Open advanced assumptions to edit account types and allocation.</p>}
         </Card>
 
         <Card pad="md">
           <p className="mb-3 text-xs font-semibold text-cs-text-2">Spending</p>
+          {!advancedView && <p className="mb-3 text-xs text-cs-muted">Assumptions still in use: spending floor ${params.minSpend}K/year, health insurance ${params.healthInsurance}K/year before Medicare, {params.scenario} market scenario{params.includeSpouse ? ', spouse included' : ''}. Open advanced assumptions to review or change these.</p>}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <NumInput
               label="Default spend"
@@ -1220,36 +1233,38 @@ function RetirementAccount() {
               suffix="$K/yr"
               hint="Your actual annual expenses — housing, food, travel, etc. (not counting health insurance) · auto-set to 3% of your portfolio"
             />
-            <NumInput
-              label="Minimum spend (floor)"
-              value={params.minSpend}
-              onChange={v => {
-                minSpendOverriddenRef.current = true
-                update('minSpend', v)
-              }}
-              min={0}
-              step={5}
-              suffix="$K/yr"
-              hint={params.minSpend > params.defaultSpend
-                ? `Effective floor is capped at your $${params.defaultSpend}K spending target.`
-                : "What you'd cut down to in a bad year · auto-set to 2% of your portfolio"}
-              info={
-                <SpendRampInfo
-                  defaultSpend={params.defaultSpend}
-                  minSpend={params.minSpend}
-                  startingTotal={totalPortfolio}
-                />
-              }
-            />
-            <NumInput
-              label="Health insurance"
-              value={params.healthInsurance}
-              onChange={v => update('healthInsurance', v)}
-              min={0}
-              step={1}
-              suffix="$K/yr"
-              hint="What you pay before Medicare kicks in (premium + out-of-pocket)"
-            />
+            <div hidden={!advancedView} className="space-y-3 sm:col-span-2">
+              <NumInput
+                label="Minimum spend (floor)"
+                value={params.minSpend}
+                onChange={v => {
+                  minSpendOverriddenRef.current = true
+                  update('minSpend', v)
+                }}
+                min={0}
+                step={5}
+                suffix="$K/yr"
+                hint={params.minSpend > params.defaultSpend
+                  ? `Effective floor is capped at your $${params.defaultSpend}K spending target.`
+                  : "What you'd cut down to in a bad year · auto-set to 2% of your portfolio"}
+                info={
+                  <SpendRampInfo
+                    defaultSpend={params.defaultSpend}
+                    minSpend={params.minSpend}
+                    startingTotal={totalPortfolio}
+                  />
+                }
+              />
+              <NumInput
+                label="Health insurance"
+                value={params.healthInsurance}
+                onChange={v => update('healthInsurance', v)}
+                min={0}
+                step={1}
+                suffix="$K/yr"
+                hint="What you pay before Medicare kicks in (premium + out-of-pocket)"
+              />
+            </div>
           </div>
           <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-cs-border bg-cs-raised px-3 py-2 text-[11px] ">
             <input
@@ -1270,195 +1285,197 @@ function RetirementAccount() {
           </p>
         </Card>
 
-        {/* Card 4: Social Security */}
-        <Card pad="md">
-          <p className="mb-3 text-xs font-semibold text-cs-text-2">Social Security</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <NumInput
-              label="Monthly benefit at age 67"
-              value={params.ssMonthly}
-              onChange={v => update('ssMonthly', v)}
-              min={0}
-              step={50}
-              suffix="$/mo"
-              hint='From your "my Social Security" estimate at age 67 (full retirement age)'
-            />
-            <SliderInput
-              label="When you claim"
-              value={params.claimAge}
-              onChange={v => update('claimAge', Math.max(62, Math.min(70, Math.round(v))))}
-              min={62}
-              max={70}
-              step={1}
-              formatValue={v => `age ${v}`}
-              hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
-            />
-          </div>
-          <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
-            <p className="text-cs-muted">
-              Claiming at {params.claimAge} → you get <strong className="text-cs-text">{(ssAdj * 100).toFixed(1)}%</strong> of your age-67 benefit
-            </p>
-            <p className="text-cs-muted">
-              That's <strong className="text-cs-text tabular-nums">${(params.ssMonthly * ssAdj).toFixed(0)}/mo</strong>
-              {' · '}or <strong className="text-cs-text tabular-nums">${ssAnnualK.toFixed(1)}K/yr</strong>
-            </p>
-            <p className="text-cs-muted sm:col-span-2">
-              {params.currentAge >= params.claimAge ? 'Starts immediately (you\'ll be past claim age at retirement).' : `Starts ${ssStartYear} years into retirement (when you turn ${params.claimAge}).`}
-            </p>
-          </div>
-          {params.includeSpouse && (
-            <div className="mt-4 border-t border-cs-border pt-3 ">
-              <p className="mb-2 text-[11px] font-medium text-cs-text-2">Spouse</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <NumInput
-                  label="Spouse's monthly benefit at age 67"
-                  value={params.spouseSsMonthly}
-                  onChange={v => update('spouseSsMonthly', v)}
-                  min={0}
-                  step={50}
-                  suffix="$/mo"
-                  hint="0 if no Social Security · if claiming the spousal benefit, use half of the higher earner's amount"
-                />
-                <SliderInput
-                  label="When spouse claims"
-                  value={params.spouseClaimAge}
-                  onChange={v => update('spouseClaimAge', Math.max(62, Math.min(70, Math.round(v))))}
-                  min={62}
-                  max={70}
-                  step={1}
-                  formatValue={v => `age ${v}`}
-                  hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
-                />
-              </div>
-              <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
-                <p className="text-cs-muted">
-                  Claiming at {params.spouseClaimAge} → spouse gets <strong className="text-cs-text">{(ssAdjustment(params.spouseClaimAge, params.fra) * 100).toFixed(1)}%</strong> of the age-67 benefit
-                </p>
-                <p className="text-cs-muted">
-                  That's <strong className="text-cs-text tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
-                </p>
-              </div>
-
-              {/* Spouse employment */}
+        <div hidden={!advancedView} className="space-y-4">
+          {/* Card 4: Social Security */}
+          <Card pad="md">
+            <p className="mb-3 text-xs font-semibold text-cs-text-2">Social Security</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <NumInput
+                label="Monthly benefit at age 67"
+                value={params.ssMonthly}
+                onChange={v => update('ssMonthly', v)}
+                min={0}
+                step={50}
+                suffix="$/mo"
+                hint='From your "my Social Security" estimate at age 67 (full retirement age)'
+              />
+              <SliderInput
+                label="When you claim"
+                value={params.claimAge}
+                onChange={v => update('claimAge', Math.max(62, Math.min(70, Math.round(v))))}
+                min={62}
+                max={70}
+                step={1}
+                formatValue={v => `age ${v}`}
+                hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
+              />
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+              <p className="text-cs-muted">
+                Claiming at {params.claimAge} → you get <strong className="text-cs-text">{(ssAdj * 100).toFixed(1)}%</strong> of your age-67 benefit
+              </p>
+              <p className="text-cs-muted">
+                That's <strong className="text-cs-text tabular-nums">${(params.ssMonthly * ssAdj).toFixed(0)}/mo</strong>
+                {' · '}or <strong className="text-cs-text tabular-nums">${ssAnnualK.toFixed(1)}K/yr</strong>
+              </p>
+              <p className="text-cs-muted sm:col-span-2">
+                {params.currentAge >= params.claimAge ? 'Starts immediately (you\'ll be past claim age at retirement).' : `Starts ${ssStartYear} years into retirement (when you turn ${params.claimAge}).`}
+              </p>
+            </div>
+            {params.includeSpouse && (
               <div className="mt-4 border-t border-cs-border pt-3 ">
-                <p className="mb-2 text-[11px] font-medium text-cs-text-2">Spouse employment</p>
+                <p className="mb-2 text-[11px] font-medium text-cs-text-2">Spouse</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <NumInput
-                    label="Annual gross income"
-                    value={params.spouseWorkIncome}
-                    onChange={v => update('spouseWorkIncome', v)}
+                    label="Spouse's monthly benefit at age 67"
+                    value={params.spouseSsMonthly}
+                    onChange={v => update('spouseSsMonthly', v)}
                     min={0}
-                    step={5}
-                    suffix="$K/yr"
-                    hint="Leave at 0 if spouse is already retired"
+                    step={50}
+                    suffix="$/mo"
+                    hint="0 if no Social Security · if claiming the spousal benefit, use half of the higher earner's amount"
                   />
-                  <NumInput
-                    label="Stops working at age"
-                    value={params.spouseStopWorkAge}
-                    onChange={v => update('spouseStopWorkAge', Math.max(params.spouseCurrentAge, Math.round(v)))}
-                    min={params.spouseCurrentAge}
-                    max={80}
+                  <SliderInput
+                    label="When spouse claims"
+                    value={params.spouseClaimAge}
+                    onChange={v => update('spouseClaimAge', Math.max(62, Math.min(70, Math.round(v))))}
+                    min={62}
+                    max={70}
                     step={1}
-                    suffix="yrs"
-                    hint="Age when spouse's W-2 income ends"
+                    formatValue={v => `age ${v}`}
+                    hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
                   />
                 </div>
-                <label className="mt-3 flex cursor-pointer items-center gap-2 text-[11px] text-cs-text-2 ">
-                  <input
-                    type="checkbox"
-                    checked={params.spouseHasEmployerHI}
-                    onChange={e => update('spouseHasEmployerHI', e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-cs-border-strong text-rose-600 "
-                  />
-                  Spouse's employer covers health insurance while working
-                  {params.spouseHasEmployerHI && (
-                    <span className="text-cs-muted">
-                      · saves ~${params.healthInsurance.toFixed(0)}K/yr until age {params.spouseStopWorkAge}
-                    </span>
-                  )}
-                </label>
-                {params.spouseWorkIncome > 0 && (() => {
-                  const annualGross = params.spouseWorkIncome * 1_000
-                  const payroll = computeSpousePayrollTax(annualGross, params.includeSpouse ? 'mfj' : 'single')
-                  const earningsTestActive = params.spouseClaimAge < params.spouseFra
+                <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+                  <p className="text-cs-muted">
+                    Claiming at {params.spouseClaimAge} → spouse gets <strong className="text-cs-text">{(ssAdjustment(params.spouseClaimAge, params.fra) * 100).toFixed(1)}%</strong> of the age-67 benefit
+                  </p>
+                  <p className="text-cs-muted">
+                    That's <strong className="text-cs-text tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
+                  </p>
+                </div>
+
+                {/* Spouse employment */}
+                <div className="mt-4 border-t border-cs-border pt-3 ">
+                  <p className="mb-2 text-[11px] font-medium text-cs-text-2">Spouse employment</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <NumInput
+                      label="Annual gross income"
+                      value={params.spouseWorkIncome}
+                      onChange={v => update('spouseWorkIncome', v)}
+                      min={0}
+                      step={5}
+                      suffix="$K/yr"
+                      hint="Leave at 0 if spouse is already retired"
+                    />
+                    <NumInput
+                      label="Stops working at age"
+                      value={params.spouseStopWorkAge}
+                      onChange={v => update('spouseStopWorkAge', Math.max(params.spouseCurrentAge, Math.round(v)))}
+                      min={params.spouseCurrentAge}
+                      max={80}
+                      step={1}
+                      suffix="yrs"
+                      hint="Age when spouse's W-2 income ends"
+                    />
+                  </div>
+                  <label className="mt-3 flex cursor-pointer items-center gap-2 text-[11px] text-cs-text-2 ">
+                    <input
+                      type="checkbox"
+                      checked={params.spouseHasEmployerHI}
+                      onChange={e => update('spouseHasEmployerHI', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-cs-border-strong text-rose-600 "
+                    />
+                    Spouse's employer covers health insurance while working
+                    {params.spouseHasEmployerHI && (
+                      <span className="text-cs-muted">
+                        · saves ~${params.healthInsurance.toFixed(0)}K/yr until age {params.spouseStopWorkAge}
+                      </span>
+                    )}
+                  </label>
+                  {params.spouseWorkIncome > 0 && (() => {
+                    const annualGross = params.spouseWorkIncome * 1_000
+                    const payroll = computeSpousePayrollTax(annualGross, params.includeSpouse ? 'mfj' : 'single')
+                    const earningsTestActive = params.spouseClaimAge < params.spouseFra
  && params.spouseWorkIncome * 1_000 > SS_EARNINGS_EXEMPT_BEFORE_FRA
-                  return (
-                    <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
-                      <p className="text-cs-muted">
-                        Payroll taxes (SS + Medicare): <strong className="text-cs-text tabular-nums">${(payroll / 1_000).toFixed(1)}K/yr</strong>
-                        {annualGross > SS_WAGE_BASE_REAL && (
-                          <> · SS capped at ${(SS_WAGE_BASE_REAL / 1_000).toFixed(0)}K wage base</>
-                        )}
-                      </p>
-                      {earningsTestActive && (
-                        <p className="text-amber-600 dark:text-amber-400">
-                          SS earnings test applies — claiming before FRA while earning &gt;${(SS_EARNINGS_EXEMPT_BEFORE_FRA / 1_000).toFixed(0)}K/yr reduces spouse SS benefits until age {params.spouseFra}
+                    return (
+                      <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+                        <p className="text-cs-muted">
+                          Payroll taxes (SS + Medicare): <strong className="text-cs-text tabular-nums">${(payroll / 1_000).toFixed(1)}K/yr</strong>
+                          {annualGross > SS_WAGE_BASE_REAL && (
+                            <> · SS capped at ${(SS_WAGE_BASE_REAL / 1_000).toFixed(0)}K wage base</>
+                          )}
                         </p>
-                      )}
-                    </div>
-                  )
-                })()}
+                        {earningsTestActive && (
+                          <p className="text-amber-600 dark:text-amber-400">
+                            SS earnings test applies — claiming before FRA while earning &gt;${(SS_EARNINGS_EXEMPT_BEFORE_FRA / 1_000).toFixed(0)}K/yr reduces spouse SS benefits until age {params.spouseFra}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
-            </div>
-          )}
-        </Card>
+            )}
+          </Card>
 
-        {/* Card 5: Market outlook */}
-        <Card pad="md">
-          <div className="mb-3 flex items-center gap-1.5">
-            <p className="text-xs font-semibold text-cs-text-2">Market outlook</p>
-            <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
-          </div>
-          {sigmaOpen && (
-            <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-              <p className="mb-1">
-                For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
-                We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
-                This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
-              </p>
-              <p className="mb-1">
-                The four scenarios shift the historical returns up or down to reflect different views on the future:
-                <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
-                <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
-                <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
-                <strong> Custom</strong> — set your own.
-              </p>
+          {/* Card 5: Market outlook */}
+          <Card pad="md">
+            <div className="mb-3 flex items-center gap-1.5">
+              <p className="text-xs font-semibold text-cs-text-2">Market outlook</p>
+              <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
             </div>
-          )}
-          <div className="dark:[&_button[aria-pressed=true]]:bg-rose-700">
-            <Segmented
-              ariaLabel="Market outlook scenario"
-              options={SCENARIO_ORDER.map(s => ({ value: s, label: SCENARIO_LABELS[s] }))}
-              value={params.scenario}
-              onChange={v => update('scenario', v)}
-            />
-          </div>
-          {params.scenario === 'custom' && (
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <NumInput
-                label="Stocks return shift"
-                value={Math.round(params.customStockShift * 1000) / 10}
-                onChange={v => update('customStockShift', v / 100)}
-                step={0.1}
-                suffix="pp"
-                hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
-              />
-              <NumInput
-                label="Bonds return shift"
-                value={Math.round(params.customBondShift * 1000) / 10}
-                onChange={v => update('customBondShift', v / 100)}
-                step={0.1}
-                suffix="pp"
-                hint="Added to every resampled bond return"
+            {sigmaOpen && (
+              <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                <p className="mb-1">
+                  For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
+                  We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
+                  This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
+                </p>
+                <p className="mb-1">
+                  The four scenarios shift the historical returns up or down to reflect different views on the future:
+                  <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
+                  <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
+                  <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
+                  <strong> Custom</strong> — set your own.
+                </p>
+              </div>
+            )}
+            <div className="dark:[&_button[aria-pressed=true]]:bg-rose-700">
+              <Segmented
+                ariaLabel="Market outlook scenario"
+                options={SCENARIO_ORDER.map(s => ({ value: s, label: SCENARIO_LABELS[s] }))}
+                value={params.scenario}
+                onChange={v => update('scenario', v)}
               />
             </div>
-          )}
-          <p className="mt-1.5 text-[10px] text-cs-muted">
-            Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
-            {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
-          </p>
-        </Card>
+            {params.scenario === 'custom' && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <NumInput
+                  label="Stocks return shift"
+                  value={Math.round(params.customStockShift * 1000) / 10}
+                  onChange={v => update('customStockShift', v / 100)}
+                  step={0.1}
+                  suffix="pp"
+                  hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
+                />
+                <NumInput
+                  label="Bonds return shift"
+                  value={Math.round(params.customBondShift * 1000) / 10}
+                  onChange={v => update('customBondShift', v / 100)}
+                  step={0.1}
+                  suffix="pp"
+                  hint="Added to every resampled bond return"
+                />
+              </div>
+            )}
+            <p className="mt-1.5 text-[10px] text-cs-muted">
+              Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
+              {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
+            </p>
+          </Card>
 
+        </div>
         {paramsError && (
           <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
             Couldn&rsquo;t load your saved settings, so the simulator is paused rather
@@ -1473,23 +1490,25 @@ function RetirementAccount() {
           </p>
         )}
 
-        <LifeEventsPlanner phase="retirement" showRun={false}
-          events={params.plannedEvents ?? []}
-          retirementDate={retirementDate}
-          onChange={events => {
-            update('plannedEvents', events)
-            setLifeEventComparison(null)
-          }}
-          comparison={null}
-          onRun={run}
-          running={running}
-        />
+        <div hidden={!advancedView}>
+          <LifeEventsPlanner phase="retirement" showRun={false}
+            events={params.plannedEvents ?? []}
+            retirementDate={retirementDate}
+            onChange={events => {
+              update('plannedEvents', events)
+              setLifeEventComparison(null)
+            }}
+            comparison={null}
+            onRun={run}
+            running={running}
+          />
 
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={run}
-            disabled={running || allocOver || !paramsLoaded || exitPreviewLoading}
+            disabled={running || allocOver || !paramsLoaded || (exitMode === 'auto' && (exitPreviewLoading || !!exitError))}
             className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-700 dark:hover:bg-rose-800"
           >
             {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Simulate ${params.paths.toLocaleString()} retirements × ${years} years`}

@@ -1794,3 +1794,13 @@ The planning presentation uses `frontend/src/app/pages/BeforeRetirement.tsx`
 counts and timing), alongside the shared `Retirement.math.ts` simulator and
 category-specific `LifeEventsPlanner.tsx` editor. The implementation scope and
 validation checklist are recorded in [the planning workflow plan](docs/planning-workflow-plan.md).
+
+### Retirement planner views and exit assumptions
+
+The planner starts in **basic view**. Use **Show advanced assumptions** for allocation, account types, spending floor, Social Security, spouse and conditional purchases. Both views use one saved plan and the same simulation engine; hiding account details never combines account balances or clears their basis. The basic view summarizes the accounts still included in the calculation. Pre-retirement expenses stay in the **Before retirement** flow and reduce retirement starting wealth.
+
+**Automatic Epic exit projection** recalculates for the selected retirement date using saved prices and future estimates. The simulator does not add another share-growth assumption. If the projection fails or no data is available, simulation pauses and offers Retry or an explicit manual amount; it never silently runs with the old date's value. A manual override stays manual when the date changes. Existing plans with an exit amount and no mode metadata keep that amount as a manual override. New saves include `epicExitMode` (`auto` or `manual`); changing views preserves it. Shared viewers can explore without saving the owner's plan.
+
+![Retirement basic view](screenshots/retirement-basic-light-mobile.png)
+
+![Retirement advanced view](screenshots/retirement-advanced-light-mobile.png)

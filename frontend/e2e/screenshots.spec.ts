@@ -859,7 +859,7 @@ test.describe('Screenshots', () => {
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
     const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
-    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
@@ -875,7 +875,7 @@ test.describe('Screenshots', () => {
       await input.fill(value)
     }
     await fill(/Epic exit value/, '5')
-    await fill(/Additional portfolio/, '1')
+    await fill(/Taxable brokerage at retirement/, '1')
     await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
     await page.getByText('Funding risk details', { exact: true }).click()
@@ -886,6 +886,29 @@ test.describe('Screenshots', () => {
     expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await page.getByText('Funding risk details', { exact: true }).click()
     await page.waitForTimeout(500)
+  }
+
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`planner views - ${theme} - ${size}`, async ({ page }) => {
+      await authedPage(page, viewport, theme)
+      await page.request.put(`${BASE}/api/retirement/params`, { data: { params: {
+        epicExit: 5, epicExitMode: 'manual', retirementDate: '2032-01-01', advanced: true,
+        taxableAdditional: 3, additionalBasis: 1.2, traditional: 1, roth: 0.5, defaultSpend: 180,
+      } } })
+      await page.goto(`${BASE}/retirement`)
+      await expect(page.getByLabel(/^Retirement date/)).toHaveValue('2032-01-01')
+      await expect(page.getByRole('button', { name: 'Show advanced assumptions' })).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await shoot(page, `retirement-basic-${theme}-${size}`, { fullPage: true })
+      await page.getByRole('button', { name: 'Show advanced assumptions' }).click()
+      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1')
+      const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      await shoot(page, `retirement-advanced-${theme}-${size}`, { fullPage: true })
+      await page.getByRole('button', { name: 'Hide account breakdown' }).click()
+      await page.getByRole('button', { name: 'Show basic view' }).click()
+      await expect.poll(async () => (await (await page.request.get(`${BASE}/api/retirement/params`)).json()).params.traditional).toBe(1)
+    })
   }
 
   test('retirement - light - mobile', async ({ page }) => {

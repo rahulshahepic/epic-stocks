@@ -113,3 +113,13 @@ The deploy script handles everything automatically on every push to `main`:
 - Each app writes a `caddy/app.caddy` snippet to the shared `caddy_config` volume and reloads Caddy
 
 No `DEPLOY_MODE` variable or manual SSH steps are needed. The `caddy/app.caddy` snippet uses `{$DOMAIN}` from the environment and proxies to the app container on the shared `proxy` network.
+
+### Staging MCP test-account domains
+
+Financial isolation activates when `APP_ENV=staging` or the deployment's
+`DOMAIN` is `staging.epic-stocks.com`. Provisioning requires that trusted domain
+and an environment other than production. A fork using another staging domain
+therefore refuses financial access and provisioning until its server-side
+staging-domain check in `scaffold/synthetic_accounts.py` is adapted and tested.
+Request headers cannot select this configuration. Synthetic setup does not
+change OAuth grants or require reconnecting existing accounts.

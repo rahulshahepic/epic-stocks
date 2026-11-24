@@ -1014,6 +1014,7 @@ test.describe('Screenshots', () => {
       })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByLabel('Retirement date').fill('2032-01-02')
       await page.getByRole('button', { name: /Add planned expense/ }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
@@ -1022,7 +1023,7 @@ test.describe('Screenshots', () => {
       await page.getByLabel('Sell car after N years (optional)').fill('15')
       await page.getByLabel('Depreciation schedule').selectOption('collector')
       await page.getByLabel(/Annual ownership costs/).fill('15000')
-      await page.locator('[aria-label="Life events and major purchases"]').screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true }).screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
       await page.locator('summary').filter({ hasText: /^Purchase rule/ }).click()
       await expect(page.locator('summary').filter({ hasText: /^Ownership and costs/ }).locator('..')).not.toHaveAttribute('open', '')
       await page.getByLabel('Buy only when conditions hold').check()
@@ -1039,18 +1040,18 @@ test.describe('Screenshots', () => {
       // component. Hide only that chrome for a focused component screenshot;
       // otherwise they cover the planner when Playwright scrolls to it.
       await page.evaluate(() => {
-        const planner = document.querySelector('[aria-label="Life events and major purchases"]')
+        const planner = [...document.querySelectorAll('[aria-label="Life events and major purchases"]')].find(el => el.getClientRects().length > 0)
         for (const element of document.querySelectorAll<HTMLElement>('body *')) {
           if (planner?.contains(element)) continue
           const position = getComputedStyle(element).position
           if (position === 'fixed' || position === 'sticky') element.style.visibility = 'hidden'
         }
       })
-      await page.locator('[aria-label="Life events and major purchases"]')
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
       await page.getByRole('button', { name: 'Add event', exact: true }).click()
       await expect(page.getByText(/Otherwise wait and check monthly/)).toBeVisible()
-      await page.locator('[aria-label="Life events and major purchases"]')
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
         .screenshot({ path: `${OUT}/life-events-review-light-${label}.png` })
     })
   }

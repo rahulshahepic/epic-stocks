@@ -87,6 +87,7 @@ def test_reset_tokens_isolation_and_stale_import(staging, db_session):
     reset = staging.call('reset_test_account')
     assert reset['reset'] is False
     assert 'invalid' in staging.error('reset_test_account', confirm='wrong')
+    assert 'invalid' in staging.error('reset_test_account', confirm='not-a-token-\u2603')
     assert staging.call('list_prices')['current_price'] == 500
     restored = staging.call('reset_test_account', confirm=reset['confirm'])
     assert restored['generation'] != status['generation']
@@ -336,3 +337,15 @@ def test_expiry_and_reprovision_invalidate_import_even_when_ids_are_reused(stagi
     assert db_session.query(MCPTestAccount.synthetic_id).scalar() == old_id  # SQLite reuses the deleted maximum ID
     assert db_session.execute(text('SELECT id FROM prices WHERE user_id=:uid ORDER BY id'), {'uid': old_id}).scalars().all() == old_price_ids
     assert 'preview' in staging.error('apply_changes', changes=changes, confirm=preview['confirm'])
+
+
+def test_notice_aware_widget_resource_versions_invalidate_cached_templates(staging):
+    tools = {tool['name']: tool for tool in staging.list_tools()}
+    assert tools['show_equity']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/portfolio-v4.html'
+    assert tools['show_retirement']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/retirement-v5.html'
+    # Previously advertised URIs remain readable while hosts refresh metadata.
+    for uri in ('ui://epic-stocks/portfolio-v3.html', 'ui://epic-stocks/retirement-v4.html',
+                'ui://epic-stocks/portfolio-v4.html', 'ui://epic-stocks/retirement-v5.html'):
+        resource = staging.rpc('resources/read', {'uri': uri})['result']['contents'][0]
+        assert resource['uri'] == uri
+        assert 'FICTIONAL TEST ACCOUNT' in resource['text']

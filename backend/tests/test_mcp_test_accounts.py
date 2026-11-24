@@ -311,3 +311,11 @@ def test_disconnect_during_financial_request_is_retryable(staging, db_session):
         assert response.status_code == 409
         assert response.headers['Retry-After'] == '1'
     assert staging.call('get_account_context')['initialized']
+
+
+def test_fixture_provisioning_has_an_explicit_per_owner_quota(staging, monkeypatch, db_session):
+    from scaffold.quota import ROW_QUOTAS
+    monkeypatch.setitem(ROW_QUOTAS, 'MCPTestAccount', 0)
+    assert 'Limit reached' in staging.error('setup_test_account', scenario='early')
+    assert not db_session.query(MCPTestAccount).count()
+    assert not db_session.query(User).filter_by(is_synthetic=True).count()

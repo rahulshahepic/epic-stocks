@@ -5,6 +5,8 @@ import hmac
 import uuid
 
 from app.demo import AS_OF, PROFILES, VERSION, profile_inputs
+from fastapi import HTTPException
+from scaffold.quota import check_row_quota
 from scaffold.models import Grant, Loan, LoanInterestCheckpoint, MCPTestAccount, Price, TaxSettings, User
 from scaffold.synthetic_accounts import account_context, binding, is_staging, synthetic_key
 from scaffold.user_deletion import delete_financial_data
@@ -74,6 +76,10 @@ def _setup(ctx, args):
         if row.scenario != scenario:
             raise ValueError('This connection already has a different scenario. Use reset_test_account with explicit confirmation to change it.')
         return account_context(ctx)
+    try:
+        check_row_quota(ctx.db, MCPTestAccount, ctx.connector.user.id)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from None
     uid = uuid.uuid4().hex
     owner = User(email=f'mcp-test-{uid}@example.invalid', google_id=uid, provider_name='synthetic',
                  name=f'FICTIONAL — {PROFILES[scenario]["label"]}', is_synthetic=True)

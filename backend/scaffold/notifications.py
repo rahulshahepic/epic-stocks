@@ -100,6 +100,8 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     counts = Counter(e["event_type"] for e in events)
     details = notification_details(events)
     details.extend(e["reminder_message"] for e in events if e.get("reminder_message"))
+    if set(counts) == {"Annual Stock Summary"}:
+        return {"title": "Your annual stock summary", "body": " ".join(details), "data": {"url": "/#annual-summary"}}
     if set(counts) == {"Loan Interest Statement"}:
         return {"title": "Reconcile your loan interest", "body": " ".join(details), "data": {"url": "/settings"}}
     if set(counts) == {PRICE_REMINDER}:
@@ -269,6 +271,8 @@ def send_daily_notifications(today: date | None = None, *, extra_events=None):
 
             if announcement_sent:
                 for event in events:
+                    if "_annual_summary_year" in event:
+                        user.annual_summary_year = event["_annual_summary_year"]
                     if "_statement_reminder_year" in event:
                         user.statement_reminder_year = event["_statement_reminder_year"]
                 delivered_announcements.update(pid for e in events

@@ -35,7 +35,7 @@ def test_dedup_skips_already_notified_user(client, db_session):
     register_user(client)
     user = db_session.query(User).first()
 
-    # Email is enabled by default for new users, no need to create preference
+    client.put("/api/notifications/email?enabled=true", json={})
     with user_key(user):
         db_session.add(Grant(
             user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,

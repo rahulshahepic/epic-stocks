@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
@@ -12,6 +12,7 @@ import { AiConnectionsSection } from '../components/AiConnectionsSection.tsx'
 
 export default function Settings() {
   const config = useConfig()
+  const hasNotificationChannels = !!(config?.email_notifications_available || config?.vapid_public_key)
   const push = usePush(config?.vapid_public_key ?? '')
   // Whether this device could do push at all, regardless of server config.
   const pushSupported = push.state !== 'unsupported' && push.state !== 'needs-install'
@@ -28,19 +29,32 @@ export default function Settings() {
   const [pushTestResult, setPushTestResult] = useState<string | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [notificationPrefsLoaded, setNotificationPrefsLoaded] = useState(false)
+  const [notificationPrefsError, setNotificationPrefsError] = useState(false)
+  const preferenceRequest = useRef(0)
+  const [annualSummary, setAnnualSummary] = useState(false)
+  const [summarySaving, setSummarySaving] = useState(false)
+  const [summaryError, setSummaryError] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
   const loadEmailPref = useCallback(async () => {
+    const request = ++preferenceRequest.current
     try {
       const pref = await api.getEmailPref()
+      if (request !== preferenceRequest.current) return
+      setNotificationPrefsLoaded(true)
+      setNotificationPrefsError(false)
       setEmailEnabled(pref.enabled)
+      setAnnualSummary(!!pref.annual_summary_enabled)
       setAdvanceDays(pref.advance_days ?? 0)
-    } catch { /* ignore */ }
+    } catch {
+      if (request === preferenceRequest.current) { setNotificationPrefsLoaded(false); setNotificationPrefsError(true) }
+    }
   }, [])
 
   useEffect(() => {
-    if (config?.email_notifications_available) loadEmailPref()
-  }, [config?.email_notifications_available, loadEmailPref])
+    if (config?.email_notifications_available || config?.vapid_public_key) loadEmailPref()
+  }, [config?.email_notifications_available, config?.vapid_public_key, loadEmailPref])
 
   async function toggleEmail() {
     setEmailLoading(true)
@@ -107,11 +121,29 @@ export default function Settings() {
       {/* Notifications */}
       {(!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
         <Card as="section" pad="md">
-          <h3 className="text-sm font-medium text-cs-text">Notifications</h3>
+          <h3 id="notifications" className="scroll-mt-24 text-sm font-medium text-cs-text">Notifications</h3>
           <p className="mt-1 text-xs text-cs-text-2">
             Get notified when you have vesting, exercise, or loan repayment events.
           </p>
 
+          {hasNotificationChannels && <>
+            {!notificationPrefsLoaded && !notificationPrefsError && <p role="status" className="mt-3 text-xs text-cs-muted">Loading notification preferences…</p>}
+            {notificationPrefsError && <p role="alert" className="mt-3 text-xs text-cs-text-2">Could not load notification preferences. <button type="button" onClick={() => void loadEmailPref()} className="underline">Retry notifications</button></p>}
+            <label className="mt-3 flex items-start gap-2 text-xs text-cs-text-2">
+              <input type="checkbox" checked={annualSummary} disabled={summarySaving || !notificationPrefsLoaded} onChange={async e => {
+                const enabled = e.target.checked
+                ++preferenceRequest.current
+                setSummarySaving(true)
+                setSummaryError(false)
+                try { setAnnualSummary((await api.setAnnualSummaryPref(enabled)).annual_summary_enabled) }
+                catch { setSummaryError(true) }
+                finally { setSummarySaving(false) }
+              }} />
+              Include an annual stock summary in January through my enabled notification channels. No financial amounts in the preview.
+            </label>
+            {summarySaving && <p role="status" className="mt-2 text-xs text-cs-muted">Saving annual-summary preference…</p>}
+            {summaryError && <p role="alert" className="mt-2 text-xs text-cs-text-2">Could not save the annual-summary preference. Try again.</p>}
+          </>}
           <div className="mt-3 space-y-3">
             {/* Push — always describes THIS device. A subscription can only be
  created by the device it belongs to, so the account's other devices
@@ -164,9 +196,9 @@ export default function Settings() {
                     {push.otherDevices === 1 ? 'device' : 'devices'}.
                   </p>
                 )}
-                {push.state !== 'on' && push.intent && (
+                {push.state !== 'on' && push.intent && !push.offerDismissed && (
                   <button
-                    onClick={() => push.setIntent(false)}
+                    onClick={() => { try { localStorage.setItem('reminder_offer_dismissed', '1') } catch { /* account preference is saved below */ } void push.setIntent(false) }}
                     className="mt-1 text-xs text-cs-text-2 underline hover:text-cs-text"
                   >
                     Stop offering notifications on new devices

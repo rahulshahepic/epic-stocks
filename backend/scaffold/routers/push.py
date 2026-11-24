@@ -100,6 +100,7 @@ def push_status(
         "registered_here": bool(endpoint) and any(s.endpoint == endpoint for s in subs),
         "total_devices": len(subs),
         "intent": bool(user.notify_push_intent),
+        "offer_dismissed": bool(user.notification_offer_dismissed),
     }
 
 
@@ -115,6 +116,7 @@ def set_push_intent(
     subscriptions are untouched and keep receiving.
     """
     user.notify_push_intent = int(body.enabled)
+    user.notification_offer_dismissed = int(not body.enabled)
     db.commit()
     return {"intent": bool(user.notify_push_intent)}
 

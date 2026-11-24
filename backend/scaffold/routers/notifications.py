@@ -15,6 +15,8 @@ def get_email_pref(user: User = Depends(get_current_user), db: Session = Depends
     return {
         "enabled": bool(pref.enabled) if pref else False,
         "advance_days": (pref.advance_days or 0) if pref else 0,
+        "annual_summary_enabled": bool(pref.annual_summary_enabled) if pref else False,
+        "offers_dismissed": bool(user.notification_offer_dismissed),
     }
 
 
@@ -48,3 +50,14 @@ def set_advance_days(advance_days: int, user: User = Depends(get_current_user), 
         "enabled": bool(pref.enabled),
         "advance_days": pref.advance_days or 0,
     }
+
+
+@router.put("/annual-summary")
+def set_annual_summary_pref(enabled: bool, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
+    if pref is None:
+        pref = EmailPreference(user_id=user.id, enabled=0)
+        db.add(pref)
+    pref.annual_summary_enabled = int(enabled)
+    db.commit()
+    return {"annual_summary_enabled": bool(pref.annual_summary_enabled)}

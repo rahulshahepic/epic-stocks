@@ -199,5 +199,20 @@ def test_preview_exit_net_cash_reduced_by_accrued_interest(client):
     )
     expected_net_cash = round(expected_liq_net + data["prior_sales_net"] + data["deduction_savings"], 2)
     assert data["net_cash"] == pytest.approx(expected_net_cash)
+    assert data["liquidation_net_cash"] == pytest.approx(expected_liq_net)
+    assert data["liquidation_shortfall"] >= 0
+    assert not (data["liquidation_net_cash"] > 0 and data["liquidation_shortfall"] > 0)
     # Sanity: accrued interest is non-zero so it actually affected net_cash
     assert data["outstanding_accrued_interest"] > 0
+
+
+def test_one_more_year_uses_the_same_exit_service(client):
+    register_user(client)
+    _seed_data(client)
+    first = client.get('/api/preview-exit?date=2024-02-29').json()
+    later = client.get('/api/preview-exit?date=2025-02-28').json()
+    result = client.get('/api/compare-exit-year?date=2024-02-29').json()
+    assert result['later_date'] == '2025-02-28'
+    assert result['cash_change'] == pytest.approx(later['net_cash'] - first['net_cash'])
+    assert 'no future grant or salary' in result['note']
+    assert client.get('/api/compare-exit-year?date=9999-01-01').status_code == 422

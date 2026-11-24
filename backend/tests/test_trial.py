@@ -179,7 +179,38 @@ def test_the_counter_row_holds_nothing_about_a_visitor(client):
     from scaffold.models import TrialDailyStat
 
     assert set(TrialDailyStat.__table__.columns.keys()) == {
-        "day", "previews", "save_clicked", "signups_from_trial"}
+        "day", "previews", "save_clicked", "signups_from_trial",
+        'import_starts', 'valid_uploads', 'source_checks_passed', 'format_rejections', 'processing_le_5s', 'processing_gt_5s'}
+
+
+def test_trial_measurement_opt_out_and_dnt_leave_no_count(client, db_session):
+    from scaffold.models import TrialDailyStat
+    assert client.post('/api/trial/analyze', files=upload_files(), data={'measure_usage': 'false'}).status_code == 200
+    assert client.post('/api/trial/analyze', files=upload_files(), headers={'DNT': '1'}).status_code == 200
+    assert client.post('/api/trial/save-intent', headers={'DNT': '1'}).status_code == 204
+    assert db_session.query(TrialDailyStat).count() == 0
+
+
+def test_attempt_metrics_count_retries_without_claiming_unique_users(client, db_session):
+    from scaffold.models import TrialDailyStat
+    for _ in range(2):
+        assert client.post('/api/trial/analyze', files=upload_files()).status_code == 200
+    row = db_session.query(TrialDailyStat).one()
+    assert (row.import_starts, row.valid_uploads, row.previews) == (2, 2, 2)
+    assert row.processing_le_5s + row.processing_gt_5s == 2
+    # The fixture includes incomplete sale evidence; rendering is not verified activation.
+    assert row.source_checks_passed == 0
+
+
+def test_trial_counts_format_refusals_and_prunes_old_counters(client, db_session):
+    from scaffold.models import TrialDailyStat
+    from datetime import date
+    db_session.add(TrialDailyStat(day=date(2000, 1, 1), previews=2))
+    db_session.commit()
+    assert client.post('/api/trial/analyze').status_code == 400
+    row = db_session.query(TrialDailyStat).one()
+    assert row.day != date(2000, 1, 1)
+    assert (row.import_starts, row.format_rejections, row.previews) == (1, 1, 0)
 
 
 def test_save_intent_needs_no_account(client):

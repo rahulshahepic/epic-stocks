@@ -1661,3 +1661,24 @@ def test_a_yearless_row_with_every_template_year_taken_is_not_imported():
     assert [g.shares for g in draft.grants] == [17_750]
     assert any(f.code == "G1" and f.severity == "warning" and "500 shares" in f.message
                for f in findings)
+
+
+def test_statement_omission_never_preselects_loan_deletion(client):
+    register_user(client)
+    submit(client, analyze(client)["draft"])
+    response = client.post("/api/loans", json={
+        "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Interest",
+        "loan_year": 2024, "amount": 100, "interest_rate": 0.01,
+        "due_date": "2040-01-01", "loan_number": "missing-from-statement",
+    })
+    assert response.status_code == 201, response.text
+    removed = [c for c in analyze(client)["changes"] if c["kind"] == "loan" and c["action"] == "delete" and c["id"] == response.json()["id"]]
+    assert len(removed) == 1
+    assert removed[0]["selected"] is False
+
+
+def test_printed_zero_total_is_checked_instead_of_treated_as_absent(skeleton, drafted):
+    draft, _ = drafted
+    statement = Statement(date(2024, 2, 1), None, None, printed_total=0.0)
+    findings = validate_draft(draft, statement, [], skeleton)
+    assert any(f.code == 'C2' and f.severity == 'error' for f in findings)

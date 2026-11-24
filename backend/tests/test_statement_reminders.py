@@ -22,6 +22,7 @@ def connect(user, db, **kwargs):
 
 def test_reminder_requires_live_equity_connection_and_is_seasonal(client, db_session):
     setup_account(client)
+    client.put("/api/notifications/email?enabled=true", json={})
     user = db_session.query(User).first()
     with user_key(user):
         assert statement_reminder_events(user, db_session, date(2026, 12, 31)) == []
@@ -68,6 +69,7 @@ def test_reminder_skips_future_paid_and_reconciled_loans(client, db_session):
 
 def test_delivery_records_year_only_after_success_and_honors_opt_out(client, db_session):
     setup_account(client)
+    client.put("/api/notifications/email?enabled=true", json={})
     user = db_session.query(User).first()
     connect(user, db_session)
     with patch.object(db_session, 'close'), \

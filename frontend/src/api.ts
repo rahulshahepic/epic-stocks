@@ -216,6 +216,7 @@ export interface PushStatus {
   total_devices: number
   /** Whether the person wants push where their devices allow it. */
   intent: boolean
+  offer_dismissed?: boolean
 }
 
 export interface DashboardData {
@@ -299,6 +300,9 @@ export interface ExitSaleSummary {
 }
 
 export interface ExitSummary {
+  /** Cash from the exit liquidation only, excluding historical sale proceeds. */
+  liquidation_net_cash?: number
+  liquidation_shortfall?: number
   vested_shares: number
   share_price: number
   gross_vested: number
@@ -536,7 +540,8 @@ export const api = {
   pushTest: () => post<{ sent: number }>('/api/push/test', {}),
 
   // Email notifications
-  getEmailPref: () => apiFetch<{ enabled: boolean; advance_days: number }>('/api/notifications/email'),
+  setAnnualSummaryPref: (enabled: boolean) => put<{ annual_summary_enabled: boolean }>(`/api/notifications/annual-summary?enabled=${enabled}`, {}),
+  getEmailPref: () => apiFetch<{ enabled: boolean; advance_days: number; annual_summary_enabled?: boolean; offers_dismissed?: boolean }>('/api/notifications/email'),
   setEmailPref: (enabled: boolean) =>
     put<{ enabled: boolean; advance_days: number }>(`/api/notifications/email?enabled=${enabled}`, {}),
   setAdvanceDays: (advance_days: number) =>
@@ -790,6 +795,13 @@ export interface TipsReport {
 
 /** Anonymous daily totals for the no-account preview funnel (/try). */
 export interface TrialFunnelReport {
+  import_starts?: number
+  valid_uploads?: number
+  source_checks_passed?: number
+  format_rejections?: number
+  processing_le_5s?: number
+  processing_gt_5s?: number
+
   days: { day: string; previews: number; save_clicked: number; signups_from_trial: number }[]
   previews: number
   save_clicked: number

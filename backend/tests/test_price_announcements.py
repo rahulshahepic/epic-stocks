@@ -255,6 +255,7 @@ def test_reminder_is_pending_until_daily_notification_delivers_it(client, db_ses
     from tests.conftest import user_key
     from unittest.mock import patch
     register_user(client)
+    client.put("/api/notifications/email?enabled=true", json={})
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
                                    "is_estimate": True})
     user = db_session.query(User).first()

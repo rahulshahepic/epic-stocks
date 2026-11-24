@@ -169,6 +169,8 @@ The preview then says what an account adds that a one-off read cannot: notificat
    - **Enter it yourself** — add each grant on the **Grants** page. Give the first vesting date and number of yearly parts and the app splits the shares the way Epic's agreements do: each part rounded down, the rest on the last date.
    - **Restore a workbook** — upload a `Vesting.xlsx` exported from this app on the Import page.
 
+   **First stock offer?** Start with a single proposed grant; a full history is not required. The empty dashboard links to total compensation. Expand the term explanations on Grants, Dashboard or Comp Calc for vesting, basis, loans, tax estimates and price uncertainty. These are explanations of the model; the grant agreement and official records govern the actual offer.
+
    **Vesting is a list of dates.** Each grant's schedule is stored as its own rows — one date and share count per vesting. Epic's usual schedule is only where a new grant starts: edit a grant and move any date (a leave of absence), change any split, or add and remove dates. Nothing recomputes them afterwards, and re-importing your Eureka files leaves a moved schedule alone.
 
    | Get started | Vesting dates |
@@ -812,6 +814,10 @@ Epic requires an 83(b) election with every purchase, so a grant bought at a pric
 
 ---
 
+### Understanding the dashboard
+
+The dashboard leads with **estimated cash from leaving on the selected date**, from the same exit service used by the API and connector. It excludes proceeds from prior sales. If obligations exceed liquidation proceeds, it shows **additional cash needed to settle** rather than concealing the shortfall behind a zero. Historical dates show stock equity before exit taxes instead. The separate **Total Cash Through Exit** includes modeled prior sales and deduction savings; it is not a current account balance. Gross proceeds, principal, interest and tax remain in the exit breakdown. Earnings and borrowing details are expandable. **What changes if I stay one more year?** compares two canonical exit calculations, including leap-day handling, using only saved records and prices. It shows applicable prices and explicitly excludes future grants and salary; the difference is a projection, not promised compensation. Shared viewers use the same comparison service. All amounts depend on saved records, selected dates, applicable price estimates and tax/settlement settings.
+
 ### Importing from Eureka
 
 ![Import / Export](screenshots/import-export-mobile.png)
@@ -826,6 +832,8 @@ Start with **Data for Stock Workbook** from Eureka. Add the latest **Stock Loan 
 Then go to **Import/Export → Import from Eureka** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
 
 **Your figures come from the files; dates start from Epic's schedule.** Vest dates, vesting periods and exercise dates for a grant start from the schedule a content admin maintains — see [For Content Admins](#for-content-admins). Change any of them afterwards on the Grants page; a re-import leaves a moved schedule alone.
+
+**Review the import checks.** The import leads with separate evidence for grant/share rows, statement principal, vested holdings and accrued interest. A missing printed total is **Not available**, never a match. A statement over 90 days old is **Stale**. Vested holdings depend on schedules and sales; statement interest-to-date is not assumed to be outstanding accrued interest. Loans absent from a new statement are offered for removal **unchecked**, so you must deliberately select them after confirming payoff or refinance.
 
 **The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
 
@@ -1485,7 +1493,7 @@ epic-stocks/
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── dateUtils.ts  # Local-day clock + leap-safe calendar date arithmetic
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
-│   │   │   ├── components/  # GetStarted, EurekaFileGuide, EpicFileImport, ChangeList (one screen of edits: tick, check, save), ChatImportIntro, VestingEditor, FindingList, TipCarousel, StockJourney, AppSettingsSections
+│   │   │   ├── components/  # GetStarted, EurekaFileGuide, EquityTerms (expandable explanations), ImportEvidence, EpicFileImport, ChangeList (one screen of edits: tick, check, save), ChatImportIntro, VestingEditor, FindingList, TipCarousel, StockJourney, AppSettingsSections
 │   │   │   ├── vesting.ts   # A grant's vesting rows, read the way the server stores them
 │   │   │   ├── pages/Dashboard.math.ts # The dashboard's sums as pure functions — card values, per-grant holdings, active loans, breakdowns
 │   │   │   ├── pages/dashboard/ # The dashboard's card rows (ShareCards, EarningsCards, CostCards), its Breakdown row and its charts
@@ -1794,3 +1802,23 @@ The planning presentation uses `frontend/src/app/pages/BeforeRetirement.tsx`
 counts and timing), alongside the shared `Retirement.math.ts` simulator and
 category-specific `LifeEventsPlanner.tsx` editor. The implementation scope and
 validation checklist are recorded in [the planning workflow plan](docs/planning-workflow-plan.md).
+
+### Anonymous onboarding measurement
+
+Admin → No-account preview shows only daily integer request counters: import requests, valid parses, source checks without warnings, format refusals, processing-time buckets, previews, save clicks and signup-carryover reports. No filenames, figures, document text, IP/device/account identifiers or per-visitor linkage are stored in this table. **Share anonymous daily usage counts** on `/try` controls counting; Do Not Track is also honored. Counters older than 180 days are pruned on the next measured event.
+
+These are attempt counts: retries and repeated save/carryover reports can count again, and events can cross midnight. The legacy carryover/previews ratio is not a unique-user conversion probability. Opted-out requests are outside the denominator. Processing time covers server work, not document discovery or signup. Source agreement does not prove a complete current position; measure the five-minute accurate-position target in the usability pilot rather than infer it from a successful render. Targets remain hypotheses. There is no anonymous-to-account join, cohort retention measurement or third-party analytics.
+
+### Event reminders and annual summaries
+
+New accounts start with email notifications **off**. After a useful dashboard, an actual upcoming vesting or loan payoff offers **Choose reminders**, which opens Settings without enabling anything. Existing notification preferences are preserved; the migration suppresses the new onboarding offer for existing accounts. The account-level **Stop offering notifications** preference also suppresses the contextual offer, including on other devices. Already-enabled channels suppress this offer; browser dismissal suppresses further offers there. Settings describes push on the current device, and the existing push flow handles permission/install requirements. Notification previews omit financial values.
+
+**Your annual stock summary** on Dashboard compares December 31 positions reconstructed through the canonical dated dashboard service. It labels estimates, tentative prices, missing figures, and historical changes caused by corrected records. The optional **annual stock summary** checkbox in Settings is off by default, independent of email/push channel opt-in. When selected, the scheduler offers a January reminder through enabled channels, marks the year only after delivery succeeds, and catches up later in January. Prior statements are never treated as proof of current accrued-interest balances; year-end reconciliation keeps using the existing checkpoint/reminder service.
+
+Implementation: `app/annual_summary.py`, the existing event/notification routers and scheduler, `ReminderOffer` and `AnnualStockSummary`. No new notification loop or server LLM is introduced.
+
+| Import evidence | Dashboard and reminders |
+|---|---|
+| ![Import checks](screenshots/import-evidence-light-mobile.png) | ![Rollout dashboard](screenshots/rollout-dashboard-light-mobile.png) |
+
+![Anonymous attempt counts](screenshots/trial-metrics-light-mobile.png)

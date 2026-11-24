@@ -7,8 +7,16 @@ export function TrialFunnel({ funnel }: { funnel: TrialFunnelReport }) {
     <AdminSection title={<>No-account preview (/try)</>}
     >
       <p className="mt-1 text-xs text-cs-muted">
-        Anonymous daily totals over the last 30 days — three counters per day, nothing about who caused them.
+        Anonymous request counts over the last 30 days. Retries can count again; these are not unique people or verified activation rates. No visitor linkage is stored. Rows expire after 180 days when counting next runs.
       </p>
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+        {([
+          ['Import requests', funnel.import_starts], ['Valid file parses', funnel.valid_uploads],
+          ['Source checks passed', funnel.source_checks_passed], ['Format refusals', funnel.format_rejections],
+          ['Processed within 5 seconds', funnel.processing_le_5s], ['Processed over 5 seconds', funnel.processing_gt_5s],
+        ] as const).map(([label, value]) => <div key={label}><dt className="text-cs-muted">{label}</dt><dd className="text-lg font-semibold text-cs-text">{(value ?? 0).toLocaleString()}</dd></div>)}
+      </dl>
+      <p className="mt-2 text-xs text-cs-muted">Source checks passed means matching supplied records without warnings, not an independently verified current position. Processing time excludes document discovery and signup. Measure accurate position within five minutes in the first-use pilot.</p>
       {funnel.previews > 0 ? (
         <>
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
@@ -21,11 +29,11 @@ export function TrialFunnel({ funnel }: { funnel: TrialFunnelReport }) {
               <p className="text-lg font-semibold text-cs-text">{funnel.save_clicked.toLocaleString()}</p>
             </div>
             <div>
-              <span className="text-cs-muted">Signed up with it</span>
+              <span className="text-cs-muted">Signup carryover reports</span>
               <p className="text-lg font-semibold text-cs-text">{funnel.signups_from_trial.toLocaleString()}</p>
             </div>
             <div>
-              <span className="text-cs-muted">Conversion</span>
+              <span className="text-cs-muted">Carryover reports / previews</span>
               <p className="text-lg font-semibold text-cs-text">
                 {funnel.conversion_rate != null ? `${(funnel.conversion_rate * 100).toFixed(1)}%` : '—'}
               </p>

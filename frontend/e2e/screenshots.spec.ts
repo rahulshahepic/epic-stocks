@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import * as path from 'path'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
@@ -291,6 +292,15 @@ test.describe('Screenshots', () => {
     })
   }
 
+  for (const theme of ['light', 'dark'] as const) test(`trial metrics - ${theme} - mobile`, async ({page}) => {
+    await authedPage(page, MOBILE, theme)
+    await page.request.post(`${BASE}/api/trial/analyze`, {multipart: {share_csv: {name: 'fictional.csv', mimeType: 'text/csv', buffer: readFileSync(TRIAL_CSV)}}})
+    await page.goto(`${BASE}/admin`)
+    const panel = page.getByRole('heading', {name: 'No-account preview (/try)', exact: true}).locator('..')
+    await expect(panel.getByText('Import requests', {exact: true})).toBeVisible()
+    await panel.screenshot({path: `${OUT}/trial-metrics-${theme}-mobile.png`})
+  })
+
   test('admin - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')
@@ -363,6 +373,48 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(500)
     await shoot(page, 'events-dark-mobile')
   })
+
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`rollout checks - ${theme} - ${size}`, async ({ page }) => {
+      await authedPage(page, viewport, theme)
+      await page.request.post(`${BASE}/api/auth/test-login`, {data: {email: `rollout-${theme}-${size}-${test.info().retry}@e2e.test`, name: 'Fictional employee'}})
+      const year = new Date().getFullYear()
+      expect((await page.request.post(`${BASE}/api/grants`, {data: {year: year - 2, type: 'Purchase', shares: 1000, price: 10,
+        exercise_date: `${year-2}-01-01`, vest_start: `${year-1}-01-01`, periods: 4, dp_shares: 0, election_83b: true}})).ok()).toBe(true)
+      for (const [priceYear, price] of [[year-2, 10], [year, 20], [year+1, 30]]) {
+        expect((await page.request.post(`${BASE}/api/prices`, {data: {effective_date: `${priceYear}-01-01`, price, is_estimate: priceYear > year}})).ok()).toBe(true)
+      }
+      const config = await (await page.request.get(`${BASE}/api/config`)).json()
+      await page.route('**/api/config', route => route.fulfill({json: {...config, email_notifications_available: true}}))
+      await page.goto(BASE)
+      await expect(page.getByRole('link', {name: 'Choose reminders'})).toBeVisible()
+      await page.getByText('What changes if I stay one more year?', {exact: true}).click()
+      await expect(page.getByText(/change in modeled total cash through exit/)).toBeVisible()
+      await page.getByText(`Your ${year-1} stock summary`, {exact: true}).click()
+      await expect(page.getByRole('region', {name: 'Annual stock changes'})).toBeVisible()
+      expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      const audit = await new AxeBuilder({page}).include('.campus-dashboard').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      await shoot(page, `rollout-dashboard-${theme}-${size}`, {fullPage: true})
+      await page.goto(`${BASE}/settings#notifications`)
+      const annual = page.getByLabel(/Include an annual stock summary/)
+      await expect(annual).not.toBeChecked()
+      await annual.click()
+      await expect(annual).toBeChecked()
+      await expect.poll(async () => (await (await page.request.get(`${BASE}/api/notifications/email`)).json()).annual_summary_enabled).toBe(true)
+      expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
+      await page.getByRole('heading', {name: 'Notifications', exact: true}).locator('..').screenshot({path: `${OUT}/reminder-settings-${theme}-${size}.png`})
+      await page.goto(`${BASE}/import`)
+      await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
+      await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)
+      await page.getByRole('button', {name: 'Read my files'}).click()
+      const checks = page.getByRole('region', {name: 'Import checks'})
+      await expect(checks.getByText('Not available', {exact: true})).toBeVisible()
+      await expect(checks.getByText('Stale statement', {exact: true})).toBeVisible()
+      await checks.screenshot({path: `${OUT}/import-evidence-${theme}-${size}.png`})
+    })
+  }
 
   test('import-export page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

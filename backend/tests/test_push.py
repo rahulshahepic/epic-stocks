@@ -54,14 +54,14 @@ def test_push_status_not_subscribed(client):
     register_user(client)
     resp = client.post("/api/push/status", json={})
     assert resp.status_code == 200
-    assert resp.json() == {"registered_here": False, "total_devices": 0, "intent": False}
+    assert resp.json() == {"registered_here": False, "total_devices": 0, "intent": False, "offer_dismissed": False}
 
 
 def test_push_status_registered_here(client):
     register_user(client)
     client.post("/api/push/subscribe", json=SUB_DATA)
     resp = client.post("/api/push/status", json={"endpoint": SUB_DATA["endpoint"]})
-    assert resp.json() == {"registered_here": True, "total_devices": 1, "intent": True}
+    assert resp.json() == {"registered_here": True, "total_devices": 1, "intent": True, "offer_dismissed": False}
 
 
 def test_push_status_other_device_is_not_registered_here(client):
@@ -96,7 +96,7 @@ def test_push_status_counts_every_device(client):
 
     resp = client.post("/api/push/status", json={"endpoint": second["endpoint"]})
 
-    assert resp.json() == {"registered_here": True, "total_devices": 2, "intent": True}
+    assert resp.json() == {"registered_here": True, "total_devices": 2, "intent": True, "offer_dismissed": False}
 
 
 def test_subscribe_requires_auth(client):

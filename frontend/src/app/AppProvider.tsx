@@ -76,10 +76,7 @@ const PrivacyDataCollected = (
     </Sub>
     <Sub title="Anonymous counts (no account needed)">
       <P>
-        The no-account preview at <strong>/try</strong> keeps three running totals per
-        calendar day: how many previews were computed, how many people pressed save, and
-        how many accounts were created carrying preview data. That is the entire record —
-        three numbers against a date. No IP address, no browser or device details, no
+        The no-account preview at <strong>/try</strong> keeps daily request totals for import attempts, valid files, source checks, format refusals, processing-time buckets, previews, save clicks and signup carryover reports. You can turn counting off on the upload form; Do Not Track is respected. Rows older than 180 days are removed when counting next runs. No IP address, no browser or device details, no
         identifier of any kind, and nothing that could group one visitor's actions
         together or link them to an account. They exist so the feature can be judged on
         whether it helps anyone.

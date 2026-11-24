@@ -22,8 +22,8 @@ function renderPolicy() {
 describe('Privacy policy', () => {
   it('discloses the anonymous daily counts the preview keeps', () => {
     renderPolicy()
-    expect(screen.getByText(/three running totals per\s+calendar day/i)).toBeInTheDocument()
-    expect(screen.getByText(/how many previews were computed/i)).toBeInTheDocument()
+    expect(screen.getByText(/keeps daily request totals/i)).toBeInTheDocument()
+    expect(screen.getByText(/import attempts, valid files, source checks/i)).toBeInTheDocument()
   })
 
   it('is explicit that the counts carry nothing identifying', () => {

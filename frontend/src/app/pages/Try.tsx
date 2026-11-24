@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import EurekaFileGuide from '../components/EurekaFileGuide.tsx'
 import { Link, useNavigate } from 'react-router-dom'
-import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
+import { trialAnalyze, stashTrialPayload, pingSaveIntent, measurementAllowed, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
 import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
@@ -157,15 +157,16 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
   }
 }
 
-function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
+function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun, allowAssistant }: {
   csv: File | null; pdf: File | null
   setCsv: (f: File | null) => void; setPdf: (f: File | null) => void
-  busy: boolean; error: string; onRun: () => void
+  busy: boolean; error: string; onRun: () => void; allowAssistant?: boolean
 }) {
+  const [measure, setMeasure] = useState(measurementAllowed)
   return (
     <Card className="text-left">
       <Eyebrow className="mb-2">No account needed</Eyebrow>
-      <EurekaFileGuide />
+      <EurekaFileGuide allowAssistant={allowAssistant} />
 
       <div className="mt-4 space-y-3">
         <div>
@@ -196,6 +197,14 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
         </button>
       </div>
 
+      <label className="mt-3 flex items-start gap-2 text-xs text-cs-text-2">
+        <input type="checkbox" checked={measure} disabled={navigator.doNotTrack === '1'} onChange={e => {
+          const next = e.target.checked
+          setMeasure(next)
+          try { localStorage.setItem('trial_measurement', next ? 'on' : 'off') } catch { setMeasure(false) }
+        }} />
+        Share anonymous daily usage counts (no identity or financial values). Do Not Track is respected.
+      </label>
       {error && (
         <p role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400">
           {error}
@@ -205,7 +214,7 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
       <p className="mt-3 text-[11px] leading-relaxed text-cs-muted">
         Files are sent to the server to be read, then discarded. The preview stays
         in this tab until you close or refresh it. Choosing Save & sign up keeps
-        the draft on this device for sign-in. Anonymous daily usage counts are recorded.
+        the draft on this device for sign-in. Anonymous daily usage counts are optional.
       </p>
     </Card>
   )
@@ -497,6 +506,7 @@ export default function Try() {
           <div className="mt-6">
             <UploadStage
               csv={csv} pdf={pdf} setCsv={setCsv} setPdf={setPdf}
+              allowAssistant={!!config?.ai_connections && !config?.epic_mode}
               busy={stage === 'analyzing'} error={error} onRun={run}
             />
           </div>

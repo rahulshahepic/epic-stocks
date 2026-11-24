@@ -33,6 +33,8 @@ class User(Base):
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_content_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notification_offer_dismissed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    annual_summary_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     statement_reminder_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
     # carry the value at issue time; mismatch = forced re-login.
@@ -205,7 +207,8 @@ class EmailPreference(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
-    enabled: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    enabled: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    annual_summary_enabled: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     advance_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -602,7 +605,7 @@ class GrantProgramSettings(Base):
 class TrialDailyStat(Base):
     """Anonymous daily counts for the no-account preview funnel.
 
-    Three integers per day and nothing else: no IP, no user agent, no
+    Integer counters per day and nothing else: no IP, no user agent, no
     per-visitor row, nothing that could be tied back to a person. This is
     arithmetic about the service, not a record of anyone using it — which is
     the only kind of counting the privacy policy permits.
@@ -610,6 +613,12 @@ class TrialDailyStat(Base):
     __tablename__ = "trial_daily_stats"
 
     day: Mapped[date] = mapped_column(Date, primary_key=True)
+    import_starts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    valid_uploads: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    source_checks_passed: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    format_rejections: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    processing_le_5s: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    processing_gt_5s: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     previews: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     save_clicked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     signups_from_trial: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

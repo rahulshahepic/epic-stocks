@@ -826,3 +826,10 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
 def _notify_inviter_status(inviter: User, inv: Invitation, action: str):
     """Placeholder for future notifications about invitation status changes."""
     pass
+
+
+@router.get("/view/{invitation_id}/compare-exit-year")
+def shared_compare_exit_year(invitation_id: int, date: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from app.routers.events import _compare_exit_year
+    return _compare_exit_year(owner, db, date)

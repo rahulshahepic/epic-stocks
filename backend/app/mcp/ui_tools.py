@@ -9,7 +9,7 @@ from .read_tools import _opt_date
 from .accounts import ACCOUNT_PROPERTY
 from .tools import REGISTRY, Tool, ToolContext, object_schema, register
 
-RESOURCE_VERSION = 3
+RESOURCE_VERSION = 4
 RESOURCE_URI = f"ui://epic-stocks/portfolio-v{RESOURCE_VERSION}.html"
 # Published resource URIs can outlive a deployment in cached tool descriptors.
 RESOURCE_URIS = frozenset(f"ui://epic-stocks/portfolio-v{v}.html" for v in range(1, RESOURCE_VERSION + 1))
@@ -72,6 +72,7 @@ _INPUT = object_schema({
     "to_date": {"type": "string", "description": "Events only: YYYY-MM-DD. Defaults to one year from today."},
 })
 _OUTPUT = object_schema({
+    "account_context": {"type": "object", "description": "Verified synthetic account context, when testing in staging."},
     "view": {"type": "string", "enum": list(VIEWS)},
     "account": {"type": "string", "const": "me"},
     "as_of": {"type": "string"},

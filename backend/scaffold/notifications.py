@@ -221,7 +221,7 @@ def send_daily_notifications(today: date | None = None, *, extra_events=None):
         if not all_user_ids:
             return
 
-        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
+        users = db.query(User).filter(User.id.in_(all_user_ids), User.is_synthetic.is_(False)).all()
 
         # Build a map of user_id → advance_days preference
         all_prefs = {p.user_id: (p.advance_days or 0) for p in db.query(EmailPreference).filter(EmailPreference.user_id.in_(all_user_ids)).all()}
@@ -439,7 +439,7 @@ MILESTONES = {10, 25, 50, 100, 250, 500, 1000}
 
 def check_user_milestone(db: Session):
     """Check if total user count just hit a milestone."""
-    total = db.query(func.count(User.id)).scalar()
+    total = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).scalar()
     if total in MILESTONES:
         send_admin_milestone_notification(total)
 
@@ -475,9 +475,9 @@ def send_admin_daily_digest(today: date | None = None):
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
 
-        total_users = db.query(func.count(User.id)).scalar()
-        new_signups = db.query(func.count(User.id)).filter(User.created_at >= yesterday).scalar()
-        active_24h = db.query(func.count(User.id)).filter(User.last_login >= yesterday).scalar()
+        total_users = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).scalar()
+        new_signups = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).filter(User.created_at >= yesterday).scalar()
+        active_24h = db.query(func.count(User.id)).filter(User.is_synthetic.is_(False)).filter(User.last_login >= yesterday).scalar()
         total_grants = db.query(func.count(Grant.id)).scalar()
         total_loans = db.query(func.count(Loan.id)).scalar()
         total_prices = db.query(func.count(Price.id)).scalar()

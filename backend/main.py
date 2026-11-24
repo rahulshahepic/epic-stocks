@@ -21,6 +21,7 @@ from scaffold.oauth.router import well_known_router as oauth_well_known_router
 from app.mcp import transport as mcp_transport
 from scaffold.auth import get_current_user
 from scaffold.body_limit import BodyLimitMiddleware
+from scaffold.synthetic_accounts import SyntheticAccountBusy
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
 from pydantic import BaseModel, Field
@@ -551,6 +552,11 @@ def _is_admin_request(request: Request) -> bool:
             db.close()
     except Exception:
         return False
+
+
+@_fastapi_app.exception_handler(SyntheticAccountBusy)
+async def synthetic_account_busy(request: Request, exc: SyntheticAccountBusy):
+    return JSONResponse({"detail": str(exc)}, status_code=409, headers={"Retry-After": "1"})
 
 
 @_fastapi_app.exception_handler(Exception)

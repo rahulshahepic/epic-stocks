@@ -5,7 +5,7 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
-RETIREMENT_RESOURCE_VERSION = 4
+RETIREMENT_RESOURCE_VERSION = 5
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
 RETIREMENT_RESOURCE_URIS = frozenset(
     f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
@@ -97,6 +97,7 @@ _RUN_INPUT = object_schema({
     },
 })
 _RESULT = object_schema({
+    "account_context": {"type": "object", "description": "Verified synthetic account context, when testing in staging."},
     "retirementDate": {"type": "string"},
     "exitSource": {"type": "string"},
     "canProjectExit": {"type": "boolean", "description": "Whether this connection can estimate dated Epic sale proceeds from equity data."},

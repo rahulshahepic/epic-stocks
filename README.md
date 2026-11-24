@@ -1873,3 +1873,38 @@ Maintenance and Epic-mode middleware run their synchronous database checks in wo
 `robots.txt` points to a sitemap containing the public `/mcp-setup` guide; `/llms.txt` links to the guide and setup JSON. These files advertise public instructions only. They neither disable OAuth nor grant tools access.
 
 `ops/cloudflare_mcp_discovery.json` records the exact edit to the existing **No bots on non mcp** custom challenge rule. The exception is limited to GET/HEAD on eight exact public document/download paths on the production, www and staging hostnames. It does not change existing MCP/OAuth exclusions, managed WAF, rate limits, private API routes, Bot Fight Mode, training preferences or other hosts. Apply only after comparing the recorded previous expression/version with the live rule; preserve concurrent edits. Verify each public URL returns content rather than a challenge, while account APIs and `/mcp` still require authorization. `robots.txt` is crawler guidance, not firewall configuration.
+
+### Testing the staging MCP safely
+
+The staging `/mcp` endpoint refuses every financial operation until that OAuth
+connection has a synthetic account. Existing connections need no new grant or
+reconnection: call `get_account_context`, `list_test_scenarios`, then
+`setup_test_account` with `early`, `established`, or `exit`. These are the same
+fictional profiles as the anonymous demo, persisted as a separate writable
+account with its own encryption key. Responses and portfolio/retirement cards
+prominently identify fictional data. Ordinary read/write scopes still apply.
+No actual financial records are copied, altered or exposed by staging MCP tools.
+
+Repeated setup with the same scenario preserves testing edits. To discard edits
+or change scenarios, call `reset_test_account` without `confirm`, obtain explicit
+confirmation, and repeat with the returned token. Reset invalidates outstanding
+import previews. Separate OAuth connections have separate test accounts.
+Concurrent operations on the same owner's test accounts receive a retryable
+busy error instead of racing a reset or write.
+
+Provisioning and reset are available only when trusted server configuration has
+`DOMAIN=staging.epic-stocks.com` and `APP_ENV` is not `production`; request headers
+cannot enable them. Production financial routing and admin MCP remain unchanged.
+Test users cannot log in as ordinary users and are excluded from notification
+recipients and the ordinary admin user list. Disconnecting a connection or deleting
+its owner removes its synthetic financial rows through the canonical deletion
+service. Nightly connector cleanup also removes orphaned fixtures and fixtures
+idle for 30 days; expired fixtures require setup again. The PostgreSQL race tests use the test-only `TEST_POSTGRES_URL` supplied by
+the backend CI service; without it those cases skip locally. The implementation lives
+in `scaffold/synthetic_accounts.py` (isolation/lifecycle) and
+`app/mcp/test_account_tools.py` (demo-profile persistence and MCP tools).
+
+Synthetic staging MCP cards (fictional fixtures only):
+
+![Fictional portfolio](screenshots/mcp-synthetic-portfolio-light-mobile.png)
+![Fictional retirement plan](screenshots/mcp-synthetic-retirement-dark-mobile.png)

@@ -21,6 +21,7 @@ ROW_QUOTAS = {
     # anyone has; the ceiling exists so an account cannot be walked up one
     # authorization at a time.
     "OAuthGrant": 20,
+    "MCPTestAccount": 20,
     # Codes are single-use and expire in a minute, so this only ever holds
     # authorizations that were started and not finished.
     "OAuthAuthCode": 50,

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot } from './plugin-host'
+import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot, snapshots, retirementSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -175,6 +175,7 @@ test.describe('Screenshots', () => {
       await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `car-editor-${theme}@screenshots.example.test`, name: 'Car Editor Demo' } })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByRole('button', { name: '+ Add planned expense', exact: true }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
       await page.getByLabel(/Purchase price/).fill('50000')
@@ -187,6 +188,23 @@ test.describe('Screenshots', () => {
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await editor.screenshot({ path: `${OUT}/car-purchase-editor-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+    })
+  }
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`synthetic MCP account notice - ${theme}`, async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const account_context = { environment: 'staging', synthetic: true, initialized: true, scenario: 'established', fixture_version: 2 }
+      const portfolio = await pluginHost(page, { theme, initial: { ...snapshots.summary, account_context } })
+      await expect(portfolio.locator('#syntheticNotice')).toContainText('FICTIONAL TEST ACCOUNT')
+      await portfolio.locator('main').screenshot({ path: `${OUT}/mcp-synthetic-portfolio-${theme}-mobile.png` })
+      const retirement = await retirementHost(page, theme, { initial: { ...retirementSnapshot, account_context } })
+      await expect(retirement.locator('#syntheticNotice')).toContainText('fixture v2')
+      await retirement.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
+      await retirement.getByRole('button', { name: 'Run simulation', exact: true }).click()
+      await expect(retirement.locator('#syntheticNotice')).toContainText('FICTIONAL TEST ACCOUNT')
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([])
+      await retirement.locator('main').screenshot({ path: `${OUT}/mcp-synthetic-retirement-${theme}-mobile.png` })
     })
   }
 
@@ -996,6 +1014,7 @@ test.describe('Screenshots', () => {
       })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByLabel('Retirement date').fill('2032-01-02')
       await page.getByRole('button', { name: /Add planned expense/ }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
@@ -1004,7 +1023,7 @@ test.describe('Screenshots', () => {
       await page.getByLabel('Sell car after N years (optional)').fill('15')
       await page.getByLabel('Depreciation schedule').selectOption('collector')
       await page.getByLabel(/Annual ownership costs/).fill('15000')
-      await page.locator('[aria-label="Life events and major purchases"]').screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true }).screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
       await page.locator('summary').filter({ hasText: /^Purchase rule/ }).click()
       await expect(page.locator('summary').filter({ hasText: /^Ownership and costs/ }).locator('..')).not.toHaveAttribute('open', '')
       await page.getByLabel('Buy only when conditions hold').check()
@@ -1021,18 +1040,18 @@ test.describe('Screenshots', () => {
       // component. Hide only that chrome for a focused component screenshot;
       // otherwise they cover the planner when Playwright scrolls to it.
       await page.evaluate(() => {
-        const planner = document.querySelector('[aria-label="Life events and major purchases"]')
+        const planner = [...document.querySelectorAll('[aria-label="Life events and major purchases"]')].find(el => el.getClientRects().length > 0)
         for (const element of document.querySelectorAll<HTMLElement>('body *')) {
           if (planner?.contains(element)) continue
           const position = getComputedStyle(element).position
           if (position === 'fixed' || position === 'sticky') element.style.visibility = 'hidden'
         }
       })
-      await page.locator('[aria-label="Life events and major purchases"]')
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png` })
       await page.getByRole('button', { name: 'Add event', exact: true }).click()
       await expect(page.getByText(/Otherwise wait and check monthly/)).toBeVisible()
-      await page.locator('[aria-label="Life events and major purchases"]')
+      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
         .screenshot({ path: `${OUT}/life-events-review-light-${label}.png` })
     })
   }

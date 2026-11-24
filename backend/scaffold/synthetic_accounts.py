@@ -19,6 +19,7 @@ _LOCK_SLOTS = threading.BoundedSemaphore(2)
 _READ_LOCK_SLOTS = threading.BoundedSemaphore(16)
 _LOCK_ENGINES = {}
 _MEMORY_LOCK_NAMESPACE = uuid.uuid4().hex
+_ALL_GRANTS = object()
 
 class SyntheticAccountBusy(ValueError):
     """A retryable account operation, never an internal error."""
@@ -186,13 +187,13 @@ def tool_account(ctx, tool_name, *, read_only=False):
                 ctx.active_user = None
 
 
-def delete_test_accounts(db, *, user_id=None, grant_id=None):
+def delete_test_accounts(db, *, user_id=None, grant_id=_ALL_GRANTS):
     """Caller holds the principal lock and commits. No encrypted values are read."""
     from scaffold.user_deletion import delete_user
     query = db.query(MCPTestAccount)
     if user_id is not None:
         query = query.filter_by(user_id=user_id)
-    if grant_id is not None:
+    if grant_id is not _ALL_GRANTS:
         query = query.filter_by(grant_id=grant_id)
     for row in query.all():
         synthetic_id = row.synthetic_id
@@ -214,7 +215,7 @@ def prune_test_accounts(db):
             with account_lock(db, owner):
                 row = db.query(MCPTestAccount).filter(MCPTestAccount.id == rid, MCPTestAccount.last_used_at < cutoff).first()
                 if row:
-                    delete_test_accounts(db, grant_id=row.grant_id)
+                    delete_test_accounts(db, user_id=row.user_id, grant_id=row.grant_id)
                     db.commit()
                     removed += 1
         except ValueError:

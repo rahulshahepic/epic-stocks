@@ -1,4 +1,3 @@
-import StagingSeedPanel from './StagingSeedPanel.tsx'
 import EquityTerms from './EquityTerms.tsx'
 import { Link } from 'react-router-dom'
 import ChatImportIntro from './ChatImportIntro.tsx'
@@ -11,7 +10,6 @@ export default function GetStarted() {
   const config = useConfig()
   return (
     <div className="space-y-4 p-4">
-      {config?.staging_demo && <StagingSeedPanel />}
       <div>
         <h1 className="text-lg font-semibold text-cs-text">Get your stock in</h1>
         <p className="mt-1 text-sm text-cs-text-2">

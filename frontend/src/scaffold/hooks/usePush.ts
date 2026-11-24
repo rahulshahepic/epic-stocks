@@ -22,7 +22,7 @@ function endpointOf(registration: Record<string, unknown> | null): string | unde
   return typeof endpoint === 'string' ? endpoint : undefined
 }
 
-export function usePush(vapidPublicKey: string) {
+export function usePush(vapidPublicKey: string, enabled = true) {
   const [supported] = useState(() => platform.push.supported)
   const [permission, setPermission] = useState(() => platform.push.permission())
   const [registeredHere, setRegisteredHere] = useState(false)
@@ -44,6 +44,7 @@ export function usePush(vapidPublicKey: string) {
   }, [supported])
 
   useEffect(() => {
+    if (!enabled) { setLoading(false); return }
     let cancelled = false
     ;(async () => {
       try {
@@ -73,10 +74,10 @@ export function usePush(vapidPublicKey: string) {
       }
     })()
     return () => { cancelled = true }
-  }, [refresh, supported, vapidPublicKey])
+  }, [refresh, supported, vapidPublicKey, enabled])
 
   const enable = useCallback(async () => {
-    if (!supported || !vapidPublicKey) return
+    if (!enabled || !supported || !vapidPublicKey) return
     setLoading(true)
     try {
       const registration = await platform.push.register(vapidPublicKey)
@@ -90,10 +91,10 @@ export function usePush(vapidPublicKey: string) {
     } finally {
       setLoading(false)
     }
-  }, [supported, vapidPublicKey, refresh])
+  }, [supported, vapidPublicKey, refresh, enabled])
 
   const disable = useCallback(async () => {
-    if (!supported) return
+    if (!enabled || !supported) return
     setLoading(true)
     try {
       // Tell the backend first: if that fails the device registration is still
@@ -109,17 +110,18 @@ export function usePush(vapidPublicKey: string) {
     } finally {
       setLoading(false)
     }
-  }, [supported, refresh])
+  }, [supported, refresh, enabled])
 
   /** Record whether to keep offering push on devices that have not been asked. */
-  const setIntent = useCallback(async (enabled: boolean) => {
-    setIntentState(enabled)
+  const setIntent = useCallback(async (intentEnabled: boolean) => {
+    if (!enabled) return
+    setIntentState(intentEnabled)
     try {
-      await api.pushSetIntent(enabled)
+      await api.pushSetIntent(intentEnabled)
     } catch {
-      setIntentState(!enabled)
+      setIntentState(!intentEnabled)
     }
-  }, [])
+  }, [enabled])
 
   let state: PushState
   if (!supported) state = platform.push.isInstalled() ? 'unsupported' : 'needs-install'

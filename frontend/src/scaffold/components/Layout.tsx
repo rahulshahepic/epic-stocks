@@ -9,6 +9,7 @@ import { useViewing } from '../contexts/viewing.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import PushNudge from './PushNudge.tsx'
 import UnofficialBadge from './UnofficialBadge.tsx'
+import StagingSeedPanel from '../../app/components/StagingSeedPanel.tsx'
 import { CampusCorner, CampusNavIcon } from './CampusMotifs.tsx'
 
 export default function Layout() {
@@ -18,6 +19,7 @@ export default function Layout() {
   const config = useConfig()
   const { viewing, setViewing, clearViewing } = useViewing()
   const { appName, appDisclaimerShort, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
+  const staging = config?.staging_demo || import.meta.env.VITE_APP_ENV === 'staging' || window.location.hostname === 'staging.epic-stocks.com'
   const epicMode = config?.epic_mode ?? false
   const baseItems = epicMode ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }] : [...appNavItems, { to: '/settings', label: 'Settings' }]
   const viewFilteredItems = viewing ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to)) : baseItems
@@ -56,7 +58,7 @@ export default function Layout() {
     <div className="flex min-h-screen flex-col bg-cs-base">
       <a href="#main-content" className="skip-nav">Skip to main content</a>
       <div className="sticky top-0 z-40 bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
-        {(config?.staging_demo || import.meta.env.VITE_APP_ENV === 'staging') && <div role="status" className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100">Staging environment — fictional test data</div>}
+        {staging && <div role="status" className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100">Staging environment — fictional test data</div>}
         {maintenance && <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />Maintenance in progress — financial data is temporarily unavailable</div>}
         {viewing && <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">Viewing {viewing.name}&rsquo;s data (read-only)<button onClick={clearViewing} className="ml-2 rounded bg-blue-200 px-2 py-0.5 text-xs font-medium hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700">Back to my data</button></div>}
         <header className="border-b border-cs-border">
@@ -76,12 +78,15 @@ export default function Layout() {
           </nav>
         </header>
       </div>
-      {!viewing && <PushNudge />}
+      {config && !viewing && !staging && <PushNudge />}
       <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className="campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 overflow-hidden px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8">
         <CampusCorner variant={motif} className="pointer-events-none absolute -right-5 top-2 h-36 w-52 text-cs-text opacity-70 sm:right-3 lg:h-44 lg:w-64" />
         <div className="relative z-[1]">
           {campusWing && <div className="campus-wing-marker max-w-4xl"><span>{campusWing.label}</span><span lang="la" title={campusWing.translation}>{campusWing.motto}</span></div>}
-          <Outlet />
+          {!config ? <p role="status">Loading application…</p> : staging && !['/admin', '/content', '/connect-ai'].some(path => location.pathname.startsWith(path)) && !me?.staging_account?.initialized
+            ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)
+            : <Outlet />}
+
         </div>
       </main>
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">

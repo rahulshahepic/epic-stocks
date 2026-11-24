@@ -10,6 +10,7 @@ interface MeData {
   is_content_admin: boolean
   shared_accounts?: SharedAccount[]
   date_of_birth?: string | null
+  staging_account?: { initialized: boolean; synthetic: boolean; scenario: string | null; generation: string | null }
 }
 
 let cached: MeData | null = null

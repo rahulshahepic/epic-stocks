@@ -270,15 +270,16 @@ export default function Dashboard() {
   // overwrite the owner's persisted prefs).
   useEffect(() => {
     if (vid) return
+    const controller = new AbortController()
     const t = setTimeout(() => {
       api.saveDashboardPrefs({
         dateMode,
         cardDate,
         range,
         openBreakdowns: [...openBreakdowns],
-      } as Record<string, unknown>).catch(() => {})
+      } as Record<string, unknown>, controller.signal).catch(() => {})
     }, 400)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); controller.abort() }
   }, [vid, dateMode, cardDate, range, openBreakdowns])
 
   // Only show projected/dashed styling when a future price actually differs from the current price

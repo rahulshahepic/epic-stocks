@@ -14,8 +14,13 @@ from services.vesting import set_schedule
 from .tools import Tool, object_schema, register
 
 
-def _stage():
-    if not is_staging():
+class InvalidResetConfirmation(ValueError):
+    pass
+
+
+def _stage(browser=False):
+    from scaffold.web_test_accounts import enabled
+    if not (enabled() if browser else is_staging()):
         raise ValueError('Synthetic accounts are available exclusively in staging.')
 
 
@@ -64,8 +69,8 @@ def _seed(db, owner, scenario):
     db.flush()
 
 
-def _setup(ctx, args):
-    _stage()
+def _setup(ctx, args, *, browser=False):
+    _stage(browser)
     if set(args) - {'scenario'}:
         raise ValueError('Only scenario may be supplied; accounts are selected by the authenticated connection.')
     scenario = args.get('scenario')
@@ -99,8 +104,8 @@ def _setup(ctx, args):
     return account_context(ctx)
 
 
-def _reset(ctx, args):
-    _stage()
+def _reset(ctx, args, *, browser=False):
+    _stage(browser)
     if set(args) - {'scenario', 'confirm'}:
         raise ValueError('Only scenario and confirm may be supplied.')
     row = binding(ctx.db, ctx.connector.user.id, ctx.connector.grant.id)
@@ -117,7 +122,7 @@ def _reset(ctx, args):
         return {**account_context(ctx), 'reset': False, 'confirm': token, 'scenario_to_restore': scenario,
                 'warning': 'Deletes all testing modifications in this connection only. Ask for explicit confirmation, then repeat with this token.'}
     if not isinstance(args['confirm'], str) or not args['confirm'].isascii() or not hmac.compare_digest(args['confirm'], token):
-        raise ValueError('Reset confirmation is invalid or stale. Preview reset again.')
+        raise InvalidResetConfirmation('Reset confirmation is invalid or stale. Preview reset again.')
     with synthetic_key(ctx.db, row.synthetic_id):
         try:
             owner = ctx.db.get(User, row.synthetic_id)

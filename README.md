@@ -1838,3 +1838,5 @@ The planner starts in **basic view**. Use **Show advanced assumptions** for allo
 Before advertising broadly, use [the launch evidence checklist](docs/employee-rollout-readiness.md) and [the first-use pilot protocol](docs/first-use-pilot.md). The checklist separates tested source behavior from live deployment evidence and human decisions. A passing unit suite does not certify backup restoration, campus traffic capacity or company permission.
 
 Privacy screenshots: [light mobile](screenshots/privacy-light-mobile.png), [dark mobile](screenshots/privacy-dark-mobile.png), [light desktop](screenshots/privacy-light-desktop.png), [dark desktop](screenshots/privacy-dark-desktop.png).
+
+Maintenance and Epic-mode middleware run their synchronous database checks in worker threads. Waiting for a database-pool slot must not block the event loop that releases active request sessions. A one-slot pool regression verifies cleanup can proceed and each guard still denies the request.

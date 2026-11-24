@@ -75,3 +75,12 @@ describe('StockJourney', () => {
     expect(screen.getByText('Your estimate · announcement expected ~Mar 1, 2027')).toBeInTheDocument()
   })
 })
+
+it('shows unknown vesting values without claiming shares are worth zero', () => {
+  render(<StockJourney asOf="2026-01-01" events={[
+    event('2027-03-01', 'Vesting', {vested_shares: 20, share_price: 0}),
+  ]} />)
+  expect(screen.getByText('20 shares vest')).toBeVisible()
+  expect(screen.getByText('Price not entered · 1 tranche')).toBeVisible()
+  expect(screen.queryByText(/\$0/)).not.toBeInTheDocument()
+})

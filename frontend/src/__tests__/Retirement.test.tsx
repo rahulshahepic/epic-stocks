@@ -46,6 +46,7 @@ const TAX_SETTINGS = {
 
 function mockApi(opts: {
   emptyGrants?: boolean
+  noPrices?: boolean
   netCash?: number | null
   dob?: string | null
   savedParams?: Record<string, unknown> | null
@@ -74,6 +75,7 @@ function mockApi(opts: {
     if (url.includes('/api/sharing/view/') && url.includes('/tax-settings')) {
       return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
     }
+    if (url === '/api/prices') return new Response(JSON.stringify(opts.noPrices ? [] : [{effective_date: '2020-01-01', price: 100}]), {status: 200})
     if (url === '/api/grants') return new Response(JSON.stringify(opts.emptyGrants ? [] : [{id: 1}]), {status: 200})
     if (url.includes('/api/preview-exit')) {
       const nc = opts.netCash
@@ -712,4 +714,52 @@ it('saves an empty-account plan with zero exit and preserves spending on reload'
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
   expect(screen.getByLabelText(/^Default spend/)).toHaveValue(77)
+})
+
+for (const noPrices of [true, false]) {
+  it(`saves spending when an automatic exit is ${noPrices ? 'missing a price' : 'unavailable'}`, async () => {
+    mockApi({ noPrices, netCash: null, savedParams: {defaultSpend: 70, epicExit: 5, epicExitMode: 'auto', retirementDate: '2032-01-01'} })
+    const first = render(<MemoryRouter><Retirement /></MemoryRouter>)
+    await screen.findByText(noPrices ? /Add a share price to project your exit/ : /No exit projection is available/)
+    if (noPrices) expect(screen.getByRole('link', {name: 'Add a price'})).toHaveAttribute('href', '/prices')
+    fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80'}})
+    let saved: Record<string, unknown> | undefined
+    await waitFor(() => {
+      saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+        .map(([, init]) => JSON.parse(String(init?.body)).params).find(p => p?.defaultSpend === 80)
+      expect(saved).toMatchObject({defaultSpend: 80, epicExitMode: 'auto'})
+      if (noPrices) expect(saved?.epicExit).toBe(0)
+      else expect(saved).not.toHaveProperty('epicExit')
+    })
+    first.unmount()
+    mockApi({ noPrices, netCash: null, savedParams: saved })
+    render(<MemoryRouter><Retirement /></MemoryRouter>)
+    await screen.findByText(noPrices ? /Add a share price to project your exit/ : /No exit projection is available/)
+    expect(screen.getByLabelText(/^Default spend/)).toHaveValue(80)
+  })
+}
+
+it('saves other inputs while an automatic preview is still pending, then saves the resolved exit', async () => {
+  mockApi({netCash: 4_000_000, savedParams: {defaultSpend: 70, epicExit: 5, epicExitMode: 'auto', retirementDate: '2032-01-01'}})
+  const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+  let resolvePreview!: () => void
+  const pending = new Promise<void>(resolve => { resolvePreview = resolve })
+  vi.mocked(globalThis.fetch).mockImplementation(async (...args) => {
+    if (String(args[0]).includes('/api/preview-exit')) await pending
+    return original(...args)
+  })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await screen.findByText(/exit projection pending/)
+  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80'}})
+  await waitFor(() => {
+    const saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+      .map(([, init]) => JSON.parse(String(init?.body)).params).find(p => p?.defaultSpend === 80)
+    expect(saved).toMatchObject({epicExitMode: 'auto', retirementDate: '2032-01-01'})
+    expect(saved).not.toHaveProperty('epicExit')
+  })
+  resolvePreview()
+  await waitFor(() => {
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([, init]) => init?.method === 'PUT'
+      && JSON.parse(String(init.body)).params?.epicExit === 4)).toBe(true)
+  })
 })

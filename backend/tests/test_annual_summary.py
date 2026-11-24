@@ -2,7 +2,7 @@ from datetime import date
 from unittest.mock import patch
 
 from app.annual_summary import annual_summary_events
-from scaffold.models import User, EmailPreference
+from scaffold.models import User
 from scaffold.notifications import build_notification_payload, send_daily_notifications
 from tests.conftest import register_user, user_key
 from tests.test_liquidation import _seed_data

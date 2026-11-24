@@ -1700,7 +1700,7 @@ This application stores sensitive financial data. Read **[PRIVACY.md](PRIVACY.md
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
 - **Encryption at rest** — all sensitive user data is encrypted per-user with AES-256-GCM: grants, loans, prices, sale prices, sale notes, actual tax paid, loan payment amounts, loan payment notes, tax rates, date of birth, retirement scenario parameters, and import backup snapshots. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once) wraps an operational master key stored encrypted in the database. Each user gets a unique key wrapped by the master key. The master key can be rotated live from the admin panel; all replicas pick it up automatically within seconds.
 - **Open source** — users can audit the code, self-host, or fork.
-- **Data portability** — users can export all their data to Excel at any time.
+- **Data portability** — users can export their financial records to Excel at any time; account preferences are not a complete part of this export.
 
 If you run an instance for others: use HTTPS, set `KEY_ENCRYPTION_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for the full security and ops checklist, including Cloudflare setup, SSH hardening, and VPS firewall rules.
 
@@ -1794,3 +1794,9 @@ The planning presentation uses `frontend/src/app/pages/BeforeRetirement.tsx`
 counts and timing), alongside the shared `Retirement.math.ts` simulator and
 category-specific `LifeEventsPlanner.tsx` editor. The implementation scope and
 validation checklist are recorded in [the planning workflow plan](docs/planning-workflow-plan.md).
+
+### Employee rollout readiness
+
+Before advertising broadly, use [the launch evidence checklist](docs/employee-rollout-readiness.md) and [the first-use pilot protocol](docs/first-use-pilot.md). The checklist separates tested source behavior from live deployment evidence and human decisions. A passing unit suite does not certify backup restoration, campus traffic capacity or company permission.
+
+Privacy screenshots: [light mobile](screenshots/privacy-light-mobile.png), [dark mobile](screenshots/privacy-dark-mobile.png), [light desktop](screenshots/privacy-light-desktop.png), [dark desktop](screenshots/privacy-dark-desktop.png).

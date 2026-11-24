@@ -32,6 +32,13 @@ describe('Privacy policy', () => {
       .toBeInTheDocument()
   })
 
+  it('explains operator access and backup retention without a fixed expiry promise', () => {
+    renderPolicy()
+    expect(screen.getByText(/With server encryption configured/)).toBeInTheDocument()
+    expect(screen.getByText(/newest seven complete backups/)).toBeInTheDocument()
+    expect(screen.getByText(/technically decrypt stored data/)).toBeInTheDocument()
+  })
+
   it('still rules out per-person tracking and third-party analytics', () => {
     renderPolicy()
     expect(screen.getByText(/Per-person analytics or usage tracking/i)).toBeInTheDocument()

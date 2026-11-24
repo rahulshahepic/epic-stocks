@@ -532,13 +532,16 @@ test.describe('Screenshots', () => {
     await shoot(page, 'try-preview-events-light-mobile', { fullPage: true })
   })
 
-  test('privacy policy page - light - mobile', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'light' })
-    await page.setViewportSize(MOBILE)
-    await page.goto(`${BASE}/privacy`)
-    await page.waitForLoadState('networkidle')
-    await shoot(page, 'privacy-light-mobile')
-  })
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`privacy policy - ${theme} - ${size}`, async ({page}) => {
+      await page.emulateMedia({colorScheme: theme})
+      await page.setViewportSize(viewport)
+      await page.goto(`${BASE}/privacy`)
+      await expect(page.getByText(/With server encryption configured/)).toBeVisible()
+      await expect(page.getByText(/newest seven complete backups/)).toBeVisible()
+      await shoot(page, `privacy-${theme}-${size}`, {fullPage: true})
+    })
+  }
 
   test('grants - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

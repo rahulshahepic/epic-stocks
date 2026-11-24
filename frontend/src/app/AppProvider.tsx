@@ -71,7 +71,7 @@ const PrivacyDataCollected = (
       </P>
       <P>
         A one-way hash of your IP address is kept with each report to rate-limit abuse of
-        an endpoint that has to work without a login. The address itself is never stored.
+        an endpoint that has to work without a login. The report does not store the raw address; separate server and proxy access logs depend on operator configuration.
       </P>
     </Sub>
     <Sub title="Anonymous counts (no account needed)">
@@ -106,14 +106,14 @@ const PrivacyThirdParties = (
     <Ul>
       <li><strong>Identity providers (Google, Microsoft, etc.)</strong> — verify your identity. Your provider receives your credentials; we receive only your profile fields.</li>
       <li><strong>Hetzner</strong> — VPS hosting. The app and database run on Hetzner hardware.</li>
-      <li><strong>Cloudflare</strong> — DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network.</li>
+      <li><strong>Cloudflare</strong> — DDoS protection and DNS. When used as a TLS-terminating proxy, Cloudflare can process request contents as well as connection metadata.</li>
       <li><strong>Porkbun</strong> — domain registrar. No access to application data.</li>
       <li><strong>Resend</strong> — email notifications and invitation emails (if enabled). Notification content contains no financial data — only an event count and a login link. Invitation emails contain the inviter's display name and a one-time token — no financial data.</li>
       <li><strong>Push notifications</strong> — delivered via Web Push through your browser's push service. Content contains no financial data.</li>
     </Ul>
     <P>
-      <strong>None of these services receive or can access your financial data</strong> for
-      any purpose, and we do not sell your data to any of them.
+      Hosting providers and a TLS-terminating proxy can have technical access to request
+      contents or server data. Email and push messages omit financial amounts. We do not sell your data.
     </P>
   </>
 )
@@ -186,7 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       viewerHiddenRoutes: new Set(['/import', '/wizard']),
       epicModeHiddenRoutes: new Set(['/import']),
       settingsSections: <AppSettingsSections />,
-      privacyLastUpdated: '2026-09-05',
+      privacyLastUpdated: '2026-11-24',
       privacyDataCollected: PrivacyDataCollected,
       privacyThirdParties: PrivacyThirdParties,
       notifyTemplates: NOTIFY_TEMPLATES,

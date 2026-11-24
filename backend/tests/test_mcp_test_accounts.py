@@ -319,3 +319,20 @@ def test_fixture_provisioning_has_an_explicit_per_owner_quota(staging, monkeypat
     assert 'Limit reached' in staging.error('setup_test_account', scenario='early')
     assert not db_session.query(MCPTestAccount).count()
     assert not db_session.query(User).filter_by(is_synthetic=True).count()
+
+
+def test_expiry_and_reprovision_invalidate_import_even_when_ids_are_reused(staging, db_session):
+    staging.call('setup_test_account', scenario='early')
+    changes = [{'kind': 'price', 'action': 'create', 'values': {'effective_date': '2026-11-23', 'price': 500}}]
+    preview = staging.call('apply_changes', changes=changes)
+    row = db_session.query(MCPTestAccount).one()
+    old_generation, old_id = row.generation, row.synthetic_id
+    old_price_ids = db_session.execute(text('SELECT id FROM prices WHERE user_id=:uid ORDER BY id'), {'uid': old_id}).scalars().all()
+    row.last_used_at = datetime.now(timezone.utc) - timedelta(days=31)
+    db_session.commit()
+    assert prune_test_accounts(db_session) == 1
+    fresh = staging.call('setup_test_account', scenario='early')
+    assert fresh['generation'] != old_generation
+    assert db_session.query(MCPTestAccount.synthetic_id).scalar() == old_id  # SQLite reuses the deleted maximum ID
+    assert db_session.execute(text('SELECT id FROM prices WHERE user_id=:uid ORDER BY id'), {'uid': old_id}).scalars().all() == old_price_ids
+    assert 'preview' in staging.error('apply_changes', changes=changes, confirm=preview['confirm'])

@@ -795,7 +795,8 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
                                        f"{printed:,.2f}, but the loans due that year add up "
                                        f"to {got:,.2f} — a difference of "
                                        f"{abs(printed - got):,.2f}."))
-        printed_total = statement.printed_total or statement.total_principal
+        printed_total = (statement.printed_total if statement.printed_total is not None
+                         else statement.total_principal)
         if printed_total is not None:                                      # C2
             got = round(sum(l.amount for _, l in loans), 2)
             if abs(got - printed_total) > _CENT:

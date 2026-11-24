@@ -22,14 +22,21 @@ function renderPolicy() {
 describe('Privacy policy', () => {
   it('discloses the anonymous daily counts the preview keeps', () => {
     renderPolicy()
-    expect(screen.getByText(/three running totals per\s+calendar day/i)).toBeInTheDocument()
-    expect(screen.getByText(/how many previews were computed/i)).toBeInTheDocument()
+    expect(screen.getByText(/keeps daily request totals/i)).toBeInTheDocument()
+    expect(screen.getByText(/import attempts, valid files, source checks/i)).toBeInTheDocument()
   })
 
   it('is explicit that the counts carry nothing identifying', () => {
     renderPolicy()
     expect(screen.getByText(/No IP address, no browser or device details, no\s+identifier of any kind/i))
       .toBeInTheDocument()
+  })
+
+  it('explains operator access and backup retention without a fixed expiry promise', () => {
+    renderPolicy()
+    expect(screen.getByText(/With server encryption configured/)).toBeInTheDocument()
+    expect(screen.getByText(/newest seven complete backups/)).toBeInTheDocument()
+    expect(screen.getByText(/technically decrypt stored data/)).toBeInTheDocument()
   })
 
   it('still rules out per-person tracking and third-party analytics', () => {

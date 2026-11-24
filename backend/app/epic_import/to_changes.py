@@ -164,9 +164,9 @@ def draft_changes(draft: Draft, user_id: int, db) -> list[dict]:
                         "loan", "delete",
                         f"{g.year} {g.type} {s.loan_type.lower()} loan" + (f" {s.loan_number}" if s.loan_number else ""),
                         f"{_money(s.amount)} — not on your statement of {_iso(draft.statement_date)} "
-                        f"(paid off or refinanced)"
+                        f"(may be paid off, refinanced, or missing from this file; verify before removing)"
                         + ("; it has payments, sales or refinance history that would go with it" if history else ""),
-                        row=s, group="remove", selected=not history))
+                        row=s, group="remove", selected=False))
 
     # Matched one for one, so two identical sales stay two and a re-import of
     # the same file adds none.

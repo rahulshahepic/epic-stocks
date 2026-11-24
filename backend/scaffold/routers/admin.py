@@ -183,14 +183,23 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     )
 
 
-class TrialFunnelDay(BaseModel):
+class TrialFunnelQuality(BaseModel):
+    import_starts: int = 0
+    valid_uploads: int = 0
+    source_checks_passed: int = 0
+    format_rejections: int = 0
+    processing_le_5s: int = 0
+    processing_gt_5s: int = 0
+
+
+class TrialFunnelDay(TrialFunnelQuality):
     day: str
     previews: int
     save_clicked: int
     signups_from_trial: int
 
 
-class TrialFunnelReport(BaseModel):
+class TrialFunnelReport(TrialFunnelQuality):
     days: list[TrialFunnelDay]
     previews: int
     save_clicked: int
@@ -219,7 +228,9 @@ def trial_funnel(days: int = 30, admin: User = Depends(get_admin_user),
     return TrialFunnelReport(
         days=[TrialFunnelDay(day=r.day.isoformat(), previews=r.previews,
                              save_clicked=r.save_clicked,
-                             signups_from_trial=r.signups_from_trial) for r in rows],
+                             signups_from_trial=r.signups_from_trial,
+                             **{k: getattr(r, k) for k in TrialFunnelQuality.model_fields}) for r in rows],
+        **{k: sum(getattr(r, k) for r in rows) for k in TrialFunnelQuality.model_fields},
         previews=previews,
         save_clicked=sum(r.save_clicked for r in rows),
         signups_from_trial=sum(r.signups_from_trial for r in rows),

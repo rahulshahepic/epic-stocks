@@ -152,7 +152,7 @@ export default function ImportExport() {
 
       {/* Direct import leads; assistants can handle other paperwork. */}
 
-      <EpicFileImport />
+      <EpicFileImport allowAssistant={!!config?.ai_connections && !config?.epic_mode} />
 
       {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
 

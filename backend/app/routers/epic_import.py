@@ -15,6 +15,7 @@ import json
 import re
 from datetime import date
 
+from app.epic_import.evidence import reconciliation_evidence
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -199,6 +200,7 @@ class AnalyzeResponse(BaseModel):
     prompt: str
     summary: dict
     origin: str
+    reconciliation: list[dict] = []
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -309,6 +311,7 @@ def analyze(
         prompt=build_prompt(draft, findings, statement, sk, statement_text, csv_text),
         summary=_summary(draft),
         origin=draft.origin,
+        reconciliation=reconciliation_evidence(statement, rows, findings, date.today()),
     )
 
 

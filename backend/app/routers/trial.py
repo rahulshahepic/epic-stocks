@@ -15,7 +15,8 @@ disappears on refresh. IP rate limited instead of user rate limited, since
 there is no user yet.
 """
 import logging
-from datetime import date as _date, datetime
+from datetime import date as _date, datetime, timedelta
+from time import monotonic
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
@@ -52,6 +53,7 @@ def _bump(db: Session, column: str) -> None:
             .values({column: getattr(TrialDailyStat, column) + 1}))
     for attempt in (1, 2):
         try:
+            db.query(TrialDailyStat).filter(TrialDailyStat.day < today - timedelta(days=180)).delete(synchronize_session=False)
             if db.execute(bump).rowcount:
                 db.commit()
                 return
@@ -134,6 +136,7 @@ def analyze(
     share_csv: UploadFile | None = File(default=None),
     statement_pdf: UploadFile | None = File(default=None),
     current_price: float | None = Form(default=None),
+    measure_usage: bool = Form(default=True),
     db: Session = Depends(get_db),
 ):
     from scaffold.rate_limit import check_rate_ip_shared
@@ -147,15 +150,24 @@ def analyze(
     # day one. 60 is ~16% of one core sustained in the worst case.
     check_rate_ip_shared(client_ip, "trial_analyze", max_calls=60, window_secs=300)
 
-    csv_bytes = _read_upload(share_csv, "share CSV")
-    pdf_bytes = _read_upload(statement_pdf, "statement PDF", _PDF_MAGIC)
-    if csv_bytes is None and pdf_bytes is None:
-        raise HTTPException(status_code=400,
-                            detail="Upload your share summary CSV, your Stock Loan "
-                                   "Statement PDF, or both")
+    measure = measure_usage and request.headers.get("dnt") != "1"
+    started = monotonic()
+    if measure:
+        _bump(db, "import_starts")
+    try:
+        csv_bytes = _read_upload(share_csv, "share CSV")
+        pdf_bytes = _read_upload(statement_pdf, "statement PDF", _PDF_MAGIC)
+        if csv_bytes is None and pdf_bytes is None:
+            raise HTTPException(status_code=400, detail="Upload your share summary CSV, your Stock Loan Statement PDF, or both")
+        sk, findings = build_skeleton(load_content(db))
+        statement, rows, parse_findings, _statement_text, _csv_text = _parse_files(csv_bytes, pdf_bytes)
+    except HTTPException as exc:
+        if measure and exc.status_code in (400, 413, 422):
+            _bump(db, "format_rejections")
+        raise
+    if measure:
+        _bump(db, "format_rejections" if any(f.severity == "error" for f in parse_findings) else "valid_uploads")
 
-    sk, findings = build_skeleton(load_content(db))
-    statement, rows, parse_findings, _statement_text, _csv_text = _parse_files(csv_bytes, pdf_bytes)
     findings += parse_findings
 
     draft, f = derive_draft(statement, rows, sk)
@@ -196,7 +208,12 @@ def analyze(
     grants, prices, loans, initial_price = _source_data(wizard_payload)
     events = generate_all_events(grants, prices, loans)
     timeline = [_serialize_event(e) for e in compute_timeline(events, initial_price)]
-    _bump(db, "previews")
+    if measure:
+        _bump(db, "previews")
+        _bump(db, "processing_le_5s" if monotonic() - started <= 5 else "processing_gt_5s")
+        has_total = statement is not None and (statement.printed_total is not None or statement.total_principal is not None)
+        if rows and has_total and not any(f.severity in {"error", "warning"} for f in findings):
+            _bump(db, "source_checks_passed")
 
     return TrialAnalyzeResponse(
         draft={**wizard_payload, "statement_date": draft.statement_date.isoformat() if draft.statement_date else None},
@@ -228,14 +245,16 @@ def save_intent(request: Request, db: Session = Depends(get_db)):
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
     check_rate_ip_shared(client_ip, "trial_save_intent", max_calls=120, window_secs=300)
-    _bump(db, "save_clicked")
+    if request.headers.get("dnt") != "1":
+        _bump(db, "save_clicked")
     return Response(status_code=204)
 
 
 @router.post("/converted", status_code=204)
-def converted(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def converted(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """A new account finished signing up carrying preview data with it."""
     from scaffold.rate_limit import check_rate
     check_rate(user.id, "trial_converted", max_calls=3, window_secs=3600)
-    _bump(db, "signups_from_trial")
+    if request.headers.get("dnt") != "1":
+        _bump(db, "signups_from_trial")
     return Response(status_code=204)

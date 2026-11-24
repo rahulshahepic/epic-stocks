@@ -71,15 +71,12 @@ const PrivacyDataCollected = (
       </P>
       <P>
         A one-way hash of your IP address is kept with each report to rate-limit abuse of
-        an endpoint that has to work without a login. The address itself is never stored.
+        an endpoint that has to work without a login. The report does not store the raw address; separate server and proxy access logs depend on operator configuration.
       </P>
     </Sub>
     <Sub title="Anonymous counts (no account needed)">
       <P>
-        The no-account preview at <strong>/try</strong> keeps three running totals per
-        calendar day: how many previews were computed, how many people pressed save, and
-        how many accounts were created carrying preview data. That is the entire record —
-        three numbers against a date. No IP address, no browser or device details, no
+        The no-account preview at <strong>/try</strong> keeps daily request totals for import attempts, valid files, source checks, format refusals, processing-time buckets, previews, save clicks and signup carryover reports. You can turn counting off on the upload form; Do Not Track is respected. Rows older than 180 days are removed when counting next runs. No IP address, no browser or device details, no
         identifier of any kind, and nothing that could group one visitor's actions
         together or link them to an account. They exist so the feature can be judged on
         whether it helps anyone.
@@ -106,14 +103,14 @@ const PrivacyThirdParties = (
     <Ul>
       <li><strong>Identity providers (Google, Microsoft, etc.)</strong> — verify your identity. Your provider receives your credentials; we receive only your profile fields.</li>
       <li><strong>Hetzner</strong> — VPS hosting. The app and database run on Hetzner hardware.</li>
-      <li><strong>Cloudflare</strong> — DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network.</li>
+      <li><strong>Cloudflare</strong> — DDoS protection and DNS. When used as a TLS-terminating proxy, Cloudflare can process request contents as well as connection metadata.</li>
       <li><strong>Porkbun</strong> — domain registrar. No access to application data.</li>
       <li><strong>Resend</strong> — email notifications and invitation emails (if enabled). Notification content contains no financial data — only an event count and a login link. Invitation emails contain the inviter's display name and a one-time token — no financial data.</li>
       <li><strong>Push notifications</strong> — delivered via Web Push through your browser's push service. Content contains no financial data.</li>
     </Ul>
     <P>
-      <strong>None of these services receive or can access your financial data</strong> for
-      any purpose, and we do not sell your data to any of them.
+      Hosting providers and a TLS-terminating proxy can have technical access to request
+      contents or server data. Email and push messages omit financial amounts. We do not sell your data.
     </P>
   </>
 )
@@ -186,7 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       viewerHiddenRoutes: new Set(['/import', '/wizard']),
       epicModeHiddenRoutes: new Set(['/import']),
       settingsSections: <AppSettingsSections />,
-      privacyLastUpdated: '2026-09-05',
+      privacyLastUpdated: '2026-11-24',
       privacyDataCollected: PrivacyDataCollected,
       privacyThirdParties: PrivacyThirdParties,
       notifyTemplates: NOTIFY_TEMPLATES,

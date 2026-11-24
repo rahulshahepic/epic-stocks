@@ -74,6 +74,7 @@ _PATCH = {
         "scenario": {"type": "string", "enum": ["historical", "moderate", "cautious", "custom"]},
         "rebalance": {"type": "string", "enum": ["none", "tax-advantaged", "all"]},
         "retirementDate": {"type": "string", "description": "YYYY-MM-DD"},
+        "epicExitMode": {"type": "string", "enum": ["auto", "manual"], "description": "Preserve a manual exit amount or project for each retirement date"},
         "spouseDOB": {"type": ["string", "null"], "description": "YYYY-MM-DD or null"},
         "plannedEvents": {"type": "array", "maxItems": 20, "items": _EVENT_SCHEMA},
         "glidePoints": {"type": "array", "maxItems": 20, "items": {
@@ -91,8 +92,8 @@ _RUN_INPUT = object_schema({
     "account": ACCOUNT_PROPERTY,
     "overrides": _PATCH,
     "recalculate_exit": {
-        "type": "boolean", "default": False,
-        "description": "When true, replace the saved Epic exit assumption with the app's date-specific after-tax, after-loan exit projection. Future prices may be estimates.",
+        "type": "boolean",
+        "description": "Omit to respect saved automatic mode. When true, replace the saved Epic exit assumption with the app's date-specific after-tax, after-loan exit projection. Future prices may be estimates.",
     },
 })
 _RESULT = object_schema({
@@ -115,8 +116,13 @@ def _run(ctx: ToolContext, args: dict):
     if args.get("recalculate_exit") and EQUITY_READ not in ctx.connector.scopes:
         raise ValueError("Date-specific Epic exit projections require equity:read")
     saved = owner.retirement_params or {}
+    if not isinstance(saved, dict):
+        raise ValueError("Saved retirement settings are invalid")
     missing_exit = "epicExit" not in saved and "epicExit" not in (args.get("overrides") or {})
-    implicit_exit = missing_exit and "recalculate_exit" not in args and EQUITY_READ in ctx.connector.scopes
+    mode_auto = (args.get("overrides") or {}).get("epicExitMode", saved.get("epicExitMode")) == "auto" and "epicExit" not in (args.get("overrides") or {})
+    if mode_auto and EQUITY_READ not in ctx.connector.scopes and args.get("recalculate_exit") is not False:
+        raise ValueError("Automatic exit mode requires equity:read; supply an explicit epicExit or choose manual mode")
+    implicit_exit = (missing_exit or mode_auto) and "recalculate_exit" not in args and EQUITY_READ in ctx.connector.scopes
     return {**run(owner, overrides=args.get("overrides"),
                   recalculate_exit=args.get("recalculate_exit", implicit_exit)),
             "canProjectExit": EQUITY_READ in ctx.connector.scopes}
@@ -127,6 +133,8 @@ def _update(ctx: ToolContext, args: dict):
     patch = validate_changes(args.get("changes"))
     held = owner.retirement_params
     merged = {**(held if isinstance(held, dict) else {}), **patch}
+    if "epicExit" in patch and "epicExitMode" not in patch:
+        merged["epicExitMode"] = "manual"
     validate_combined(merged)
     owner.retirement_params = merged
     ctx.db.commit()

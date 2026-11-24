@@ -115,7 +115,7 @@ export default function PrivacyPolicy() {
               <P>You have full access to your own data. You can:</P>
               <Ul>
                 <li>View, create, update, and delete all your grants, loans, and prices</li>
-                <li>Export all your data to Excel at any time</li>
+                <li>Export your financial records to Excel at any time</li>
                 <li>Sign out everywhere — invalidate every active session for your account on every browser and device in one action (Settings › Account)</li>
                 <li>Reset your data — delete all grants, loans, and prices while keeping your account (Settings › Danger Zone)</li>
                 <li>Delete your account — permanently remove your account and all associated data (Settings › Danger Zone)</li>
@@ -147,13 +147,12 @@ export default function PrivacyPolicy() {
             <SubSection title="The site operator">
               <P>
                 The person running this server has technical access to the server environment.
-                Your core financial data — grants, loans, prices, sales, loan payments, and tax
-                rates — is encrypted with AES-256-GCM before being written to the database. Each
-                user gets a unique key, and that key is itself encrypted with a master key stored
-                only on the server. Saved preferences (retirement scenario inputs, dashboard
-                preferences) and your date of birth are stored as plain values rather than
-                per-field encrypted, and rely on the database's own access controls. The operator
-                holds the master key.
+                With server encryption configured, grants, loans, prices, sales, loan payments,
+                interest checkpoints, tax rates, retirement inputs, compensation entries and dates
+                of birth use per-user AES-256-GCM encryption. Dashboard display preferences are
+                plain values. The operator controls the server and encryption keys and can
+                technically decrypt stored data. Encryption does not hide data from the operator;
+                its configuration must be verified for the deployment.
               </P>
               <P>
                 If you are uncomfortable with this, you can self-host your own instance — you
@@ -169,8 +168,8 @@ export default function PrivacyPolicy() {
 
           <Section title="Data Retention and Portability">
             <P>
-              Your data persists until you explicitly delete it. You can export all your data at any
-              time using the Excel export feature. Account deletion is immediate and irreversible.
+              Your data persists until you explicitly delete it. You can export your financial records at any
+              time using the Excel export feature. Account deletion removes live account data immediately. Existing encrypted backup archives can retain deleted records under the operator's retention policy. The newest seven complete backups are retained even beyond the nominal window, including if backups stop. Diagnostic reports are retained with identifying account fields removed. The operator must prevent restored backups from reactivating deleted accounts; ask them about retention and restore procedures.
             </P>
           </Section>
 

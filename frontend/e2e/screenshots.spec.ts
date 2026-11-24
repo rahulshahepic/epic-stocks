@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import * as path from 'path'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
@@ -291,6 +292,15 @@ test.describe('Screenshots', () => {
     })
   }
 
+  for (const theme of ['light', 'dark'] as const) test(`trial metrics - ${theme} - mobile`, async ({page}) => {
+    await authedPage(page, MOBILE, theme)
+    await page.request.post(`${BASE}/api/trial/analyze`, {multipart: {share_csv: {name: 'fictional.csv', mimeType: 'text/csv', buffer: readFileSync(TRIAL_CSV)}}})
+    await page.goto(`${BASE}/admin`)
+    const panel = page.getByRole('heading', {name: 'No-account preview (/try)', exact: true}).locator('..')
+    await expect(panel.getByText('Import requests', {exact: true})).toBeVisible()
+    await panel.screenshot({path: `${OUT}/trial-metrics-${theme}-mobile.png`})
+  })
+
   test('admin - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')
@@ -363,6 +373,48 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(500)
     await shoot(page, 'events-dark-mobile')
   })
+
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`rollout checks - ${theme} - ${size}`, async ({ page }) => {
+      await authedPage(page, viewport, theme)
+      await page.request.post(`${BASE}/api/auth/test-login`, {data: {email: `rollout-${theme}-${size}-${test.info().retry}@e2e.test`, name: 'Fictional employee'}})
+      const year = new Date().getFullYear()
+      expect((await page.request.post(`${BASE}/api/grants`, {data: {year: year - 2, type: 'Purchase', shares: 1000, price: 10,
+        exercise_date: `${year-2}-01-01`, vest_start: `${year-1}-01-01`, periods: 4, dp_shares: 0, election_83b: true}})).ok()).toBe(true)
+      for (const [priceYear, price] of [[year-2, 10], [year, 20], [year+1, 30]]) {
+        expect((await page.request.post(`${BASE}/api/prices`, {data: {effective_date: `${priceYear}-01-01`, price, is_estimate: priceYear > year}})).ok()).toBe(true)
+      }
+      const config = await (await page.request.get(`${BASE}/api/config`)).json()
+      await page.route('**/api/config', route => route.fulfill({json: {...config, email_notifications_available: true}}))
+      await page.goto(BASE)
+      await expect(page.getByRole('link', {name: 'Choose reminders'})).toBeVisible()
+      await page.getByText('What changes if I stay one more year?', {exact: true}).click()
+      await expect(page.getByText(/change in modeled total cash through exit/)).toBeVisible()
+      await page.getByText(`Your ${year-1} stock summary`, {exact: true}).click()
+      await expect(page.getByRole('region', {name: 'Annual stock changes'})).toBeVisible()
+      expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      const audit = await new AxeBuilder({page}).include('.campus-dashboard').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      await shoot(page, `rollout-dashboard-${theme}-${size}`, {fullPage: true})
+      await page.goto(`${BASE}/settings#notifications`)
+      const annual = page.getByLabel(/Include an annual stock summary/)
+      await expect(annual).not.toBeChecked()
+      await annual.click()
+      await expect(annual).toBeChecked()
+      await expect.poll(async () => (await (await page.request.get(`${BASE}/api/notifications/email`)).json()).annual_summary_enabled).toBe(true)
+      expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
+      await page.getByRole('heading', {name: 'Notifications', exact: true}).locator('..').screenshot({path: `${OUT}/reminder-settings-${theme}-${size}.png`})
+      await page.goto(`${BASE}/import`)
+      await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
+      await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)
+      await page.getByRole('button', {name: 'Read my files'}).click()
+      const checks = page.getByRole('region', {name: 'Import checks'})
+      await expect(checks.getByText('Not available', {exact: true})).toBeVisible()
+      await expect(checks.getByText('Stale statement', {exact: true})).toBeVisible()
+      await checks.screenshot({path: `${OUT}/import-evidence-${theme}-${size}.png`})
+    })
+  }
 
   test('import-export page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
@@ -532,13 +584,16 @@ test.describe('Screenshots', () => {
     await shoot(page, 'try-preview-events-light-mobile', { fullPage: true })
   })
 
-  test('privacy policy page - light - mobile', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'light' })
-    await page.setViewportSize(MOBILE)
-    await page.goto(`${BASE}/privacy`)
-    await page.waitForLoadState('networkidle')
-    await shoot(page, 'privacy-light-mobile')
-  })
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`privacy policy - ${theme} - ${size}`, async ({page}) => {
+      await page.emulateMedia({colorScheme: theme})
+      await page.setViewportSize(viewport)
+      await page.goto(`${BASE}/privacy`)
+      await expect(page.getByText(/With server encryption configured/)).toBeVisible()
+      await expect(page.getByText(/newest seven complete backups/)).toBeVisible()
+      await shoot(page, `privacy-${theme}-${size}`, {fullPage: true})
+    })
+  }
 
   test('grants - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
@@ -859,7 +914,7 @@ test.describe('Screenshots', () => {
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
     const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
-    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
@@ -875,7 +930,7 @@ test.describe('Screenshots', () => {
       await input.fill(value)
     }
     await fill(/Epic exit value/, '5')
-    await fill(/Additional portfolio/, '1')
+    await fill(/Taxable brokerage at retirement/, '1')
     await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
     await page.getByText('Funding risk details', { exact: true }).click()
@@ -886,6 +941,29 @@ test.describe('Screenshots', () => {
     expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await page.getByText('Funding risk details', { exact: true }).click()
     await page.waitForTimeout(500)
+  }
+
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`planner views - ${theme} - ${size}`, async ({ page }) => {
+      await authedPage(page, viewport, theme)
+      await page.request.put(`${BASE}/api/retirement/params`, { data: { params: {
+        epicExit: 5, epicExitMode: 'manual', retirementDate: '2032-01-01', advanced: true,
+        taxableAdditional: 3, additionalBasis: 1.2, traditional: 1, roth: 0.5, defaultSpend: 180,
+      } } })
+      await page.goto(`${BASE}/retirement`)
+      await expect(page.getByLabel(/^Retirement date/)).toHaveValue('2032-01-01')
+      await expect(page.getByRole('button', { name: 'Show advanced assumptions' })).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await shoot(page, `retirement-basic-${theme}-${size}`, { fullPage: true })
+      await page.getByRole('button', { name: 'Show advanced assumptions' }).click()
+      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1')
+      const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+      await shoot(page, `retirement-advanced-${theme}-${size}`, { fullPage: true })
+      await page.getByRole('button', { name: 'Hide account breakdown' }).click()
+      await page.getByRole('button', { name: 'Show basic view' }).click()
+      await expect.poll(async () => (await (await page.request.get(`${BASE}/api/retirement/params`)).json()).params.traditional).toBe(1)
+    })
   }
 
   test('retirement - light - mobile', async ({ page }) => {

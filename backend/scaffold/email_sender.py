@@ -159,10 +159,14 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     subject = f"Epic Stocks: {total} event{'s' if total != 1 else ''} today"
     if set(counts) == {"Share Price Update"}:
         subject = "Epic Stocks: update your share price"
+    if set(counts) == {"Annual Stock Summary"}:
+        subject = "Epic Stocks: your annual stock summary"
     if set(counts) == {"Loan Interest Statement"}:
         subject = "Epic Stocks: reconcile your loan interest"
     url = app_url()
-    if url and "Loan Interest Statement" in counts:
+    if url and "Annual Stock Summary" in counts:
+        url += "/#annual-summary"
+    elif url and "Loan Interest Statement" in counts:
         url += "/settings"
     elif url and "Share Price Update" in counts:
         url += "/prices"

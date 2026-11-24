@@ -45,6 +45,10 @@ export interface TrialAnalyzeResponse {
   reconciles: boolean
 }
 
+export function measurementAllowed(): boolean {
+  try { return navigator.doNotTrack !== '1' && localStorage.getItem('trial_measurement') !== 'off' } catch { return false }
+}
+
 export function trialAnalyze(
   shareCsv: File | null,
   statementPdf: File | null,
@@ -52,6 +56,7 @@ export function trialAnalyze(
   currentPrice?: number,
 ): Promise<TrialAnalyzeResponse> {
   const body = new FormData()
+  body.append('measure_usage', String(measurementAllowed()))
   if (shareCsv) body.append('share_csv', shareCsv)
   if (statementPdf) body.append('statement_pdf', statementPdf)
   if (currentPrice != null && currentPrice > 0) body.append('current_price', String(currentPrice))
@@ -64,10 +69,12 @@ export function trialAnalyze(
  * a count that fails to record must never interrupt what the person was doing.
  */
 export function pingSaveIntent(): void {
+  if (!measurementAllowed()) return
   void apiFetch('/api/trial/save-intent', { method: 'POST' }).catch(() => {})
 }
 
 export function pingConverted(): void {
+  if (!measurementAllowed()) return
   void apiFetch('/api/trial/converted', { method: 'POST' }).catch(() => {})
 }
 

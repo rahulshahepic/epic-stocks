@@ -23,7 +23,10 @@ def _notifications(day: date) -> None:
 
     from app.statement_reminders import statement_reminder_events
 
-    send_daily_notifications(today=day, extra_events=statement_reminder_events)
+    from app.annual_summary import annual_summary_events
+    def extra_events(user, db, today):
+        return statement_reminder_events(user, db, today) + annual_summary_events(user, db, today)
+    send_daily_notifications(today=day, extra_events=extra_events)
 
 
 def _admin_digest(day: date) -> None:

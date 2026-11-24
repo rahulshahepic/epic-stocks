@@ -164,6 +164,17 @@ function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
       const asOf = new URL(url, 'http://localhost').searchParams.get('as_of') ?? ''
       return new Response(JSON.stringify(snapshotFor(asOf, sales)), { status: 200 })
     }
+    if (url.includes('/api/preview-exit')) {
+      const date = new URL(url, 'http://localhost').searchParams.get('date') ?? ''
+      const sold = sales.some(sale => sale.date <= date)
+      return new Response(JSON.stringify({
+        date, liquidation_net_cash: sold ? 3000 : 0, liquidation_shortfall: sold ? 0 : 55000,
+        net_cash: sold ? 3000 : 0, gross_vested: sold ? 0 : 17000, unvested_cost_proceeds: 3000,
+        outstanding_principal: sold ? 0 : 75000, outstanding_accrued_interest: 0,
+        liquidation_tax: 0, prior_sales: [], prior_sales_net: 0, deduction_savings: 0,
+        deduction_years: [], deduction_excluded_years: [],
+      }), {status: 200})
+    }
     if (url.includes('/api/events')) {
       return new Response(JSON.stringify(MOCK_EVENTS), { status: 200 })
     }
@@ -225,7 +236,7 @@ describe('Dashboard', () => {
     expect(screen.getAllByText('150,000').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
-    expect(screen.getByText('$75,000')).toBeInTheDocument()
+    expect(screen.getAllByText('$75,000').length).toBeGreaterThan(0)
     expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
@@ -247,16 +258,16 @@ describe('Dashboard', () => {
     expect(screen.getByText('$6,980')).toBeInTheDocument()
   })
 
-  it('hero card shows net worth (share value minus outstanding loan principal), not gross value', async () => {
+  it('hero leads with canonical exit cash and explicitly shows a settlement shortfall', async () => {
     mockApi()
     renderDashboard()
 
     // Value Today = $20,000 (see previous test); MOCK_LOANS has one outstanding $75,000 loan.
     // Net worth = $20,000 - $75,000 = -$55,000, not the gross $20,000 share value.
     await waitFor(() => {
-      expect(screen.getByText(/^Net worth/)).toBeInTheDocument()
+      expect(screen.getByText(/Estimated cash from leaving/)).toBeInTheDocument()
     })
-    expect(screen.getByText('-$55,000')).toBeInTheDocument()
+    expect(await screen.findByText('Additional cash needed to settle: $55,000')).toBeInTheDocument()
     expect(screen.getByText('$20,000 in shares − $75,000 loans')).toBeInTheDocument()
   })
 
@@ -294,7 +305,7 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText(/^Net worth/)).toBeInTheDocument()
+      expect(screen.getByText(/Estimated cash from leaving/)).toBeInTheDocument()
     })
 
     // grantHoldings (and so the hero card) only requires grantsData/events/loans to
@@ -458,7 +469,7 @@ describe('Dashboard stale-price banner', () => {
   it('stays quiet once this year has a price', async () => {
     mockApi(MOCK_PRICES_CURRENT)
     renderDashboard()
-    await screen.findByText(/Net worth/i)
+    await screen.findByText(/Estimated cash from leaving/i)
     expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
   })
 
@@ -476,7 +487,7 @@ describe('Dashboard stale-price banner', () => {
 
     unmount()
     renderDashboard()
-    await screen.findByText(/Net worth/i)
+    await screen.findByText(/Estimated cash from leaving/i)
     expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
   })
 })
@@ -504,20 +515,20 @@ describe('server dashboard snapshots', () => {
       return original(input, init)
     })
     renderDashboard()
-    await screen.findByText('-$55,000')
+    await screen.findByText('$20,000 in shares − $75,000 loans')
     const input = document.querySelector('input[type=date]')!
     fireEvent.change(input, {target: {value: '2028-01-01'}})
-    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
     await waitFor(() => expect(pending.has('2028-01-01')).toBe(true))
     fireEvent.change(input, {target: {value: '2028-02-01'}})
     await waitFor(() => expect(pending.has('2028-02-01')).toBe(true))
     await act(async () => pending.get('2028-02-01')!(new Response(JSON.stringify({
-      ...snapshotFor('2028-02-01'), cards: {...snapshotFor('2028-02-01').cards, net_equity: 123456},
+      ...snapshotFor('2028-02-01'), cards: {...snapshotFor('2028-02-01').cards, total_stock_value: 123456},
     }))))
-    await screen.findByText('$123,456')
+    await screen.findByText('$123,456 in shares − $75,000 loans')
     await act(async () => pending.get('2028-01-01')!(new Response(JSON.stringify(snapshotFor('2028-01-01')))))
-    expect(screen.getByText('$123,456')).toBeInTheDocument()
-    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    expect(screen.getByText('$123,456 in shares − $75,000 loans')).toBeInTheDocument()
+    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
     expect(input).toHaveValue('2028-02-01')
   })
 
@@ -530,13 +541,13 @@ describe('server dashboard snapshots', () => {
       return original(input, init)
     })
     renderDashboard()
-    await screen.findByText('-$55,000')
+    await screen.findByText('$20,000 in shares − $75,000 loans')
     fireEvent.change(document.querySelector('input[type=date]')!, {target: {value: '2028-01-01'}})
     await screen.findByRole('button', {name: 'Retry'})
-    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
     fail = false
     fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
-    await screen.findByText('-$55,000')
+    await screen.findByText('$20,000 in shares − $75,000 loans')
   })
 })
 
@@ -552,7 +563,7 @@ it('retries an initial failed snapshot request', async () => {
   await screen.findByText('Failed to load dashboard')
   fail = false
   fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
-  await screen.findByText('-$55,000')
+  await screen.findByText('$20,000 in shares − $75,000 loans')
 })
 
 it('keeps charts mounted and does not refetch them when the card date changes', async () => {
@@ -566,4 +577,31 @@ it('keeps charts mounted and does not refetch them when the card date changes', 
   await waitFor(() => expect(screen.getByText('Value on Nov 30, 2026')).toBeInTheDocument())
   expect(screen.getByText('Loan Payments by Due Year')).toBe(chart)
   expect(chartFetchCount()).toBe(1)
+})
+
+
+it('refreshes the primary exit amount after applying a tax or lot-selection tip', async () => {
+  mockApi()
+  const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+  let changed = false
+  vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.includes('/api/tips') && !changed) return new Response(JSON.stringify([{
+      type: 'method', title: 'Change lot selection', description: 'Synthetic tip', savings: 100,
+      apply: { lot_selection_method: 'lifo' },
+    }]), {status: 200})
+    if (url.includes('/api/tax-settings') && init?.method === 'PUT') {
+      changed = true
+      return new Response(JSON.stringify({...MOCK_TAX_SETTINGS, lot_selection_method: 'lifo'}), {status: 200})
+    }
+    const response = await original(input, init)
+    if (url.includes('/api/preview-exit') && changed) return new Response(JSON.stringify({
+      ...await response.json(), liquidation_net_cash: 4321, liquidation_shortfall: 0,
+    }), {status: 200})
+    return response
+  })
+  renderDashboard()
+  await screen.findByText('Additional cash needed to settle: $55,000')
+  await userEvent.click(screen.getByRole('button', {name: 'Apply'}))
+  await waitFor(() => expect(screen.getByText('Estimated cash from leaving on this date').parentElement).toHaveTextContent('$4,321'))
 })

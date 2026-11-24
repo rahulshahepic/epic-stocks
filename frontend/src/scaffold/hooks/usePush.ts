@@ -28,6 +28,7 @@ export function usePush(vapidPublicKey: string) {
   const [registeredHere, setRegisteredHere] = useState(false)
   const [totalDevices, setTotalDevices] = useState(0)
   const [intent, setIntentState] = useState(false)
+  const [offerDismissed, setOfferDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
   const healedRef = useRef(false)
 
@@ -37,6 +38,7 @@ export function usePush(vapidPublicKey: string) {
     setRegisteredHere(status.registered_here)
     setTotalDevices(status.total_devices)
     setIntentState(status.intent)
+    setOfferDismissed(!!status.offer_dismissed)
     setPermission(platform.push.permission())
     return status
   }, [supported])
@@ -129,6 +131,7 @@ export function usePush(vapidPublicKey: string) {
     state,
     loading,
     intent,
+    offerDismissed,
     /** Subscribed devices other than this one — context, never the toggle. */
     otherDevices: Math.max(0, totalDevices - (registeredHere ? 1 : 0)),
     enable,

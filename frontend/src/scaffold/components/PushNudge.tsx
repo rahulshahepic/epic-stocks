@@ -22,6 +22,7 @@ export default function PushNudge() {
     && !push.loading
     && !!config?.vapid_public_key
     && push.intent
+    && !push.offerDismissed
     && push.state === 'off'
     // Settings already shows this device's state and its own Enable button.
     && location.pathname !== '/settings'
@@ -47,7 +48,7 @@ export default function PushNudge() {
           Not now
         </button>
         <button
-          onClick={() => { setDismissed(true); void push.setIntent(false) }}
+          onClick={() => { setDismissed(true); try { localStorage.setItem('reminder_offer_dismissed', '1') } catch { /* optional browser preference */ } void push.setIntent(false) }}
           className="text-xs text-cs-text-2 underline hover:text-cs-text"
         >
           Don't ask again

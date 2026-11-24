@@ -102,8 +102,8 @@ def _upsert_user(identity, db: Session) -> User:
         db.add(user)
         db.commit()
         db.refresh(user)
-        # Enable email notifications by default for new users
-        db.add(EmailPreference(user_id=user.id, enabled=1))
+        # New users choose notification channels after seeing their first useful result
+        db.add(EmailPreference(user_id=user.id, enabled=0))
         db.commit()
         _notify_admin_new_user(user, db)
     else:
@@ -262,7 +262,7 @@ if os.getenv("E2E_TEST") == "1":
                     )
                     db.add(user)
                     db.flush()  # raises IntegrityError if concurrent worker won the race
-                    db.add(EmailPreference(user_id=user.id, enabled=1))
+                    db.add(EmailPreference(user_id=user.id, enabled=0))
                     is_new = True
                 except IntegrityError:
                     db.rollback()

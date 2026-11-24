@@ -29,7 +29,7 @@ function CopyButton({ text, label, copiedLabel }: { text: string; label: string;
           setState('failed')
         }
       }}
-      className="shrink-0 rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover"
+      className="shrink-0 rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white dark:bg-[#a80f28] hover:bg-cs-brand-hover"
     >
       {state === 'copied' ? copiedLabel : state === 'failed' ? 'Copy failed — select it' : label}
     </button>
@@ -42,6 +42,7 @@ export default function ConnectAi() {
   const { openReport } = useReportProblem()
   const [selected, setSelected] = useState(remembered)
   const serverUrl = mcpServerUrl()
+  const staging = window.location.hostname === 'staging.epic-stocks.com' || !!config?.staging_demo
   const guide = ASSISTANT_GUIDES.find(g => g.id === selected) ?? ASSISTANT_GUIDES[0]
 
   if (config && !config.ai_connections) return <Navigate to="/settings" replace />
@@ -65,9 +66,15 @@ export default function ConnectAi() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-cs-text">Connect your AI</h2>
+      <h1 className="text-lg font-semibold text-cs-text">Connect your AI</h1>
+      {staging && <Card as="section" pad="md">
+        <h2 className="text-sm font-semibold text-cs-text">Staging test connector</h2>
+        <p className="mt-2 text-xs text-cs-text-2">Connect as Epic Stocks Staging Test. These downloads use staging OAuth and fictional test data, separately from your production connection.</p>
+        <a href="/mcp-setup" className="mt-3 inline-block text-xs font-semibold text-cs-brand dark:text-rose-300 underline">Public staging setup guide</a>
+      </Card>}
 
       <Card as="section" pad="md">
+        <h2 className="sr-only">Account connection</h2>
         <p className="text-xs text-cs-text-2">
           Let your AI assistant read your equity — and, if you allow it, set up
           grants and loans from your paperwork. You approve every permission when
@@ -131,15 +138,15 @@ export default function ConnectAi() {
           {guide.plugin && (
             <p className="mt-2 text-xs text-cs-text-2">
               Or{' '}
-              <a className="font-medium text-cs-brand underline" href={guide.plugin.href} download={guide.plugin.filename}>
-                download the {guide.name} plugin
+              <a className="font-medium text-cs-brand dark:text-rose-300 underline" href={guide.plugin.href} download={staging ? `epic-stocks-staging-test-${guide.id}.zip` : guide.plugin.filename}>
+                download the {staging ? 'staging ' : ''}{guide.name} plugin
               </a>{' '}
               and upload the ZIP under {guide.name === 'Claude' ? 'Customize → Plugins' : 'Plugins → + → Upload plugin'} — no address to paste.
             </p>
           )}
 
           {guide.docs && (
-            <a className="mt-2 inline-block text-xs text-cs-brand underline" href={guide.docs} target="_blank" rel="noopener noreferrer">
+            <a className="mt-2 inline-block text-xs text-cs-brand dark:text-rose-300 underline" href={guide.docs} target="_blank" rel="noopener noreferrer">
               {guide.name}&apos;s own instructions
             </a>
           )}

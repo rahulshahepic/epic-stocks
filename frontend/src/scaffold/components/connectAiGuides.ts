@@ -39,9 +39,9 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
     name: 'ChatGPT',
     company: 'OpenAI',
     steps: [
-      'In ChatGPT, open Settings → Apps & Connectors → Advanced settings and turn on Developer mode.',
-      'Back in Apps & Connectors, choose Create.',
-      'Name it Epic Stocks, paste the server address, leave Authentication on OAuth, tick that you trust it and choose Create.',
+      'In ChatGPT on the web, open Settings → Apps. Enable Developer mode under Advanced settings if your account requires it.',
+      'Choose Create to add a custom MCP app.',
+      'Name it Epic Stocks (or Epic Stocks Staging Test for testing), paste the server address and choose OAuth. Scan the tools, then create the app.',
       'Sign in to Epic Stocks and approve the permissions.',
     ],
     note: 'Business and Enterprise workspaces may need an admin to allow custom connectors.',
@@ -118,8 +118,7 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
 ]
 
 export function mcpServerUrl(location: Pick<Location, 'hostname' | 'origin'> = window.location): string {
-  return location.hostname === 'staging.epic-stocks.com'
-    ? 'https://epic-stocks.com/mcp' : `${location.origin}/mcp`
+  return `${location.origin}/mcp`
 }
 
 export function museSetupPrompt(serverUrl: string): string {

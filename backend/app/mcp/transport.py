@@ -27,6 +27,7 @@ from database import get_db
 from scaffold.oauth import audit
 from scaffold.oauth.scopes import ADMIN_SCOPES
 from scaffold.auth import get_admin_emails
+from scaffold.routers.plugin_downloads import site_origin, STAGING
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
@@ -194,8 +195,11 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
         return _result(request_id, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
-            "serverInfo": {"name": "epic-stocks", "title": "Epic Stocks", "version": "1"},
+            "serverInfo": {"name": "epic-stocks-staging-test" if site_origin() == STAGING else "epic-stocks",
+                           "title": "Epic Stocks Staging Test" if site_origin() == STAGING else "Epic Stocks", "version": "1"},
             "instructions": (
+                ("STAGING TEST ENVIRONMENT: Treat figures as fictional test scenarios. Never sync them into production or personal finances.\n\n"
+                 if site_origin() == STAGING else "") +
                 "Use show_retirement for an interactive retirement planner, run_retirement_simulation "
                 "for numeric analysis, and compare_retirement_scenarios for retirement-date decisions. "
                 "Exploratory overrides never save; update_retirement_params writes only with permission.\n\n"
@@ -333,6 +337,8 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
         if tool.output_schema is not None:
             # Normalize dates exactly as in the text fallback.
             result["structuredContent"] = json.loads(result["content"][0]["text"])
+        if site_origin() == STAGING and not admin:
+            result.setdefault("_meta", {})["epic-stocks/environment"] = "staging-test-data"
         answer = _result(request_id, result)
     except ValueError as exc:
         # A bad argument is a finding the model can act on, not a crash.

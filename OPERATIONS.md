@@ -589,3 +589,8 @@ docker compose up -d
 ### ChatGPT portfolio UI
 
 The optional GitHub environment variable `CHATGPT_UI_ORIGIN` is carried into the deploy `.env` and the app container. For public UI submission it must be a unique HTTPS origin owned by this plugin; omit it during development to use the host sandbox. After a tool/resource metadata change, refresh the connection in ChatGPT Plugins. See [host acceptance and rollout](docs/chatgpt-plugin.md).
+
+
+## Public MCP setup discovery
+
+The exact public-document exception to the Cloudflare crawler challenge is versioned in `ops/cloudflare_mcp_discovery.json`; README → Public MCP discovery at Cloudflare documents scope and verification. It affects only GET/HEAD of the enumerated setup documents and credential-free connector packages on official hostnames. Keep OAuth and account authorization in the app, and do not exempt `/api/`, reset/seed mutations or arbitrary URL prefixes. The deployed app serves the setup documents before login; both staging and production retain separate MCP issuers and account stores.

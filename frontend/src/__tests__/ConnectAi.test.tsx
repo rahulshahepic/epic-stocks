@@ -51,9 +51,9 @@ describe('Connect your AI', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
   })
 
-  it('points staging at the production server', () => {
+  it('points staging at the staging server', () => {
     expect(mcpServerUrl({ hostname: 'staging.epic-stocks.com', origin: 'https://staging.epic-stocks.com' }))
-      .toBe('https://epic-stocks.com/mcp')
+      .toBe('https://staging.epic-stocks.com/mcp')
   })
 
   it.each(ASSISTANT_GUIDES.map(g => [g.name, g]))('gives %s its own steps and names who gets the data', async (_name, guide) => {

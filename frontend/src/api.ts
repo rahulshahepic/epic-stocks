@@ -123,7 +123,17 @@ export async function apiFetchRaw(path: string, init?: RequestInit): Promise<Res
     headers['Content-Type'] = 'application/json'
   }
 
-  return fetch(apiUrl(path), { ...init, headers, credentials: platform.auth.credentials })
+  const send = () => fetch(apiUrl(path), { ...init, headers, credentials: platform.auth.credentials })
+  let response = await send()
+  const replayable = !(typeof ReadableStream !== 'undefined' && init?.body instanceof ReadableStream)
+  // The server emits this hint only when the account guard refused the request
+  // before its handler ran. Version conflicts have no retry hint.
+  for (let retry = 0; retry < 2 && replayable && response.status === 409 && response.headers.get('Retry-After') === '1'; retry++) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    init?.signal?.throwIfAborted()
+    response = await send()
+  }
+  return response
 }
 
 /**
@@ -149,7 +159,7 @@ async function throwForStatus(
     throw new Error('Unauthorized')
   }
 
-  if (resp.status === 409) {
+  if (resp.status === 409 && !resp.headers.has('Retry-After')) {
     let currentVersion = 0
     try {
       const body = await resp.json()

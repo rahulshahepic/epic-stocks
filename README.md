@@ -682,11 +682,11 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 **Setup is public:** open [`/mcp-setup`](https://epic-stocks.com/mcp-setup) before signing in, or let an assistant fetch `/mcp/setup.json` and `/llms.txt`. The guide includes credential-free ChatGPT/Claude plugin ZIPs for the **current environment**. OAuth resource/authorization-server metadata links to the guide. Installation, sign-in and scope consent still require the user; discovering a server never grants access to private data.
 
-**Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and use **Set up a fictional staging account** on an empty dashboard. Choose Early career, Established or Planning an exit to load invented grants, loans, prices, age and retirement assumptions. Existing financial records, a saved birthday, compensation and retirement plans are refused; no other account is changed. The account uses the normal stored-data calculation and loan-payoff workflows (including generated future payoff sales), so it can be edited and tested through HTTP and MCP. No authentication bypass or new user impersonation endpoint is enabled.
+**Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and choose **Early career**, **Established** or **Planning an exit**. This opens an isolated writable browser workspace with invented grants, loans, prices, age and retirement assumptions; existing records, birthday and saved plans in the signed-in account stay untouched. Reopening the same profile keeps edits. Settings offers confirmed resets and profile changes. Each MCP connection uses its own independent fictional fixture. All use the normal calculation services; no authentication bypass is enabled.
 
 Create a separate assistant app named **Epic Stocks Staging Test**, using `https://staging.epic-stocks.com/mcp` with OAuth and PKCE, or download the staging ZIP from `/mcp-setup`. Select `equity:read`, `equity:write`, `comp:read`, `comp:write` for full testing. Sign in to the same staging account. MCP initialization and result metadata mark the environment for test-only use; never copy these figures into production or personal finances. Both signed-in and public staging downloads use `epic-stocks-staging-test` in the filename, plugin name and MCP server key, display **Epic Stocks Staging Test**, and target staging. Production downloads keep the production name and endpoint.
 
-The seed control exists only with `APP_ENV=staging` on the official staging domain (or an explicit local E2E staging run). Both the capability flag and mutation endpoint enforce this server-side; production refuses seeding even if the client crafts a request. Local screenshots can use `APP_ENV=staging E2E_LOCAL=1 PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`; the disposable Docker E2E app uses staging mode to exercise this flow, while retaining its existing development-only test authentication.
+The seed control exists only on the official staging deployment (or an explicit local E2E staging run). Both the capability flag and mutation endpoint enforce this server-side; production refuses seeding even if the client crafts a request. Local screenshots can use `APP_ENV=staging E2E_LOCAL=1 PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`; CI runs ordinary tests in development mode and then restarts its disposable Docker app in staging mode for this flow, retaining its existing development-only test authentication.
 
 | Staging seed | Staging MCP connection | Public setup |
 |---|---|---|
@@ -1917,6 +1917,8 @@ conflicting operations receive a retryable busy error. PostgreSQL lock connectio
 use separate bounded budgets (16 reads and 2 exclusive operations per worker),
 so parallel reads do not consume the exclusive-operation budget or exhaust the
 financial connection pool. Capacity limits also return a retryable busy error.
+Browser API requests retry up to twice when the server explicitly supplies the
+one-second busy hint; version conflicts and stale confirmations are not retried.
 
 Provisioning and reset are available only when trusted server configuration has
 `DOMAIN=staging.epic-stocks.com` and `APP_ENV` is not `production`; request headers

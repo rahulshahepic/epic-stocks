@@ -96,7 +96,7 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
       {showGuideLink && (
         <Link
           to="/connect-ai"
-          className="mt-3 inline-block rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover"
+          className="mt-3 inline-block rounded-md bg-rose-700 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-800"
         >
           Connect an assistant
         </Link>

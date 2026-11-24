@@ -166,3 +166,27 @@ describe('apiFetchBlob', () => {
     await expect(apiFetchBlob('/api/export/excel')).rejects.toThrow('Error 503')
   })
 })
+
+describe('transient account contention', () => {
+  beforeEach(() => vi.restoreAllMocks())
+  it('retries a refused form save with the same body when the server supplies a busy hint', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 409, headers: { 'Retry-After': '1' } }))
+      .mockResolvedValueOnce(new Response('{"saved":true}', { status: 200 }))
+    const body = '{"params":{"defaultSpend":77}}'
+    const result = await apiFetch<{ saved: boolean }>('/api/retirement/params', { method: 'PUT', body })
+    expect(result.saved).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls.map(([, init]) => init?.body)).toEqual([body, body])
+  })
+  it('never retries a version conflict', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"current_version":2}', { status: 409 }))
+    await expect(apiFetch('/api/grants/1', { method: 'PUT', body: '{}' })).rejects.toThrow('modified_elsewhere')
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it('stops after bounded busy retries and preserves the useful refusal message', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{"detail":"Synthetic account is busy"}', { status: 409, headers: { 'Retry-After': '1' } }))
+    await expect(apiFetch('/api/retirement/params', { method: 'PUT', body: '{}' })).rejects.toThrow('Synthetic account is busy')
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+})

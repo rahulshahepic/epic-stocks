@@ -95,7 +95,7 @@ export default function Settings() {
   return (
     <div className="space-y-4">
       {config?.staging_demo && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
-      <h2 className="text-lg font-semibold text-cs-text">Settings</h2>
+      <h1 className="text-lg font-semibold text-cs-text">Settings</h1>
 
       {/* Display Settings */}
       <Card as="section" pad="md">
@@ -112,7 +112,7 @@ export default function Settings() {
               aria-label={`${label} theme`}
               className={`px-4 py-1.5 text-xs font-medium transition-colors ${
                 theme === value
-                  ? 'bg-cs-brand text-white'
+                  ? 'bg-rose-700 text-white'
                   : 'bg-cs-surface text-cs-text-2 hover:bg-cs-raised'
               }`}
             >

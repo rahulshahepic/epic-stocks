@@ -299,7 +299,7 @@ jobs:
         run: |
           cd frontend
           npx playwright test --project=main e2e/screenshots.spec.ts \
-            --grep 'MCP Apps retirement card' --workers=1
+            --grep 'MCP Apps retirement card|settings page - (light|dark) - mobile' --workers=1
 
       - name: Upload MCP Apps retirement screenshots
         if: always()
@@ -334,6 +334,8 @@ jobs:
             screenshots/staging-seed-*.png
             screenshots/staging-connect-ai-*.png
             screenshots/staging-workspace-reset-*.png
+            screenshots/settings-light-mobile.png
+            screenshots/settings-dark-mobile.png
           if-no-files-found: error
           retention-days: 14
 

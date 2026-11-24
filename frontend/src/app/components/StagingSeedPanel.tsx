@@ -16,6 +16,7 @@ export default function StagingSeedPanel({
   onSeeded?: () => void
   currentScenario?: string | null
 }) {
+  const Heading = currentScenario ? 'h2' : 'h1'
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [pendingReset, setPendingReset] = useState<{ profile: string; confirm: string } | null>(null)
@@ -28,11 +29,7 @@ export default function StagingSeedPanel({
         method: 'POST',
         body: JSON.stringify({ profile, ...(confirm ? { confirm } : {}), ...(reset ? { reset: true } : {}) })
       }
-      let response = await apiFetchRaw('/api/demo/seed', request)
-      for (let retry = 0; retry < 2 && response.status === 409 && response.headers.get('Retry-After') === '1'; retry++) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        response = await apiFetchRaw('/api/demo/seed', request)
-      }
+      const response = await apiFetchRaw('/api/demo/seed', request)
       if (!response.ok) {
         const data = await response.json().catch(() => null)
         if (data?.detail?.code === 'reset_required' && typeof data.detail.confirm === 'string') {
@@ -57,9 +54,9 @@ export default function StagingSeedPanel({
   }
   return (
     <Card as="section" pad="md">
-      <h2 className="text-lg font-semibold text-cs-text">
+      <Heading className="text-lg font-semibold text-cs-text">
         {currentScenario ? 'Fictional staging workspace' : 'Set up a fictional staging account'}
-      </h2>
+      </Heading>
       <p className="mt-2 text-sm leading-relaxed text-cs-text-2">
         Open a separate account with invented grants, prices, loans, age and
         retirement assumptions. Your existing records, birthday and saved plans
@@ -88,7 +85,7 @@ export default function StagingSeedPanel({
         <div role="alert" className="mt-4 rounded-xl border border-cs-border-strong bg-cs-raised p-3">
           <p className="text-sm text-cs-text">Reset the fictional workspace to {profiles.find(([key]) => key === pendingReset.profile)?.[1]}? This discards its testing edits. Your original account stays untouched.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" disabled={busy !== null} onClick={() => seed(pendingReset.profile, pendingReset.confirm, true)} className="min-h-11 rounded-lg bg-cs-brand px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Reset fictional workspace</button>
+            <button type="button" disabled={busy !== null} onClick={() => seed(pendingReset.profile, pendingReset.confirm, true)} className="min-h-11 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50">Reset fictional workspace</button>
             <button type="button" disabled={busy !== null} onClick={() => setPendingReset(null)} className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text">Keep testing edits</button>
           </div>
         </div>

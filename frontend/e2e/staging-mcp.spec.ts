@@ -76,16 +76,22 @@ test('mobile fictional workspace persists edits and confirms profile changes', a
   await page.getByRole('button', { name: /Load Early career/ }).tap()
   await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toHaveCount(0)
   expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
-  await expect(page.getByText('Estimated cash from leaving on this date', { exact: false })).toBeVisible()
-  const savedParams = (await (await page.request.get('/api/retirement/params')).json()).params
-  await expect.poll(async () => {
-    const response = await page.request.put('/api/retirement/params', { data: { params: { ...savedParams, defaultSpend: 77 } } })
-    if (response.status() !== 409) expect(response.ok(), await response.text()).toBe(true)
-    return response.status()
-  }).toBe(200)
-  expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
+  await page.goto('/retirement')
+  const spending = page.getByLabel(/^Default spend/)
+  await expect(spending).toBeVisible()
+  let busyInjected = false
+  await page.route('**/api/retirement/params', async route => {
+    if (route.request().method() === 'PUT' && !busyInjected) {
+      busyInjected = true
+      await route.fulfill({ status: 409, headers: { 'Retry-After': '1' }, contentType: 'application/json', body: JSON.stringify({ detail: 'Synthetic account is busy; retry this request shortly.' }) })
+    } else await route.continue()
+  })
+  await spending.fill('77')
+  await spending.press('Tab')
+  await expect.poll(async () => (await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
+  expect(busyInjected).toBe(true)
   await page.reload()
-  await expect(page.getByText('Staging environment — fictional test data')).toBeVisible()
+  await expect(page.getByLabel(/^Default spend/)).toHaveValue('77')
   expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
   await page.goto('/settings')
   await page.getByRole('button', { name: /Load Established/ }).tap()

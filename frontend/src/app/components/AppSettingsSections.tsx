@@ -50,7 +50,7 @@ export default function AppSettingsSections() {
             {!editingDp && (
               <button
                 onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
-                className="text-xs text-cs-brand hover:text-cs-brand-hover "
+                className="text-xs text-cs-brand dark:text-rose-300 hover:text-cs-brand-hover "
               >Edit</button>
             )}
           </div>
@@ -118,7 +118,7 @@ export default function AppSettingsSections() {
           {!editingTax && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}
-              className="text-xs text-cs-brand hover:text-cs-brand-hover "
+              className="text-xs text-cs-brand dark:text-rose-300 hover:text-cs-brand-hover "
             >Edit</button>
           )}
         </div>

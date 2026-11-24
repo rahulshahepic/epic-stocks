@@ -46,7 +46,7 @@ export default function AppSettingsSections() {
       {!config?.epic_mode && (
         <Card as="section" pad="md">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-cs-text">Stock down payment</h3>
+            <h2 className="text-sm font-medium text-cs-text">Stock down payment</h2>
             {!editingDp && (
               <button
                 onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
@@ -114,7 +114,7 @@ export default function AppSettingsSections() {
       {/* Tax Rates */}
       <Card as="section" pad="md">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-cs-text">Tax Rates</h3>
+          <h2 className="text-sm font-medium text-cs-text">Tax Rates</h2>
           {!editingTax && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}

@@ -94,12 +94,12 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
-      {config?.staging_demo && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
       <h1 className="text-lg font-semibold text-cs-text">Settings</h1>
+      {config?.staging_demo && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
 
       {/* Display Settings */}
       <Card as="section" pad="md">
-        <h3 className="text-sm font-medium text-cs-text">Display</h3>
+        <h2 className="text-sm font-medium text-cs-text">Display</h2>
         <p className="mt-1 text-xs text-cs-text-2">
           Choose your preferred color scheme.
         </p>
@@ -125,7 +125,7 @@ export default function Settings() {
       {/* Notifications */}
       {!config?.staging_demo && (!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
         <Card as="section" pad="md">
-          <h3 id="notifications" className="scroll-mt-24 text-sm font-medium text-cs-text">Notifications</h3>
+          <h2 id="notifications" className="scroll-mt-24 text-sm font-medium text-cs-text">Notifications</h2>
           <p className="mt-1 text-xs text-cs-text-2">
             Get notified when you have vesting, exercise, or loan repayment events.
           </p>
@@ -288,7 +288,7 @@ export default function Settings() {
 
       {/* Account Management */}
       <Card as="section" pad="md">
-        <h3 className="text-sm font-medium text-cs-text">Account</h3>
+        <h2 className="text-sm font-medium text-cs-text">Account</h2>
         <p className="mt-1 text-xs text-cs-text-2">
           Signed in with Google. All your data is stored securely on the server.
         </p>
@@ -502,7 +502,7 @@ function SharingSection() {
 
   return (
     <Card as="section" pad="md">
-      <h3 className="text-sm font-medium text-cs-text">Sharing</h3>
+      <h2 className="text-sm font-medium text-cs-text">Sharing</h2>
       <p className="mt-1 text-xs text-cs-text-2">
         Invite people to view your equity data, or enter a code you received.
       </p>

@@ -82,7 +82,7 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
 
   return (
     <Card as="section" pad="md" id="ai-connections">
-      <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
+      <h2 className="text-sm font-medium text-cs-text">AI Connections</h2>
       <p className="mt-1 text-xs text-cs-text-2">
         Let Claude, ChatGPT, Gemini or another assistant read your equity data,
         and — if you allow it — add or correct your grants, prices, loans,

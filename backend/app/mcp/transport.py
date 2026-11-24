@@ -334,7 +334,7 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
         # Admin tools retain their original principal and key. Ordinary staging
         # handlers all share this boundary, including app-only refresh calls.
         from contextlib import nullcontext
-        with (nullcontext(None) if admin else tool_account(ctx, name)) as status:
+        with (nullcontext(None) if admin else tool_account(ctx, name, read_only=tool.read_only)) as status:
             payload = tool.handler(ctx, arguments)
             if status and isinstance(payload, dict):
                 payload = {**payload, "account_context": status}

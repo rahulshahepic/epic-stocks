@@ -16,6 +16,7 @@ from scaffold.models import MCPTestAccount, User
 
 RETENTION_DAYS = 30
 _LOCK_SLOTS = threading.BoundedSemaphore(2)
+_READ_LOCK_SLOTS = threading.BoundedSemaphore(16)
 _LOCK_ENGINES = {}
 _MEMORY_LOCK_NAMESPACE = uuid.uuid4().hex
 
@@ -44,10 +45,11 @@ def environment():
 
 
 @contextmanager
-def account_lock(db, principal_id):
+def account_lock(db, principal_id, *, shared=False):
     """Survives router commits/preview rollbacks; shared across workers/replicas.
 
-    Refuse contention instead of blocking ASGI or exhausting the DB pool.
+    Reads share the guard; mutations require exclusive access. Refuse conflicts
+    instead of blocking ASGI or exhausting the DB pool.
     SQLite's file lock is for local development; deployments use PostgreSQL.
     """
     key = int.from_bytes(hashlib.sha256(f'mcp-test:{principal_id}'.encode()).digest()[:8], 'big', signed=True)
@@ -58,20 +60,23 @@ def account_lock(db, principal_id):
         engine = _LOCK_ENGINES.get(url)
         if engine is None:
             engine = _LOCK_ENGINES[url] = create_engine(url, poolclass=NullPool)
-        if not _LOCK_SLOTS.acquire(blocking=False):
+        slots = _READ_LOCK_SLOTS if shared else _LOCK_SLOTS
+        if not slots.acquire(blocking=False):
             raise SyntheticAccountBusy('Synthetic accounts are busy; retry this request shortly.')
         try:
             with engine.connect() as connection:
-                acquired = connection.execute(text('SELECT pg_try_advisory_lock(:key)'), {'key': key}).scalar()
+                lock = 'pg_try_advisory_lock_shared' if shared else 'pg_try_advisory_lock'
+                unlock = 'pg_advisory_unlock_shared' if shared else 'pg_advisory_unlock'
+                acquired = connection.execute(text(f'SELECT {lock}(:key)'), {'key': key}).scalar()
                 if not acquired:
                     raise SyntheticAccountBusy('Synthetic account is busy; retry this request shortly.')
                 try:
                     yield
                 finally:
-                    connection.execute(text('SELECT pg_advisory_unlock(:key)'), {'key': key})
+                    connection.execute(text(f'SELECT {unlock}(:key)'), {'key': key})
                     connection.commit()
         finally:
-            _LOCK_SLOTS.release()
+            slots.release()
     else:
         database = db.get_bind().url.database
         identity = os.path.abspath(database) if database and database != ':memory:' else f'memory-{_MEMORY_LOCK_NAMESPACE}-{id(db.get_bind())}'
@@ -79,7 +84,7 @@ def account_lock(db, principal_id):
         path = os.path.join(tempfile.gettempdir(), f'epic-mcp-test-{key}.lock')
         with open(path, 'a') as stream:
             try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(stream, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise SyntheticAccountBusy('Synthetic account is busy; retry this request shortly.') from None
             try:
@@ -142,13 +147,13 @@ def synthetic_key(db, user_id):
 
 
 @contextmanager
-def tool_account(ctx, tool_name):
+def tool_account(ctx, tool_name, *, read_only=False):
     """All ordinary staging handlers, nested handlers and widget callbacks enter here."""
     if not requires_synthetic():
         yield None
         return
     principal_id, grant_id = ctx.connector.user.id, ctx.connector.grant.id
-    with account_lock(ctx.db, principal_id):
+    with account_lock(ctx.db, principal_id, shared=read_only):
         if not is_staging() and tool_name not in MANAGEMENT_TOOLS:
             raise ValueError('Staging deployment configuration is inconsistent; financial access refused.')
         live = ctx.db.execute(text('SELECT user_id FROM oauth_grants WHERE id=:gid'), {'gid': grant_id}).scalar()

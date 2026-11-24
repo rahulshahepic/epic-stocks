@@ -1,43 +1,20 @@
-from app.tax_settings import tax_settings_or_defaults
 from app.loan_state import loan_is_drawn, refinanced_loan_ids as _refinanced_loan_ids
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale
+from scaffold.models import User, Grant
 from scaffold.auth import get_current_user
-from services.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
 from app.date_utils import to_date as _to_date
-from services.vesting import core_grant
+from app.calculation_inputs import load_calculation_inputs
 
 router = APIRouter(prefix="/api", tags=["events"])
 
 
 def _user_source_data(user: User, db: Session):
-    grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
-    prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
-    loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
-
-    grants = [core_grant(g) for g in grants_db]
-
-    election_83b_map = {(g.year, g.type): bool(g.election_83b) for g in grants_db}
-
-    prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
-
-    loans = [{
-        "grant_yr": ln.grant_year, "grant_type": ln.grant_type,
-        "loan_type": ln.loan_type, "loan_year": ln.loan_year,
-        "amount": ln.amount, "interest_rate": ln.interest_rate,
-        "due": datetime.combine(ln.due_date, datetime.min.time()),
-        "loan_number": ln.loan_number,
-    } for ln in loans_db]
-
-    estimated_price_dates = {p.effective_date for p in prices_db if p.is_estimate}
-
-    initial_price = prices[0]["price"] if prices else 0
-    return grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates
+    return load_calculation_inputs(user, db).source_data()
 
 
 def _tax_due_dates(db: Session) -> dict:
@@ -136,7 +113,7 @@ def _compute_unvested_cost(grants, as_of_date) -> float:
 
 def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
                         horizon_date, ts_dict, deduction_enabled, excluded_years,
-                        projection=None, exit_projection=None) -> dict:
+                        projection=None, exit_projection=None, today=None) -> dict:
     """Build a comprehensive exit breakdown for the liquidation detail card.
 
     Every loan is paid at the exit: the real rows' principal, plus what the
@@ -146,6 +123,7 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
     falling before the exit with no real loan to carry its sale is paid from
     the exit proceeds.
     """
+    today = today or date.today()
     from app.loan_projection import outstanding_at_stop
     liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
     if not liq:
@@ -216,11 +194,11 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
     unfunded = 0.0
     if projection is not None:
         unfunded = round(sum(p.extra for p in projection.orphan_payoffs()
-                             if date.today() <= p.date <= horizon_date), 2)
+                             if today <= p.date <= horizon_date), 2)
     interest_paid_total = 0.0
     if exit_projection is not None:
         interest_paid_total = round(sum(p.interest_paid for p in exit_projection.payoffs
-                                        if date.today() <= p.date), 2)
+                                        if today <= p.date), 2)
     liquidation_balance = round(gross_vested + unvested_cost - liq_tax - outstanding
                                 - projected_loans - accrued_interest - unfunded, 2)
     liq_net = max(0.0, liquidation_balance)
@@ -686,22 +664,23 @@ def _sale_overrides(sales, ts_row) -> tuple[dict, dict, dict]:
 
 
 def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_enabled=None,
-                      excluded_years=None):
+                      excluded_years=None, inputs=None):
     """Grants, loans, sales and the enriched, taxed, deduction-annotated
     timeline: one path for /events, /preview-exit, /preview-deduction and the
     dashboard so none of them can disagree about a payoff or a deduction."""
-    grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates = _user_source_data(user, db)
+    inputs = inputs if inputs is not None else load_calculation_inputs(user, db)
+    today = inputs.today or date.today()
+    grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates = inputs.source_data()
     if not grants and not prices:
         return None
-    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
-    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
-    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
-    ts_row = tax_settings_or_defaults(user, db)
+    timeline = inputs.timeline()
+    loan_payments = inputs.payments
+    sales = inputs.sales
+    ts_row = inputs.tax
     ts_dict = _ts_dict(ts_row)
-    from app.routers.loans import _is_flexible_payoff_enabled
-    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    flexible_payoff_enabled = inputs.flexible_payoff
     settings = _projection_settings(ts_row)
-    tax_due = _tax_due_dates(db)
+    tax_due = inputs.tax_due
     loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
     overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales, ts_row)
     if deduction_enabled is None:
@@ -712,16 +691,16 @@ def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_e
         "grants": grants, "prices": prices, "loans_db": loans_db, "timeline": timeline,
         "loan_payments": loan_payments, "sales": sales, "ts_row": ts_row, "ts_dict": ts_dict,
         "election_83b_map": election_83b_map, "estimated_price_dates": estimated_price_dates,
-        "initial_price": initial_price, "settings": settings,
+        "initial_price": initial_price, "settings": settings, "today": today,
         "deduction_enabled": deduction_enabled, "excluded_years": excluded_years,
     }
-    proj = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due)
+    proj = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due, today=today)
     ctx["projection"] = proj
     stop = None
     if horizon_date is not None:
         stop = horizon_date + timedelta(days=settings["lag_days"])
-        ctx["exit_projection"] = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due, stop=stop)
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date, projection=proj)
+        ctx["exit_projection"] = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due, stop=stop, today=today)
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date, projection=proj, today=today)
     if ts_dict:
         _annotate_sale_taxes(enriched, timeline, ts_dict,
                              loan_grant_by_id=loan_grant_by_id,
@@ -745,6 +724,7 @@ def preview_deduction(
     db: Session = Depends(get_db),
 ):
     """Compute investment interest deduction impact without saving the setting."""
+    from app.tax_settings import tax_settings_or_defaults
     ts_row = tax_settings_or_defaults(user, db)
     if not ts_row:
         return None
@@ -755,14 +735,15 @@ def preview_deduction(
         from services.vesting import vest_years
         excl = {y for g in grants_db for y in vest_years(g) if y < this_year}
     ctx = _projected_events(user, db, deduction_enabled=enabled, excluded_years=excl)
-    db.close()
+    if db is not None:
+        db.close()
     if ctx is None:
         return None
     used, saved = _deduction_totals(ctx["enriched"], ctx["ts_dict"]) if enabled else (0.0, 0.0)
     return {"interest_deduction_total": used, "tax_savings_from_deduction": saved}
 
 
-def _preview_exit_data(user: User, db: Session, date_str: str):
+def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None):
     """Core preview-exit logic. Used by both the direct endpoint and the
     /sharing/view/{invitation_id}/preview-exit endpoint, so it must operate
     on an arbitrary User (not just the current request user)."""
@@ -772,8 +753,9 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format") from None
 
-    ctx = _projected_events(user, db, horizon_date=preview_date)
-    db.close()
+    ctx = _projected_events(user, db, horizon_date=preview_date, inputs=inputs)
+    if db is not None:
+        db.close()
     if ctx is None:
         return None
     enriched = ctx["enriched"]
@@ -783,7 +765,7 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
     summary = _build_exit_summary(
         enriched, ctx["grants"], ctx["loans_db"], ctx["loan_payments"], ctx["sales"],
         preview_date, ctx["ts_dict"], ctx["deduction_enabled"], ctx["excluded_years"],
-        projection=ctx["projection"], exit_projection=ctx["exit_projection"],
+        projection=ctx["projection"], exit_projection=ctx["exit_projection"], today=ctx["today"],
     )
     if not summary:
         return None
@@ -808,15 +790,17 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     return _get_events_data(user, db)
 
 
-def _get_events_data(user: User, db: Session) -> list:
+def _get_events_data(user: User, db: Session, *, inputs=None) -> list:
     """Core events logic, usable by both the direct endpoint and shared view."""
-    ctx = _projected_events(user, db)
+    inputs = inputs if inputs is not None else load_calculation_inputs(user, db)
+    ctx = _projected_events(user, db, inputs=inputs)
     if ctx is None:
         return []
     enriched = ctx["enriched"]
     from services.price_state import price_metadata
-    price_rows = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
-    db.close()
+    price_rows = inputs.prices
+    if db is not None:
+        db.close()
     current_row = price_rows[0] if price_rows else None
     price_index = 0
     for event in enriched:
@@ -886,14 +870,15 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     return payload
 
 
-def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False, include_charts=True) -> dict:
+def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False, include_charts=True, inputs=None) -> dict:
     """Shared accounting for HTTP, shared views and MCP. Dated HTTP snapshots
     include server-prepared cards and breakdowns; undated callers retain their
     legacy cumulative fields. Position fields always use the requested cutoff.
     """
-    grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
+    inputs = inputs if inputs is not None else load_calculation_inputs(user, db)
+    grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = inputs.source_data()
 
-    today = date.today()
+    today = inputs.today or date.today()
     cutoff = as_of or today
     # Live rows only. A refinanced loan is carried by its successor, so summing
     # every row charges one debt once per link in its chain. All cumulative
@@ -904,9 +889,9 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         if ln.loan_type == "Tax" and ln.loan_year <= cutoff.year
     )
 
-    sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
+    sales_db = inputs.sales
     # Build loan amount + early payment maps for cash received calculation
-    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    loan_payments_db = inputs.payments
     payments_by_loan: dict[int, float] = {}
     for lp in loan_payments_db:
         if lp.date <= cutoff:
@@ -958,16 +943,16 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
                     **({'charts': {'tax': [], 'interest': []}} if include_charts else {})}
         return _as_of_view(empty, as_of, []) if as_of is not None else empty
 
-    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+    timeline = inputs.timeline()
 
     # Add estimated tax from Sale events (FIFO, chronological order)
-    ts_row = tax_settings_or_defaults(user, db)
+    ts_row = inputs.tax
     proj_settings = _projection_settings(ts_row)
-    tax_due = _tax_due_dates(db)
-    projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due)
+    tax_due = inputs.tax_due
+    projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due, today=today)
     from app.loan_projection import outstanding_at_stop, reconciliation_status
     snapshot_projection = _project(grants, prices, loans_db, loan_payments_db, sales_db,
-                                   proj_settings, tax_due, stop=cutoff)
+                                   proj_settings, tax_due, stop=cutoff, today=today)
     at_cutoff = outstanding_at_stop(snapshot_projection)
     # Interest accrued and capitalised but not yet on a statement — the same
     # projection the payoffs and the exit use, so the three cannot disagree.
@@ -975,8 +960,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
 
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
-    from app.routers.loans import _is_flexible_payoff_enabled
-    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    flexible_payoff_enabled = inputs.flexible_payoff
     loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
     loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
     lot_selection_method = ts_row.lot_selection_method if ts_row else None
@@ -1007,7 +991,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         })
 
     # All DB reads are done — release the connection before CPU-heavy computation.
-    db.close()
+    if db is not None:
+        db.close()
 
     holdings_timeline = timeline
     results = {}
@@ -1094,8 +1079,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             break
 
     from services.price_state import price_metadata
-    applicable_price = (db.query(Price).filter(Price.user_id == user.id, Price.effective_date <= cutoff)
-                        .order_by(Price.effective_date.desc()).first())
+    applicable_price = next((p for p in reversed(inputs.prices) if p.effective_date <= cutoff), None)
     metadata = price_metadata(applicable_price, cutoff) if applicable_price else {}
     price_is_estimate = metadata.get("price_is_estimate", False)
     payload = {
@@ -1142,7 +1126,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         # Charts cover the whole plan, independently of the card date. Reuse
         # the same enriched/taxed event services as /events, including sales
         # between core events and per-sale lot/rate overrides.
-        chart_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection)
+        chart_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection, today=today)
         if include_charts:
             overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales_db, ts_row)
             _annotate_sale_taxes(chart_events, timeline, _ts_dict(ts_row),
@@ -1158,8 +1142,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
                                     holdings_timeline=holdings_timeline, holdings=holdings,
                                     live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
                                     sales=sales_db, sale_results=results, projection=snapshot_projection,
-                                    price_rows=db.query(Price).filter(Price.user_id == user.id)
-                                    .order_by(Price.effective_date).all())
+                                    price_rows=inputs.prices)
         if include_charts:
             details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
         return {**payload, 'as_of': cutoff.isoformat(), **details}

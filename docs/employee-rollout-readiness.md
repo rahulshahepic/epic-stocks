@@ -4,7 +4,7 @@ Source baseline: `d428120` (2026-11-24). This is an audit record, not a declarat
 
 ## Findings addressed in this PR
 
-The browser privacy notice described retirement inputs and date of birth as plaintext although their ORM types are `EncryptedJSON` and `EncryptedDate`. It also claimed third-party infrastructure could never access financial data. The notices now explain conditional server encryption, operator access, TLS proxy access and backup retention. The Markdown policy now discloses the three anonymous trial counters already in the implementation.
+The browser privacy notice described retirement inputs and date of birth as plaintext although their ORM types are `EncryptedJSON` and `EncryptedDate`. It also claimed third-party infrastructure could never access financial data. The notices now explain conditional server encryption, operator access, TLS proxy access and backup retention. The Markdown policy and browser notice disclose anonymous request counters, opt-out/DNT and180-day pruning. A deterministic pool-contention regression also exposed event-loop blocking in maintenance/Epic-mode guards; their synchronous reads now run in worker threads so active requests can release connections. This fixes a reproduced starvation mechanism; the original CI timeouts did not include a live thread dump proving their cause.
 
 ## Evidence register
 

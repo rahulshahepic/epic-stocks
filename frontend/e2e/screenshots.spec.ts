@@ -134,6 +134,28 @@ test.describe('Screenshots', () => {
     })
   }
 
+  for (const theme of ['light', 'dark'] as const) {
+    test(`car purchase editor - ${theme} - mobile`, async ({ page }) => {
+      test.setTimeout(30_000)
+      await authedPage(page, MOBILE, theme)
+      await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `car-editor-${theme}@screenshots.example.test`, name: 'Car Editor Demo' } })
+      await page.goto(`${BASE}/retirement`)
+      await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: '+ Add planned expense', exact: true }).click()
+      await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
+      await page.getByLabel(/Purchase price/).fill('50000')
+      await page.locator('summary').filter({ hasText: /^Ownership and costs/ }).click()
+      await page.getByLabel('Depreciation schedule').selectOption('strong')
+      await page.getByLabel('Replace when sold', { exact: true }).check()
+      await expect(page.getByLabel(/Repeat every N years/)).toHaveCount(0)
+      const editor = page.getByRole('region', { name: 'Life events and major purchases' })
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]').withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
+      await editor.screenshot({ path: `${OUT}/car-purchase-editor-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+    })
+  }
+
   // Portable MCP Apps retirement resource, rendered in the synthetic MCP host.
   // Synthetic balances only; capture both themes and sizes for PR visual review.
   for (const theme of ['light', 'dark'] as const) {
@@ -855,7 +877,7 @@ test.describe('Screenshots', () => {
       await page.getByLabel(/Purchase price \(/).fill('250000')
       await page.locator('summary').filter({ hasText: /^Ownership and costs/ }).click()
       await page.getByLabel('Sell car after N years (optional)').fill('15')
-      await page.getByLabel('Annual depreciation (% nominal; 0 = flat price)').fill('0')
+      await page.getByLabel('Depreciation schedule').selectOption('collector')
       await page.getByLabel(/Annual ownership costs/).fill('15000')
       await page.locator('[aria-label="Life events and major purchases"]').screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
       await page.locator('summary').filter({ hasText: /^Purchase rule/ }).click()

@@ -539,3 +539,24 @@ def test_lower_spending_caps_the_effective_saved_or_derived_floor(client, db_ses
         assert params['minSpend'] == 50
         if saved_floor is not None:
             assert owner.retirement_params['minSpend'] == saved_floor
+
+
+@pytest.mark.parametrize("profile", ["collector", "strong", "regular", "sports", "luxury"])
+def test_depreciation_profiles_roundtrip(profile, client):
+    register_user(client)
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2032-01-01", "amountM": .1,
+             "lifetimeYears": 10, "replacementEveryYears": 10, "depreciationProfile": profile, "vehicleAgeYears": 3}
+    response = client.put("/api/retirement/params", json={"params": {"plannedEvents": [event]}})
+    assert response.status_code == 200
+    assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
+
+
+@pytest.mark.parametrize("patch", [
+    {"depreciationProfile": "made-up"}, {"depreciationProfile": []},
+    {"depreciationProfile": "strong", "depreciationRate": .1}, {"vehicleAgeYears": 51},
+])
+def test_invalid_depreciation_presets_rejected(patch):
+    from app.retirement_simulation import validate_planned_events
+    event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2032-01-01", "amountM": .1, "lifetimeYears": 10}
+    with pytest.raises(ValueError):
+        validate_planned_events([{**event, **patch}])

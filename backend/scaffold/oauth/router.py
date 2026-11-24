@@ -89,6 +89,7 @@ def _protected_resource_doc(request: Request, *, admin: bool = False) -> dict:
         "authorization_servers": [issuer(request, admin=admin)],
         "scopes_supported": list(scope_defs.ADMIN_SCOPES if admin else scope_defs.SUPPORTED_SCOPES),
         "bearer_methods_supported": ["header"],
+        "resource_documentation": f"{issuer(request)}/mcp-setup",
     }
 
 
@@ -110,6 +111,7 @@ def _authorization_server_doc(request: Request, *, admin: bool = False) -> dict:
         ],
         "revocation_endpoint_auth_methods_supported": ["none", "client_secret_post"],
         "resource_indicators_supported": True,
+        "service_documentation": f"{issuer(request)}/mcp-setup",
     }
 
 
@@ -278,7 +280,10 @@ def authorize(request: Request, db: Session = Depends(get_db)):
     if client is None:
         return _error_page(
             "Unknown application",
-            "The application that sent you here is not registered with this server.",
+            ("This app is not registered on staging. A production registration or an old saved connection cannot be used here. "
+             "Add Epic Stocks Staging Test as a new app using https://staging.epic-stocks.com/mcp and complete OAuth again."
+             if issuer(request) == "https://staging.epic-stocks.com" else
+             "The application that sent you here is not registered with this server. Recreate this connector so it registers with this server again."),
         )
     if scope_defs.is_admin_scope(client.scope) != _admin(request):
         return _error_page("Wrong connector", "This client belongs to the other MCP server.")

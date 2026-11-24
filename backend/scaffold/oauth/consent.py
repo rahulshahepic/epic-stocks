@@ -23,7 +23,7 @@ def _esc(value: str) -> str:
     return html.escape(value or "", quote=True)
 
 
-STYLESHEET_PATH = "/oauth/consent.css?v=2"
+STYLESHEET_PATH = "/oauth/consent.css?v=3"
 SCRIPT_PATH = "/oauth/consent.js?v=3"
 
 # The app's own tokens, so this does not look like a different product.
@@ -59,6 +59,7 @@ body {
   box-shadow: 0 1px 2px rgba(26,20,17,.04), 0 10px 28px -16px rgba(26,20,17,.16);
 }
 h1 { font-size: 1.0625rem; font-weight: 600; line-height: 1.35; margin-bottom: .375rem; }
+.err a { color: var(--text); text-underline-offset: 3px; display: inline-block; margin-top: 1rem; }
 .origin { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
 .origin code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -238,5 +239,5 @@ def render_error(title: str, message: str) -> str:
     Redirecting these would mean sending the browser somewhere the request
     itself failed to prove we should send it.
     """
-    body = f"<div class=\"err\"><h1>{_esc(title)}</h1><p>{_esc(message)}</p></div>"
+    body = f"<main class=\"err\"><h1>{_esc(title)}</h1><p>{_esc(message)}</p><p><a href=\"/mcp-setup\">MCP setup guide</a></p></main>"
     return _page(title, body)

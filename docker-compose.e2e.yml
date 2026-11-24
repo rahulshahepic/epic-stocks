@@ -24,6 +24,7 @@ services:
       JWT_SECRET: e2e-test-secret
       OIDC_PROVIDERS: "[]"
       E2E_TEST: "1"
+      APP_ENV: staging
       ADMIN_EMAIL: admin@e2e.test
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health"]

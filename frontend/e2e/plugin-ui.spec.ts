@@ -69,6 +69,7 @@ test('retirement card sends causal purchase rules and car lifetime', async ({ pa
   await card.locator('#eventBasis').selectOption('retirement')
   await card.getByLabel('Purchase / one-time cost ($)').fill('200000')
   await card.getByLabel('Sell car after N years (optional)').fill('15')
+  await card.getByLabel('Depreciation schedule').selectOption('custom')
   await card.getByLabel('Annual nominal depreciation (%)').fill('0')
   await card.locator('#eventRule').selectOption('conditional')
   await card.getByLabel('Minimum portfolio as % of starting wealth (optional)').fill('120')

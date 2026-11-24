@@ -91,9 +91,9 @@ def migrate_saved_params(saved):
 EVENT_KINDS = {"home", "vehicle", "education", "wedding", "travel", "childcare", "care", "renovation", "gift", "other"}
 EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
 EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
-                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate", "durationYears"}
+                 "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate", "durationYears", "vehicleAgeYears"}
 EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding", "condition",
-                "conditionFailure", "deadlineDate"} | EVENT_NUMBERS
+                "conditionFailure", "deadlineDate", "depreciationProfile"} | EVENT_NUMBERS
 
 
 def validate_planned_events(events):
@@ -165,6 +165,15 @@ def validate_planned_events(events):
         # planCashFlows creates debt only for a positive financed balance.
         if event.get("replacementEveryYears", 0) and not (event.get("replacementCostM", 0) or event["amountM"]):
             raise ValueError(f"{label} needs a replacement cost")
+        if "depreciationProfile" in event:
+            if not isinstance(event["depreciationProfile"], str) or event["depreciationProfile"] not in {"collector", "strong", "regular", "sports", "luxury"}:
+                raise ValueError(f"{label} has an unsupported depreciation profile")
+            if "depreciationRate" in event:
+                raise ValueError(f"{label} choose a depreciation profile or custom rate, not both")
+        if ("depreciationProfile" in event or "vehicleAgeYears" in event) and "lifetimeYears" not in event:
+            raise ValueError(f"{label} depreciation profile and vehicle age require a vehicle lifetime")
+        if "vehicleAgeYears" in event and event["vehicleAgeYears"] > 50:
+            raise ValueError(f"{label} vehicle age must be 0–50 years")
         if "lifetimeYears" in event:
             lifetime = event["lifetimeYears"]
             if event["kind"] != "vehicle" or lifetime < 1 or not float(lifetime).is_integer():

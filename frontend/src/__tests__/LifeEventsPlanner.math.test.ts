@@ -363,3 +363,22 @@ it('schedules exactly four tuition years across retirement after moving the star
   const moved = planCashFlows([{ ...tuition, date: '2031-08-01' }], '2032-01-01', 120, '2029-01-01')
   expect(moved.preRetirementNetM + moved.monthlyNeedM.reduce((a, b) => a + b, 0)).toBeCloseTo(0.48)
 })
+
+describe('vehicle depreciation schedules', () => {
+  const car: PlannedEvent = { id: 'curve', title: 'Car', kind: 'vehicle', date: '2032-01-01', amountM: .1,
+    lifetimeYears: 5, inflationRate: 0, depreciationProfile: 'strong' }
+  it('uses the retained value curve for each sale and credits the initial trade-in only once', () => {
+    const flows = planCashFlows([{ ...car, replacementEveryYears: 5, saleOffsetM: .02 }], '2032-01-01', 121)
+    expect(flows.monthlyNeedM[1]).toBeCloseTo(.08)
+    expect(flows.monthlyNeedM[61]).toBeCloseTo(.1 - .065)
+    expect(flows.monthlyNeedM[121]).toBeCloseTo(.1 - .065)
+  })
+  it('uses the remaining curve for a used car rather than repeating the new-car drop', () => {
+    const flows = planCashFlows([{ ...car, vehicleAgeYears: 5 }], '2032-01-01', 61)
+    expect(flows.monthlyNeedM[61]).toBeCloseTo(-.1 * .45 / .65)
+  })
+  it('keeps collector resale nominally flat and applies inflation separately', () => {
+    const flows = planCashFlows([{ ...car, depreciationProfile: 'collector', inflationRate: .025 }], '2032-01-01', 61)
+    expect(flows.monthlyNeedM[61]).toBeCloseTo(-.1 / 1.025 ** 5)
+  })
+})

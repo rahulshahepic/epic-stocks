@@ -45,7 +45,7 @@ export default function PurchaseResults({ events, comparison }: {
           <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Scrollable purchase counts"><div className="flex h-40 min-w-max items-end gap-2" role="img" aria-label="Distribution of conditional purchase counts">
             {summary.distribution.map(bin => <div key={bin.purchases} className="flex h-full w-16 flex-col justify-end text-center text-xs text-cs-text">
               <span>{percent(bin.probability)}</span>
-              <div className="mx-auto mt-1 w-full max-w-16 rounded-t bg-cs-brand" style={{ height: `${bin.probability * 100}%`, minHeight: bin.probability ? 2 : 0 }} />
+              <div className="mx-auto mt-1 w-full max-w-16 rounded-t bg-cs-text-2/70" style={{ height: `${bin.probability * 100}%`, minHeight: bin.probability ? 2 : 0 }} />
               <span className="mt-1">{bin.purchases === 0 ? 'None' : bin.purchases}</span>
             </div>)}
           </div></div>
@@ -55,13 +55,17 @@ export default function PurchaseResults({ events, comparison }: {
         const waiting = events.find(e => e.id === outcome.eventId)?.conditionFailure === 'defer'
         return <div key={outcome.eventId} className="space-y-2 border-t border-cs-border pt-3 text-xs text-cs-text">
           <h3 className="text-sm font-semibold">{outcome.title}</h3>
-          <meter min={0} max={1} value={outcome.purchaseProbability} className="h-4 w-full accent-cs-brand" aria-label={`${outcome.title} purchase probability`} />
+          <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={outcome.purchaseProbability * 100}
+            aria-label={`${outcome.title} purchase probability`} aria-valuetext={percent(outcome.purchaseProbability)}
+            className="h-2 w-full overflow-hidden rounded-full bg-cs-surface">
+            <div className="h-full rounded-full bg-cs-text-2/70" style={{ width: `${outcome.purchaseProbability * 100}%` }} />
+          </div>
           <p>{percent(outcome.purchaseProbability)} bought · {percent(outcome.skippedProbability)} never bought</p>
           <p>{percent(outcome.onTimeProbability)} {waiting ? 'on time' : 'initial purchase'} · {percent(outcome.delayedProbability)} {waiting ? 'after waiting' : 'first bought at a replacement'} · {percent(outcome.fundedPurchaseProbability)} bought with the whole plan funded</p>
           <p>Average purchases: {outcome.meanPurchases.toFixed(2)}. {waiting ? 'Average delay' : 'Average time to first ownership'} among buyers: {outcome.meanDelayMonths.toFixed(0)} months.</p>
           <div className="space-y-1" role="img" aria-label={`${outcome.title} first purchase timing`}>
             {timingBins(outcome.firstPurchaseByYear ?? []).map(bin => <div key={bin.label} className="flex items-center gap-2">
-              <span className="w-20 shrink-0">{bin.label}</span><div className="h-3 flex-1 rounded bg-cs-surface"><div className="h-3 rounded bg-cs-brand" style={{ width: `${bin.probability * 100}%` }} /></div><span className="w-14 text-right">{percent(bin.probability)}</span>
+              <span className="w-20 shrink-0">{bin.label}</span><div className="h-3 flex-1 rounded bg-cs-surface"><div className="h-3 rounded bg-cs-text-2/70" style={{ width: `${bin.probability * 100}%` }} /></div><span className="w-14 text-right">{percent(bin.probability)}</span>
             </div>)}
           </div>
         </div>})}

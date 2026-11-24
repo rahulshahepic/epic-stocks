@@ -17,14 +17,14 @@ function mount() {
 describe('life event editor saves backend-compatible shapes', () => {
   it('converts a current sticker price into retirement-year purchasing power', () => {
     const onChange = mount()
-    fireEvent.change(screen.getByLabelText("Price in today's dollars ($)"), { target: { value: '100000' } })
-    const button = screen.getByRole('button', { name: /Use \$.* in 2032 dollars/ })
-    fireEvent.click(button)
+    fireEvent.change(screen.getByLabelText('Prices entered in'), { target: { value: 'today' } })
+    fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '100000' } })
+    expect(screen.queryByText(/Convert today's price/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
     const event = onChange.mock.calls[0][0][0]
     const today = new Date()
     const years = (2032 - today.getFullYear()) + (1 - today.getMonth() - 1) / 12
-    expect(event.amountM).toBeCloseTo(Math.round(100000 * Math.pow(1.025, years)) / 1_000_000, 6)
+    expect(event.amountM).toBeCloseTo(0.1 * Math.pow(1.025, years), 6)
     expect(event.amountM).toBeGreaterThan(0.1)
   })
 

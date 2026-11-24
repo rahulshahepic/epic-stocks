@@ -53,7 +53,6 @@ export default function LifeEventsPlanner({
   const [editing, setEditing] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
-  const [todayPrice, setTodayPrice] = useState('')
   const [replaceOnSale, setReplaceOnSale] = useState(false)
   const [priceBasis, setPriceBasis] = useState<'today' | 'retirement'>('today')
   const visibleEvents = events.filter(event => phase === 'all' ||
@@ -69,7 +68,6 @@ export default function LifeEventsPlanner({
   const yearsToRetirement = (Number(retirementYear) - today.getFullYear()) +
     (Number(retirementDate.slice(5, 7)) - today.getMonth() - 1) / 12
   const conversionRate = draft.inflationRate ?? 0.025
-  const convertedPrice = Math.round((Number(todayPrice) || 0) * Math.pow(1 + conversionRate, yearsToRetirement))
   const hypotheticalEpicTargetM = planCashFlows(events.filter(event => !event.condition), retirementDate, 1).preRetirementEpicNeedM
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
@@ -172,8 +170,9 @@ export default function LifeEventsPlanner({
           {visibleEvents.map(event => (
             <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cs-border p-3">
               <div className="text-xs text-cs-text">
-                <strong>{event.title}</strong> · {event.date} · {dollar(event.amountM * 1_000_000)} <span className="text-cs-muted">({retirementYear} dollars)</span>
-                {event.annualCostM ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
+                <strong>{event.title}</strong> · {event.date} · {event.amountM > 0 || !event.annualCostM ? dollar(event.amountM * 1_000_000) : `${dollar(event.annualCostM * 1_000_000)}/yr`} <span className="text-cs-muted">({retirementYear} dollars)</span>
+                {event.annualCostM && event.amountM > 0 ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
+                {event.durationYears ? <span className="text-cs-muted"> · {event.durationYears} years</span> : null}
                 {event.loanYears ? <span className="text-cs-muted"> · financed over {event.loanYears} years</span> : null}
                 {event.condition && <span className="block text-cs-text-2">Buy only if: {[
                   event.condition.requireFullSpending ? 'regular spending is not cut' : '',
@@ -216,27 +215,14 @@ export default function LifeEventsPlanner({
 
             {recurringType ? money('annualCostM', annualLabel) : money('amountM', asset ? 'Purchase price' : 'One-time cost (0 if recurring only)')}
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
-              <summary className="cursor-pointer font-semibold">Price options · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
+              <summary className="cursor-pointer font-semibold">Price basis · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
               <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Prices entered in
                 <select value={priceBasis} onChange={e => { const basis = e.target.value as 'today' | 'retirement'; setDraft(prev => convertMoney(prev, Math.pow(1 + conversionRate, yearsToRetirement) ** (basis === 'retirement' ? 1 : -1))); setPriceBasis(basis) }}
                   className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
                   <option value="today">Today's dollars</option><option value="retirement">{retirementYear} retirement-year dollars</option>
                 </select>
               </label>
-              <p className="font-semibold">Convert today's price to {retirementYear} purchasing power</p>
-              <p className="mt-1 text-cs-muted">Use this for a current sticker price. Conversion assumes {(conversionRate * 100).toFixed(1)}% annual inflation; adjust inflation under ownership or recurring costs.</p>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
-                <label className="min-w-0 flex flex-col gap-1">Price in today's dollars ($)
-                  <input type="number" min="0" step="1000" value={todayPrice}
-                    onChange={e => setTodayPrice(e.target.value)}
-                    className="w-40 max-w-full rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
-                </label>
-                <button type="button" disabled={!Number(todayPrice) || Number(todayPrice) < 0}
-                  className="rounded border border-cs-border-strong px-3 py-2 font-semibold text-cs-text disabled:opacity-50"
-                  onClick={() => { setDraft(prev => ({ ...convertMoney(prev, priceFactor), amountM: convertedPrice / 1_000_000 })); setPriceBasis('retirement') }}>
-                  Use {dollar(convertedPrice)} in {retirementYear} dollars
-                </button>
-              </div>
+              <p className="mt-2 text-cs-muted">Today's amounts are converted automatically to {retirementYear} dollars when saved, using {(conversionRate * 100).toFixed(1)}% inflation.</p>
             </details>
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><summary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</summary><fieldset className="mt-3 space-y-3">
               <legend className="sr-only">Purchase conditions</legend>

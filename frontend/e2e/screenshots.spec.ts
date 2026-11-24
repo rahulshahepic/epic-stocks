@@ -63,8 +63,12 @@ test.describe('Screenshots', () => {
     test('MCP purchase results - ' + theme + ' - mobile', async ({ page }) => {
       await page.setViewportSize(MOBILE)
       const card = await retirementHost(page, theme, { initial: purchaseSnapshot })
-      await expect(card.locator('#purchaseSummary')).toContainText('68.00%')
+      await expect(card.locator('#purchaseSummary')).toContainText('68.0%')
       await card.locator('main').screenshot({ path: `${OUT}/mcp-purchase-results-${theme}-mobile.png` })
+      await card.getByText('Calculation details', { exact: true }).click()
+      await card.getByLabel('Details for Sports car', { exact: true }).click()
+      await expect(card.getByText(/Buy \+ fully fund retirement: 65.00%/)).toBeVisible()
+      await card.locator('#purchaseResults').screenshot({ path: `${OUT}/mcp-purchase-details-${theme}-mobile.png` })
     })
   }
   // These seed data, wait for networkidle and capture whole pages, so they run
@@ -121,13 +125,16 @@ test.describe('Screenshots', () => {
       await page.goto(`${BASE}/retirement`)
       await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
       const outcomes = page.getByRole('region', { name: 'Planned purchase outcomes' })
-      await expect(outcomes.getByText('Optional purchases per retirement')).toBeVisible()
+      await expect(outcomes.getByText('Optional purchases per simulation')).toBeVisible()
       const core = page.getByText('Will the money last?', { exact: true })
       expect(await core.evaluate((el, report) => !!(el.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING), await outcomes.elementHandle())).toBe(true)
       const audit = await new AxeBuilder({ page }).include('[aria-label="Planned purchase outcomes"]').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await outcomes.screenshot({ path: `${OUT}/retirement-purchase-outcomes-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await outcomes.getByText('Calculation details', { exact: true }).click()
+      await outcomes.getByLabel('Details for Sports car', { exact: true }).click()
+      await outcomes.screenshot({ path: `${OUT}/retirement-purchase-details-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
       await page.getByRole('button', { name: 'Before retirement', exact: true }).click()
       await expect(page.getByRole('region', { name: 'Before retirement funding schedule' })).toContainText('$100,000')
       await shoot(page, `before-retirement-${theme}-mobile`, { fullPage: true })
@@ -167,6 +174,13 @@ test.describe('Screenshots', () => {
         await expect(card.getByRole('img', { name: 'Median wealth and 10th to 90th percentile range by age' })).toBeVisible()
         await expect(card.getByRole('status')).toContainText('Simulation complete')
         await shoot(page, `mcp-apps-retirement-${theme}-${size}`, { fullPage: true })
+        if (size === 'mobile') {
+          await card.getByText('Funding risk details', { exact: true }).click()
+          await card.getByText('Plan assumptions', { exact: true }).click()
+          const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+          expect(audit.violations).toEqual([])
+          await card.locator('#resultsView').screenshot({ path: `${OUT}/mcp-retirement-risk-details-${theme}-mobile.png` })
+        }
       })
     }
   }
@@ -177,6 +191,7 @@ test.describe('Screenshots', () => {
     await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
     await card.getByLabel('Compare against').fill('2032-07-02')
     await card.getByRole('button', { name: 'Compare retirement dates' }).click()
+    await card.getByText('Comparison details', { exact: true }).click()
     await expect(card.getByRole('cell', { name: '2032-07-02' })).toBeVisible()
     await expect(card.getByRole('status')).toContainText('Neither scenario was saved')
     await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
@@ -837,11 +852,13 @@ test.describe('Screenshots', () => {
     await fill(/Additional portfolio/, '1')
     await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
+    await page.getByText('Funding risk details', { exact: true }).click()
     await expect(page.getByText('Shortfall with assets remaining', { exact: true })).toBeVisible()
     await expect(page.getByText('Shortfall with assets exhausted', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width)
     const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
     expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+    await page.getByText('Funding risk details', { exact: true }).click()
     await page.waitForTimeout(500)
   }
 
@@ -849,6 +866,8 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'light')
     await seedRetirement(page)
     await shoot(page, 'retirement-light-mobile', { fullPage: true })
+    await page.getByText('Funding risk details', { exact: true }).click()
+    await page.getByText('Funding risk details', { exact: true }).locator('..').screenshot({ path: `${OUT}/retirement-risk-details-light-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
   })
 
   test('retirement - light - desktop', async ({ page }) => {
@@ -861,6 +880,8 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'dark')
     await seedRetirement(page)
     await shoot(page, 'retirement-dark-mobile', { fullPage: true })
+    await page.getByText('Funding risk details', { exact: true }).click()
+    await page.getByText('Funding risk details', { exact: true }).locator('..').screenshot({ path: `${OUT}/retirement-risk-details-dark-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
   })
 
   for (const [label, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {

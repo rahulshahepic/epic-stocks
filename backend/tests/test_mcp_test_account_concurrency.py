@@ -4,6 +4,8 @@ CI runs the same races on PostgreSQL (including a one-slot financial pool).
 """
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import replace
+import json
 import os
 import threading
 
@@ -134,3 +136,116 @@ def test_locks_survive_commits_rollbacks_and_restore_on_error(isolated_database)
     with factory() as db:
         with account_lock(db, owner_id):
             pass  # the previous request released the lock
+
+
+READ_BATCH = ('get_dashboard', 'list_grants', 'list_prices', 'list_loans',
+              'list_interest_checkpoints', 'get_compensation',
+              'get_retirement_params', 'get_import_guide')
+
+
+def call(ctx, name, **args):
+    from app.mcp.transport import _call_tool
+    response = _call_tool({'name': name, 'arguments': args}, 1, ctx)['result']
+    assert not response.get('isError'), response
+    return json.loads(response['content'][0]['text'])
+
+
+def test_eight_parallel_reads_share_one_fixture(isolated_database, monkeypatch):
+    factory, context, owner_id, _ = isolated_database
+    with context() as ctx:
+        generation = call(ctx, 'setup_test_account', scenario='established')['generation']
+    baseline = {}
+    for name in READ_BATCH:
+        with context() as ctx:
+            baseline[name] = call(ctx, name)
+    with factory() as db:
+        actual_before = db.execute(text('SELECT comp_entries, retirement_params FROM users WHERE id=:uid'),
+                                   {'uid': owner_id}).one()
+    handlers = threading.Barrier(len(READ_BATCH))
+    # Hold every handler inside its account guard at once. Releasing the data
+    # connection also exercises a one-slot pool without a test-induced deadlock.
+    def gated_handler(original):
+        def handler(ctx, args):
+            ctx.db.rollback()
+            handlers.wait(timeout=10)
+            return original(ctx, args)
+        return handler
+    for name in READ_BATCH:
+        tool = REGISTRY[name]
+        monkeypatch.setitem(REGISTRY, name, replace(tool, handler=gated_handler(tool.handler)))
+    def request(name):
+        with context() as ctx:
+            return name, call(ctx, name)
+    with ThreadPoolExecutor(len(READ_BATCH)) as pool:
+        results = dict(pool.map(request, READ_BATCH))
+    assert results == baseline
+    assert {r['account_context']['generation'] for r in results.values()} == {generation}
+    assert all(r['account_context']['synthetic'] for r in results.values())
+    with factory() as db:
+        assert db.execute(text('SELECT comp_entries, retirement_params FROM users WHERE id=:uid'),
+                          {'uid': owner_id}).one() == actual_before
+
+
+@pytest.mark.parametrize('name,args', [
+    ('get_dashboard', {}), ('refresh_equity_view', {'view': 'grants'}),
+    ('refresh_retirement_view', {}),
+])
+def test_read_and_widget_callbacks_exclude_reset_and_writes(isolated_database, monkeypatch, name, args):
+    factory, context, owner_id, _ = isolated_database
+    with context() as ctx:
+        status = call(ctx, 'setup_test_account', scenario='early')
+        reset = call(ctx, 'reset_test_account')
+    entered, release = threading.Event(), threading.Event()
+    tool = REGISTRY[name]
+    def paused(ctx, args):
+        ctx.db.rollback()
+        entered.set()
+        assert release.wait(10)
+        return {'fixture_user': ctx.user.id}
+    monkeypatch.setitem(REGISTRY, name, replace(tool, handler=paused))
+    def read():
+        with context() as ctx:
+            return call(ctx, name, **args)
+    with ThreadPoolExecutor(1) as pool:
+        pending = pool.submit(read)
+        assert entered.wait(10)
+        try:
+            for write, values in [
+                ('setup_test_account', {'scenario': 'early'}),
+                ('reset_test_account', {'confirm': reset['confirm']}),
+                ('add_compensation', {'entries': [{'type': 'bonus', 'date': '2026-11-24', 'amount': 1000}]}),
+                ('apply_changes', {'changes': []}),
+            ]:
+                with context() as ctx:
+                    with pytest.raises(AssertionError, match='busy'):
+                        call(ctx, write, **values)
+            # Disconnect/deletion/retention use the same exclusive guard.
+            with factory() as db:
+                with pytest.raises(ValueError, match='busy'):
+                    with account_lock(db, owner_id):
+                        pass
+        finally:
+            release.set()
+        assert pending.result(timeout=10)['account_context']['generation'] == status['generation']
+    with context() as ctx:
+        restored = call(ctx, 'reset_test_account', confirm=reset['confirm'])
+        assert restored['generation'] != status['generation']
+        assert call(ctx, 'get_account_context')['generation'] == restored['generation']
+
+
+@pytest.mark.parametrize('shared', [False, True])
+def test_both_lock_modes_release_after_errors_and_transactions(isolated_database, shared):
+    factory, _, owner_id, _ = isolated_database
+    with factory() as db:
+        with pytest.raises(RuntimeError, match='deliberate'):
+            with account_lock(db, owner_id, shared=shared):
+                db.execute(text('SELECT 1'))
+                db.commit()
+                db.rollback()
+                with factory() as other:
+                    with pytest.raises(ValueError, match='busy'):
+                        with account_lock(other, owner_id):
+                            pass
+                raise RuntimeError('deliberate')
+        with account_lock(db, owner_id):
+            pass

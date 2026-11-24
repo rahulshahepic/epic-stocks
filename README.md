@@ -1889,8 +1889,12 @@ Repeated setup with the same scenario preserves testing edits. To discard edits
 or change scenarios, call `reset_test_account` without `confirm`, obtain explicit
 confirmation, and repeat with the returned token. Reset invalidates outstanding
 import previews. Separate OAuth connections have separate test accounts.
-Concurrent operations on the same owner's test accounts receive a retryable
-busy error instead of racing a reset or write.
+Read tools and widget refreshes can run concurrently on the same owner's test
+accounts. Writes, setup, reset, disconnect and cleanup require exclusive access;
+conflicting operations receive a retryable busy error. PostgreSQL lock connections
+use separate bounded budgets (16 reads and 2 exclusive operations per worker),
+so parallel reads do not consume the exclusive-operation budget or exhaust the
+financial connection pool. Capacity limits also return a retryable busy error.
 
 Provisioning and reset are available only when trusted server configuration has
 `DOMAIN=staging.epic-stocks.com` and `APP_ENV` is not `production`; request headers

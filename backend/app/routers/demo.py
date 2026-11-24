@@ -3,7 +3,9 @@ from datetime import date
 from typing import Literal
 import threading
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from database import get_db
+from scaffold.auth import get_current_user
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.demo import AS_OF, PROFILES, VERSION, profile_inputs
@@ -49,3 +51,14 @@ def preview(body: DemoRequest, request: Request):
                 'assumptions': 'Invented prices and grants; older purchases assumed paid in cash. Default Wisconsin tax assumptions. Future prices are estimates. Not representative of Epic compensation.'}
     finally:
         SLOTS.release()
+
+
+class SeedRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    profile: Literal['early', 'established', 'exit']
+
+
+@router.post('/seed')
+def seed(body: SeedRequest, user=Depends(get_current_user), db=Depends(get_db)):
+    from app.staging_demo import seed_profile
+    return seed_profile(user, db, body.profile)

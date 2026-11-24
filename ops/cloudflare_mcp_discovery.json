@@ -1,0 +1,24 @@
+{
+  "description": "Extend only the existing crawler challenge exclusion for public MCP setup documents",
+  "method": "PATCH",
+  "rule_id": "237a4ec36df446b3aec8f1f8e4b1b011",
+  "ruleset_id": "5674486203694b9689992cad67dfd752",
+  "expected_rule_version": "3",
+  "previous_expression": "(not ((http.request.uri.path in {\"/mcp\" \"/admin-mcp\" \"/.well-known/oauth-protected-resource\" \"/.well-known/oauth-protected-resource/mcp\" \"/.well-known/oauth-protected-resource/admin-mcp\" \"/.well-known/oauth-authorization-server\" \"/.well-known/oauth-authorization-server/mcp\" \"/.well-known/oauth-authorization-server/admin-mcp\" \"/.well-known/oauth-authorization-server/admin-oauth\"}) or starts_with(http.request.uri.path, \"/oauth/\") or starts_with(http.request.uri.path, \"/admin-oauth/\")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers[\"accept\"][0] contains \"text/html\" and http.request.uri.path eq \"/\"))) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\"} and http.request.uri.path eq \"/api/health\" and http.request.method in {\"GET\" \"HEAD\"})",
+  "body": {
+    "action": "managed_challenge",
+    "enabled": true,
+    "description": "No bots on non mcp",
+    "expression": "((not ((http.request.uri.path in {\"/mcp\" \"/admin-mcp\" \"/.well-known/oauth-protected-resource\" \"/.well-known/oauth-protected-resource/mcp\" \"/.well-known/oauth-protected-resource/admin-mcp\" \"/.well-known/oauth-authorization-server\" \"/.well-known/oauth-authorization-server/mcp\" \"/.well-known/oauth-authorization-server/admin-mcp\" \"/.well-known/oauth-authorization-server/admin-oauth\"}) or starts_with(http.request.uri.path, \"/oauth/\") or starts_with(http.request.uri.path, \"/admin-oauth/\")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers[\"accept\"][0] contains \"text/html\" and http.request.uri.path eq \"/\"))) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\"} and http.request.uri.path eq \"/api/health\" and http.request.method in {\"GET\" \"HEAD\"})) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})"
+  },
+  "public_paths": [
+    "/mcp-setup",
+    "/mcp-setup.css",
+    "/mcp/setup.json",
+    "/robots.txt",
+    "/llms.txt",
+    "/mcp-sitemap.xml",
+    "/mcp-setup/plugin/chatgpt",
+    "/mcp-setup/plugin/claude"
+  ]
+}

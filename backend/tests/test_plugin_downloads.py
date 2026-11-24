@@ -18,7 +18,7 @@ def files(response):
 
 
 @pytest.mark.parametrize("platform", ["chatgpt", "claude"])
-def test_account_package_is_production_only_and_requires_sign_in(client, platform):
+def test_default_account_package_is_production_and_requires_sign_in(client, platform):
     path = f"/api/ai/plugin/{platform}"
     assert client.get(path).status_code == 401
     register_user(client)
@@ -94,10 +94,19 @@ def test_fork_package_uses_its_configured_domain(client):
     )
 
 
-def test_official_staging_account_package_points_to_production(client):
+@pytest.mark.parametrize("platform", ["chatgpt", "claude"])
+def test_official_staging_account_package_has_staging_name_and_target(client, platform):
     register_user(client)
     with patch.dict(os.environ, {"DOMAIN": "staging.epic-stocks.com"}):
-        contents = files(client.get("/api/ai/plugin/claude"))
-    assert contents[".mcp.json"]["mcpServers"]["epic-stocks"]["url"] == (
-        "https://epic-stocks.com/mcp"
-    )
+        response = client.get('/api/ai/plugin/' + platform)
+    assert 'epic-stocks-staging-test-' + platform + '.zip' in response.headers['content-disposition']
+    contents = files(response)
+    config = contents['mcp.json' if platform == 'chatgpt' else '.mcp.json']
+    assert config['mcpServers']['epic-stocks-staging-test']['url'] == 'https://staging.epic-stocks.com/mcp'
+    manifest = contents['plugin.json' if platform == 'chatgpt' else '.claude-plugin/plugin.json']
+    assert manifest['name'] == 'epic-stocks-staging-test'
+    assert 'Staging' in manifest['description']
+    if platform == 'chatgpt':
+        assert manifest['extensions']['com.openai']['interface']['displayName'] == 'Epic Stocks Staging Test'
+    else:
+        assert manifest['displayName'] == 'Epic Stocks Staging Test'

@@ -680,15 +680,30 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
+**Setup is public:** open [`/mcp-setup`](https://epic-stocks.com/mcp-setup) before signing in, or let an assistant fetch `/mcp/setup.json` and `/llms.txt`. The guide includes credential-free ChatGPT/Claude plugin ZIPs for the **current environment**. OAuth resource/authorization-server metadata links to the guide. Installation, sign-in and scope consent still require the user; discovering a server never grants access to private data.
+
+**Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and use **Set up a fictional staging account** on an empty dashboard. Choose Early career, Established or Planning an exit to load invented grants, loans, prices, age and retirement assumptions. Existing financial records, a saved birthday, compensation and retirement plans are refused; no other account is changed. The account uses the normal stored-data calculation and loan-payoff workflows (including generated future payoff sales), so it can be edited and tested through HTTP and MCP. No authentication bypass or new user impersonation endpoint is enabled.
+
+Create a separate assistant app named **Epic Stocks Staging Test**, using `https://staging.epic-stocks.com/mcp` with OAuth and PKCE, or download the staging ZIP from `/mcp-setup`. Select `equity:read`, `equity:write`, `comp:read`, `comp:write` for full testing. Sign in to the same staging account. MCP initialization and result metadata mark the environment for test-only use; never copy these figures into production or personal finances. Both signed-in and public staging downloads use `epic-stocks-staging-test` in the filename, plugin name and MCP server key, display **Epic Stocks Staging Test**, and target staging. Production downloads keep the production name and endpoint.
+
+The seed control exists only with `APP_ENV=staging` on the official staging domain (or an explicit local E2E staging run). Both the capability flag and mutation endpoint enforce this server-side; production refuses seeding even if the client crafts a request. Local screenshots can use `APP_ENV=staging E2E_LOCAL=1 PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`; the disposable Docker E2E app uses staging mode to exercise this flow, while retaining its existing development-only test authentication.
+
+| Staging seed | Staging MCP connection | Public setup |
+|---|---|---|
+| ![Seed fictional account](screenshots/staging-seed-light-mobile.png) | ![Staging connector](screenshots/staging-connect-ai-light-mobile.png) | ![Public MCP setup](screenshots/mcp-public-setup-light-mobile.png) |
+
+
 Contributing a fix? Connect your own account first: an AI coding agent can then reproduce the problem against your real figures and check its fix against the same account, without anyone pasting numbers into a chat.
 
 You can let Claude, ChatGPT, Gemini, Grok, Muse, Perplexity, Mistral Le Chat or Manus read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, and you can disconnect it at any time.
 
 **The Connect your AI page** (`/connect-ai`, linked from Settings → AI Connections and the Import page) has everything needed in one place:
 
-- the MCP server address (`https://YOUR-DOMAIN/mcp`; staging shows production's) with a **Copy** button — Streamable HTTP with OAuth sign-in, so there is no API key or client ID to enter;
+- the MCP server address (`https://YOUR-DOMAIN/mcp`; staging shows its own address) with a **Copy** button — Streamable HTTP with OAuth sign-in, so there is no API key or client ID to enter;
 - a dropdown of supported assistants, each with its own short setup steps, plan or workspace limits, and a link to the provider's own instructions where one exists. Claude and ChatGPT also keep their no-address plugin downloads; Muse gets a setup request to paste into a chat;
 - **Request another assistant** and **… would not connect** buttons, which open the problem-report form tagged `request` so the maintainer sees what people want supported. Nothing about your account is attached unless you tick *include details*.
+
+Public documents and environment-specific ZIPs are served by `backend/scaffold/routers/mcp_setup.py`. The staging seed service is `backend/app/staging_demo.py`, exposed by `app/routers/demo.py` and rendered by `frontend/src/app/components/StagingSeedPanel.tsx`.
 
 The guides live in `frontend/src/scaffold/components/connectAiGuides.ts`. Supporting a new assistant is one entry there plus its OAuth callback in `DEFAULT_REDIRECT_RULES` (see [AI Connections (admin)](#ai-connections-admin)).
 
@@ -734,7 +749,7 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 | `set_retirement_accounts` | Sets the retirement simulator's starting balances: 401(k)/traditional IRA, Roth, taxable brokerage and its cost basis. Only the balances named are changed; the rest of your saved scenario is left alone |
 | `apply_changes` | Under `equity:write`, adds, corrects or removes any number of grants, loans, prices, sales and loan payments in one all-or-nothing step, through the same checks as the app's own forms. Without a confirm token it only previews; saving needs the token from the preview you agreed to. Corrections and removals need each row's current version |
 
-**In Claude** — add a custom connector with the server address, or from **Connect your AI → Claude** download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it targets production account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
+**In Claude** — add a custom connector with the server address, or from **Connect your AI → Claude** download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it is explicitly named Staging Test and targets staging test account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
 
 **In Muse** — ask for a custom connector in a chat. A [standalone Muse setup guide](docs/muse-connector.md) includes the same steps:
 
@@ -1851,3 +1866,10 @@ Before advertising broadly, use [the launch evidence checklist](docs/employee-ro
 Privacy screenshots: [light mobile](screenshots/privacy-light-mobile.png), [dark mobile](screenshots/privacy-dark-mobile.png), [light desktop](screenshots/privacy-light-desktop.png), [dark desktop](screenshots/privacy-dark-desktop.png).
 
 Maintenance and Epic-mode middleware run their synchronous database checks in worker threads. Waiting for a database-pool slot must not block the event loop that releases active request sessions. A one-slot pool regression verifies cleanup can proceed and each guard still denies the request.
+
+
+### Public MCP discovery at Cloudflare
+
+`robots.txt` points to a sitemap containing the public `/mcp-setup` guide; `/llms.txt` links to the guide and setup JSON. These files advertise public instructions only. They neither disable OAuth nor grant tools access.
+
+`ops/cloudflare_mcp_discovery.json` records the exact edit to the existing **No bots on non mcp** custom challenge rule. The exception is limited to GET/HEAD on eight exact public document/download paths on the production, www and staging hostnames. It does not change existing MCP/OAuth exclusions, managed WAF, rate limits, private API routes, Bot Fight Mode, training preferences or other hosts. Apply only after comparing the recorded previous expression/version with the live rule; preserve concurrent edits. Verify each public URL returns content rather than a challenge, while account APIs and `/mcp` still require authorization. `robots.txt` is crawler guidance, not firewall configuration.

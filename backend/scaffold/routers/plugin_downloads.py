@@ -48,6 +48,9 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
             )
             interface["capabilities"] = ["Read"]
             interface["defaultPrompt"] = ["Check Epic Stocks deployment and errors"]
+        if "staging-test" in name:
+            interface["longDescription"] = description + ". Never treat this environment as a source for personal finances or production data."
+            interface["defaultPrompt"] = ["Test the fictional staging account workflows"]
         return {
             "plugin.json": manifest,
             "assets/icon.svg": (source / "assets" / "icon.svg").read_text(encoding="utf-8"),
@@ -103,13 +106,16 @@ def site_origin() -> str | None:
 
 def account_origin() -> str:
     origin = site_origin()
-    return PRODUCTION if origin == STAGING else origin or PRODUCTION
+    return origin or PRODUCTION
 
 
 @router.get("/api/ai/plugin/{platform}")
 def account_plugin(platform: Platform, user: User = Depends(get_current_user)):
-    # Official staging points at real account data; self-hosted forks use their own DOMAIN.
-    return archive(platform.value, "epic-stocks", "Epic Stocks — account data", f"{account_origin()}/mcp")
+    origin = account_origin()
+    if origin == STAGING:
+        return archive(platform.value, "epic-stocks-staging-test",
+                       "Epic Stocks Staging Test — fictional data only; never sync to personal finances", f"{origin}/mcp")
+    return archive(platform.value, "epic-stocks", "Epic Stocks — account data", f"{origin}/mcp")
 
 
 @router.get("/api/admin/ai/plugin")

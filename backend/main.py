@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 import database
 
-from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads
+from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup
 from app.routers import demo, interest_checkpoints, changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
@@ -613,6 +613,7 @@ _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(backups.router)
 _fastapi_app.include_router(plugin_downloads.router)
+_fastapi_app.include_router(mcp_setup.router)
 _fastapi_app.include_router(notifications.router)
 _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
@@ -656,6 +657,7 @@ def status():
 
 @_fastapi_app.get("/api/config")
 def client_config(request: Request):
+    from app.staging_demo import staging_demo_enabled
     from scaffold.email_sender import email_configured
     from scaffold.epic_mode import is_epic_mode
     from scaffold.oauth.settings import mcp_enabled
@@ -670,6 +672,7 @@ def client_config(request: Request):
         # Whether to offer AI connections in Settings at all. Instructions for
         # a feature an admin has switched off are worse than no instructions.
         "ai_connections": mcp_enabled(),
+        "staging_demo": staging_demo_enabled(),
     }
 
 

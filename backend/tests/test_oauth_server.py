@@ -710,7 +710,7 @@ def test_the_consent_page_links_its_stylesheet_rather_than_inlining_it(client):
     _, challenge = pkce_pair()
     page = authorize(client, reg["client_id"], challenge).text
 
-    assert '<link rel="stylesheet" href="/oauth/consent.css?v=2">' in page
+    assert '<link rel="stylesheet" href="/oauth/consent.css?v=3">' in page
     assert "<style" not in page, "an inline style block is blocked by the site CSP"
 
 

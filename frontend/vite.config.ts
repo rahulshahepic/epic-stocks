@@ -79,6 +79,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:8000',
+      '/mcp-setup': 'http://localhost:8000',
+      '/mcp/setup.json': 'http://localhost:8000',
+      '/robots.txt': 'http://localhost:8000',
+      '/llms.txt': 'http://localhost:8000',
+      '/mcp-sitemap.xml': 'http://localhost:8000',
+      '/.well-known': 'http://localhost:8000',
+      '/oauth': 'http://localhost:8000',
     },
   },
   test: {

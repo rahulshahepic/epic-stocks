@@ -1902,7 +1902,9 @@ Sharing and device/email notifications are disabled in fictional workspaces so
 testing cannot expose shared real records or move a real device subscription.
 Account deletion is also disabled there; admins retain their ordinary identity.
 
-Invalid or stale reset confirmations appear in Admin errors as
+![Confirm a fictional workspace reset](screenshots/staging-workspace-reset-dark-mobile.png)
+
+Setup failures and invalid or stale reset confirmations appear in Admin errors as
 `StagingSetupRefused`, with a fixed reason code and a reference attached to the
 browser's problem-report trail. No stored financial values enter the diagnostic;
 repeated attempts reuse an unresolved diagnostic for the same account and reason.
@@ -1919,6 +1921,7 @@ so parallel reads do not consume the exclusive-operation budget or exhaust the
 financial connection pool. Capacity limits also return a retryable busy error.
 Browser API requests retry up to twice when the server explicitly supplies the
 one-second busy hint; version conflicts and stale confirmations are not retried.
+Editing again cancels a superseded autosave and its retries, preserving the newer edit.
 
 Provisioning and reset are available only when trusted server configuration has
 `DOMAIN=staging.epic-stocks.com` and `APP_ENV` is not `production`; request headers

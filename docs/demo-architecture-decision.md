@@ -2,7 +2,7 @@
 
 Issue #668 needs a new source of fictional data that can drive the real dashboard, exit/sale what-ifs and retirement engine without an account or any production writes. The existing `/try` response supports dashboard/events but currently calculates parts of its view in React and withholds sales/retirement. Relabeling that view a full demo would not satisfy the issue or canonical-calculation parity.
 
-The repository asks contributors to discuss architectural decisions before implementation. No demo runtime has been added in this PR.
+The repository asks contributors to discuss architectural decisions before implementation. Rahul approved the synthetic input adapter on November 24, 2026. The implementation uses explicit request-local `CalculationInputs`, also loaded from account rows for the existing dashboard/events/exit paths.
 
 ## Proposed implementation
 
@@ -20,4 +20,6 @@ Tests must compare each profile's dashboard, events, sale/exit and retirement as
 | Request-local disposable database | Reuses current router/session contracts with less refactoring, but database/schema setup per request adds cost and requires strict concurrency/isolation and cleanup tests. Never point it at the production database. |
 | Browser-only demo based on the current trial response | Smallest initial change, but cannot meet the canonical dashboard/sales/exit requirement without duplicating financial calculations. Not recommended. |
 
-Decision required before implementation: approve the input-adapter approach, or choose the disposable-database alternative. Current status: **proposed, not approved or implemented**. Internal Eureka document navigation, deployment restore evidence and recruiting the usability pilot are separate human dependencies recorded in the readiness checklist.
+Decision: **approved — synthetic input adapter** (Rahul, November 24, 2026). The `/demo` runtime uses three versioned fictional profiles and the account services. Retirement runs the existing simulator in a browser worker (2,000 paths); it creates no account or server simulation job. Reset and switching to personal import do not copy fictional records to storage. Equivalent encrypted-account parity tests cover dashboard, events and exit at current and future dates.
+
+Internal Eureka document navigation, deployment restore evidence and recruiting the usability pilot remain separate dependencies recorded in the readiness checklist.

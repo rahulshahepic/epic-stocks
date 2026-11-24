@@ -480,9 +480,6 @@ def estimate_sale(
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-    lt_days = int(ts.get("lt_holding_days", 365))
-
     # Resolve loan balance if a loan_id was provided
     loan_balance = 0.0
     gy, gt = grant_year, grant_type
@@ -500,8 +497,22 @@ def estimate_sale(
     as_of = sale_date or date.today()
     timeline = sale_aware_timeline(user, db, as_of)
 
+    return estimate_sale_from_timeline(
+        timeline, as_of, {**ts, "lot_selection_method": method},
+        price_per_share=price_per_share, shares=shares, target_net_cash=target_net_cash,
+        loan_balance=loan_balance, has_loan=bool(loan_id), grant_year=gy, grant_type=gt,
+    )
+
+
+def estimate_sale_from_timeline(timeline, as_of, ts, *, price_per_share, shares=None,
+                                target_net_cash=None, loan_balance=0.0, has_loan=False,
+                                grant_year=None, grant_type=None):
+    """Stateless sale calculation shared by account and fictional previews."""
+    method = ts.get("lot_selection_method", "lifo")
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    lt_days = int(ts.get("lt_holding_days", 365))
     lots = build_fifo_lots(timeline, as_of, order=lot_order,
-                           grant_year=gy, grant_type=gt, lt_holding_days=lt_days)
+                           grant_year=grant_year, grant_type=grant_type, lt_holding_days=lt_days)
     if shares is not None:
         shares_needed = shares
     else:
@@ -511,7 +522,7 @@ def estimate_sale(
     # Compute tax on the estimated sale
     sale_dict = {"date": as_of, "shares": shares_needed, "price_per_share": price_per_share}
     tax_result = compute_sale_tax(timeline, sale_dict, ts, lot_order=lot_order,
-                                  grant_year=gy, grant_type=gt)
+                                  grant_year=grant_year, grant_type=grant_type)
     estimated_tax = round(tax_result.get("estimated_tax", 0.0), 2)
     net_proceeds = round(gross_proceeds - estimated_tax, 2)
 
@@ -521,7 +532,7 @@ def estimate_sale(
         "estimated_tax": estimated_tax,
         "net_proceeds": net_proceeds,
         "covers_loan": net_proceeds >= loan_balance if loan_balance > 0 else None,
-        "loan_balance": loan_balance if loan_id else None,
+        "loan_balance": loan_balance if has_loan else None,
     }
 
 

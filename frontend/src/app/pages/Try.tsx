@@ -491,6 +491,7 @@ export default function Try() {
       <div className="flex min-h-screen flex-col items-center bg-cs-base px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="text-center">
+            <Link to="/demo" className="mb-3 block text-sm font-semibold text-cs-text underline">Explore with fictional data →</Link>
             <h1 className="text-2xl font-extrabold tracking-tight text-cs-text">
               Try <span className="text-cs-brand">{appName}</span> with your own files
             </h1>
@@ -580,6 +581,7 @@ export default function Try() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
+        <Link to="/demo" className="block rounded-xl border border-cs-border-strong p-4 text-sm font-semibold text-cs-text">No files handy? Explore a fictional employee demo →</Link>
         {(!csv || !pdf) && (
           <Card>
             <p className="text-sm text-cs-text-2">

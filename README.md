@@ -138,6 +138,15 @@ Everything in the app is derived from these four tables at request time:
 
 ### Getting Started
 
+**No files handy? Open `/demo` from the sign-in page.** Pick a fictional employee with 3, 10 or 20 years of grants. Explore the dated dashboard and exit breakdown, stock events, a sale quote and a retirement scenario without signing in or uploading anything. All prices and compensation are invented. The overview uses the account calculation services; retirement uses the same simulator with 2,000 deterministic paths in a browser worker. Profile, date and spending changes stay in memory; **Reset demo** restores the defaults. A sale is a quote only and does not change the retirement scenario. **Use my own files** opens the separate Eureka import flow; demo records never become a signup draft or account rows.
+
+The demo starts on a fixed fictional date (November 24, 2026) and supports exploration through 2042. Profile assumptions disclose cash-funded older purchases, Wisconsin tax defaults and estimated future prices. It does not represent actual Epic compensation or personal retirement advice. No feature flags, demo accounts, credentials or production test-login switch are needed; the same anonymous workflow is available in staging.
+
+| Fictional overview | Sale quote | Retirement |
+|---|---|---|
+| ![Demo overview](screenshots/demo-overview-light-mobile.png) | ![Demo sale](screenshots/demo-sale-light-mobile.png) | ![Demo retirement](screenshots/demo-retirement-light-mobile.png) |
+
+
 Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Eureka — no sign-in, no email.
 
 What you get is the app itself, running on your numbers in that browser tab:
@@ -1385,6 +1394,8 @@ Spins up a temporary backend + frontend with seeded sample data, runs all Playwr
 ### Project Structure
 
 The codebase is split into **scaffold** (auth, admin, crypto, notifications — reusable across projects) and **app** (equity tracking domain logic — replaceable when forking). See [FORK_GUIDE.md](FORK_GUIDE.md) for forking instructions.
+
+Anonymous demo inputs are defined in `backend/app/demo.py` and passed through `backend/app/calculation_inputs.py` to the existing accounting services by `app/routers/demo.py`. `POST /api/demo/preview` accepts only a profile, bounded date and optional share count; it has a shared office-network budget and two non-queueing calculation slots per worker. It never uses account storage, account caches or encryption keys. The UI is `frontend/src/app/pages/Demo.tsx`; `app/workers/demoSimulation.ts` runs the existing retirement engine away from the main thread.
 
 Dashboard snapshot presentation is in `backend/app/dashboard_view.py`, fed by the shared accounting in `app/routers/events.py`. Read-only default tax settings are shared by dashboard, events, previews and tips through `backend/app/tax_settings.py`. The browser response types are in `frontend/src/app/pages/Dashboard.types.ts`; `Dashboard.math.ts` contains only display/date helpers.
 

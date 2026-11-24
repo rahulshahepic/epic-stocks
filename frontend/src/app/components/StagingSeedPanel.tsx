@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { apiFetchRaw } from '../../api.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { logApiFailure, noteErrorRef } from '../../scaffold/reportLog.ts'
 
 const profiles = [
   ['early', 'Early career', '3 years'],
@@ -25,6 +26,9 @@ export default function StagingSeedPanel({
       })
       if (!response.ok) {
         const data = await response.json().catch(() => null)
+        const errorRef = response.headers.get('X-Error-Ref') ?? data?.error_ref
+        logApiFailure('POST', '/api/demo/seed', response.status, errorRef)
+        noteErrorRef(errorRef)
         throw new Error(
           typeof data?.detail === 'string'
             ? data.detail

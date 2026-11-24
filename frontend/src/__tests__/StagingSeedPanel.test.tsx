@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import StagingSeedPanel from '../app/components/StagingSeedPanel.tsx'
 import { apiFetchRaw } from '../api.ts'
+import { getClientLog, getLastErrorRef, resetReportLog } from '../scaffold/reportLog.ts'
 vi.mock('../api.ts', () => ({ apiFetchRaw: vi.fn() }))
 beforeEach(() => vi.mocked(apiFetchRaw).mockReset())
 it('loads a named fictional profile into the signed-in account', async () => {
@@ -20,4 +21,18 @@ it('shows a refusal to replace existing records and allows retry', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Existing records will not be replaced.')
   expect(onSeeded).not.toHaveBeenCalled()
   expect(screen.getByRole('button', { name: /Load Early career/ })).toBeEnabled()
+})
+
+it('keeps a safe failure trail and server reference for refused setup', async () => {
+  resetReportLog()
+  vi.mocked(apiFetchRaw).mockResolvedValue(new Response(JSON.stringify({ detail: 'Existing records will not be replaced.' }), {
+    status: 409,
+    headers: { 'X-Error-Ref': 'abcdef12' }
+  }))
+  render(<StagingSeedPanel onSeeded={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: /Load Established/ }))
+  await screen.findByRole('alert')
+  expect(getClientLog()).toContain('POST /api/demo/seed → 409 [ref abcdef12]')
+  expect(getClientLog()).not.toContain('Existing records')
+  expect(getLastErrorRef()).toBe('abcdef12')
 })

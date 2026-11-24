@@ -1885,6 +1885,12 @@ account with its own encryption key. Responses and portfolio/retirement cards
 prominently identify fictional data. Ordinary read/write scopes still apply.
 No actual financial records are copied, altered or exposed by staging MCP tools.
 
+The web staging profile loader refuses to replace existing records or setup
+information. Refusals appear in Admin errors as `StagingSetupRefused`, with a
+fixed reason code and a reference attached to the browser's problem-report trail.
+No stored financial values enter the diagnostic; repeated attempts reuse an
+unresolved diagnostic for the same account and reason.
+
 Repeated setup with the same scenario preserves testing edits. To discard edits
 or change scenarios, call `reset_test_account` without `confirm`, obtain explicit
 confirmation, and repeat with the returned token. Reset invalidates outstanding

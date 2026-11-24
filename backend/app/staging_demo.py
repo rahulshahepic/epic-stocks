@@ -1,14 +1,17 @@
 """Seed the signed-in staging account through the normal change-set service."""
 import os
+import logging
+import secrets
 from datetime import date
 
 from fastapi import HTTPException
 
 from app.demo import AS_OF, PROFILES, profile_inputs
 from app.changes import ChangeError, _Uncommitted, apply_changes
-from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, LoanInterestCheckpoint, User
+from scaffold.models import ErrorLog, Grant, Loan, LoanPayment, Price, Sale, LoanInterestCheckpoint, User
 
 STAGING_ORIGIN = 'https://staging.epic-stocks.com'
+logger = logging.getLogger(__name__)
 
 
 def staging_demo_enabled():
@@ -19,9 +22,29 @@ def staging_demo_enabled():
 
 def _require_empty(user, db):
     db.query(User).filter(User.id == user.id).with_for_update().one()
+    reason = None
     if any(db.query(model.id).filter(model.user_id == user.id).first() is not None
-           for model in (Grant, Loan, LoanPayment, Price, Sale, LoanInterestCheckpoint)) or user.retirement_params or user.comp_entries or user.date_of_birth is not None:
-        raise HTTPException(409, 'Load fictional data into an empty staging account. Existing records, birthday and saved plans will not be replaced.')
+           for model in (Grant, Loan, LoanPayment, Price, Sale, LoanInterestCheckpoint)):
+        reason = 'financial_records_present'
+    elif user.comp_entries:
+        reason = 'compensation_present'
+    elif user.retirement_params:
+        reason = 'saved_plan_present'
+    elif user.date_of_birth is not None:
+        reason = 'birthday_present'
+    if reason:
+        # Only fixed reason codes enter diagnostics, never the stored values.
+        row = db.query(ErrorLog).filter_by(user_id=user.id, error_type='StagingSetupRefused',
+                                          error_message=reason, resolved_at=None).first()
+        if row is None:
+            row = ErrorLog(user_id=user.id, method='POST', path='/api/demo/seed',
+                           error_type='StagingSetupRefused', error_message=reason,
+                           error_ref=secrets.token_hex(4))
+            db.add(row)
+            db.commit()
+        logger.warning('Staging setup refused: %s [ref %s]', reason, row.error_ref)
+        raise HTTPException(409, 'Load fictional data into an empty staging account. Existing records, birthday and saved plans will not be replaced.',
+                            headers={'X-Error-Ref': row.error_ref})
 
 
 def seed_profile(user, db, profile):

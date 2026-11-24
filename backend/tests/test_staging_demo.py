@@ -89,3 +89,29 @@ def test_seed_preserves_existing_birthday(client):
         assert client.post('/api/demo/seed', json={'profile': 'early'}).status_code == 409
     assert client.get('/api/me').json()['date_of_birth'] == '1980-01-01'
     assert client.get('/api/grants').json() == []
+
+
+@pytest.mark.parametrize('reason', ['birthday_present', 'saved_plan_present', 'compensation_present', 'financial_records_present'])
+def test_seed_refusal_has_a_safe_correlated_diagnostic(client, db_session, reason):
+    from scaffold.models import ErrorLog
+    register_user(client)
+    if reason == 'birthday_present':
+        client.patch('/api/me/profile', json={'date_of_birth': '1980-01-01'})
+    elif reason == 'saved_plan_present':
+        client.put('/api/retirement/params', json={'params': {'defaultSpend': 65}})
+    elif reason == 'compensation_present':
+        client.put('/api/retirement/comp-entries', json={'entries': [{'id': 'fictional', 'type': 'bonus', 'date': '2026-01-01', 'amount': 1000}]})
+    else:
+        client.post('/api/prices', json={'effective_date': '2026-01-01', 'price': 100})
+    with patch.dict('os.environ', STAGING):
+        first = client.post('/api/demo/seed', json={'profile': 'early'})
+        second = client.post('/api/demo/seed', json={'profile': 'established'})
+    assert first.status_code == second.status_code == 409
+    ref = first.headers['X-Error-Ref']
+    assert second.headers['X-Error-Ref'] == ref
+    diagnostic = db_session.query(ErrorLog).filter_by(error_ref=ref).one()
+    assert diagnostic.error_type == 'StagingSetupRefused'
+    assert diagnostic.error_message == reason
+    assert diagnostic.path == '/api/demo/seed'
+    assert diagnostic.traceback is None
+    assert db_session.query(ErrorLog).count() == 1

@@ -1655,6 +1655,29 @@ export interface PurchaseSummary {
   meanPurchases: number
   distribution: Array<{ purchases: number; paths: number; probability: number }>
 }
+// Nominal retained-value planning curves; anchors and limitations in README.
+export const DEPRECIATION_PROFILES = {
+  collector: { label: 'Collector / investment supercar', retained: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], tail: 1 },
+  strong: { label: 'Strong resale (Toyota / Lexus)', retained: [1, .86, .80, .75, .70, .65, .61, .57, .52, .48, .45], tail: .92 },
+  regular: { label: 'Mainstream car', retained: [1, .80, .73, .67, .62, .58, .53, .48, .44, .40, .36], tail: .90 },
+  sports: { label: 'Enthusiast sports car', retained: [1, .88, .83, .79, .75, .72, .68, .64, .60, .57, .54], tail: .94 },
+  luxury: { label: 'Luxury car', retained: [1, .73, .67, .60, .55, .50, .46, .40, .37, .34, .31], tail: .90 },
+} as const
+export type DepreciationProfile = keyof typeof DEPRECIATION_PROFILES
+export function vehicleResaleFraction(event: Pick<PlannedEvent, 'depreciationProfile' | 'depreciationRate' | 'vehicleAgeYears'>, years: number): number {
+  if (!event.depreciationProfile) return Math.pow(1 - (event.depreciationRate ?? 0), years)
+  const curve = DEPRECIATION_PROFILES[event.depreciationProfile]
+  if (!curve) throw new Error('Unknown depreciation profile')
+  const retained = (age: number): number => {
+    const last = curve.retained.length - 1
+    if (age >= last) return curve.retained[last] * Math.pow(curve.tail, age - last)
+    const whole = Math.floor(age)
+    return curve.retained[whole] + (curve.retained[whole + 1] - curve.retained[whole]) * (age - whole)
+  }
+  const age = event.vehicleAgeYears ?? 0
+  if (!Number.isFinite(age) || age < 0 || age > 50) throw new Error('Vehicle age must be 0–50 years')
+  return retained(age + years) / retained(age)
+}
 export interface PlannedEvent {
   id: string
   title: string
@@ -1678,6 +1701,8 @@ export interface PlannedEvent {
   conditionFailure?: 'skip' | 'defer' // missing preserves the original one-time check
   deadlineDate?: string             // last month to initiate a conditional purchase
   lifetimeYears?: number        // vehicle ownership period before sale
+  depreciationProfile?: DepreciationProfile
+  vehicleAgeYears?: number      // age at each purchase; used cars skip the initial new-car drop
   depreciationRate?: number     // annual nominal depreciation; zero = flat nominal resale
 }
 export interface PlannedCashFlows {
@@ -1717,7 +1742,7 @@ function vehicleOwnershipPeriods(events: PlannedEvent[], retirementDate: string,
       const amountM = cycle === 0 ? event.amountM : event.replacementCostM || event.amountM
       const resaleDate = dateAt(sale)
       // Fixed nominal resale loses real purchasing power during ownership.
-      const resaleValueM = amountM * Math.pow((1 - depreciation) / (1 + (event.inflationRate ?? 0.025)), event.lifetimeYears)
+      const resaleValueM = amountM * vehicleResaleFraction(event, event.lifetimeYears) / Math.pow(1 + (event.inflationRate ?? 0.025), event.lifetimeYears)
       const { lifetimeYears: _life, depreciationRate: _dep, ...rest } = event
       void _life; void _dep
       periods.push({ ...rest, sourceEventId: event.id, id: cycle === 0 ? event.id : `${event.id}:replacement:${cycle}`,

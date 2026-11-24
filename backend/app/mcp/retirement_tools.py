@@ -29,7 +29,7 @@ _EVENT_SCHEMA = {
         "loanRate": {"type": "number", "description": "Annual nominal loan rate as a fraction"},
         "inflationRate": {"type": "number", "description": "Annual inflation for real fixed mortgage payments; default 0.025"},
         "loanYears": {"type": "number"},
-        "saleOffsetM": {"type": "number", "description": "Net cash from selling an existing home or trade-in"},
+        "saleOffsetM": {"type": "number", "description": "Net proceeds from an existing home or car, credited only at the first purchase; later vehicle sales use the ownership schedule"},
         "resaleDate": {"type": "string"},
         "resaleValueM": {"type": "number"},
         "replacementEveryYears": {"type": "number"},
@@ -38,6 +38,8 @@ _EVENT_SCHEMA = {
         "conditionFailure": {"type": "string", "enum": ["skip", "defer"], "description": "Requires condition. Default skip checks only on scheduled dates. Defer retries monthly until eligible; ownership, debt, sale and replacements follow actual purchase dates."},
         "deadlineDate": {"type": "string", "description": "Optional last date to initiate a deferred purchase or replacement (YYYY-MM-DD). Requires conditionFailure=defer."},
         "lifetimeYears": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Vehicle ownership years before automatic sale; cannot combine with explicit resale. Each replacement starts a new ownership period."},
+        "depreciationProfile": {"type": "string", "enum": ["collector", "strong", "regular", "sports", "luxury"], "description": "Nominal retained-value curve, requires lifetimeYears. Collector stays flat; others have a larger early decline. Choose profile or custom depreciationRate."},
+        "vehicleAgeYears": {"type": "number", "minimum": 0, "maximum": 50, "description": "Age at each car purchase, default 0 (new). Used cars follow the remaining curve relative to price paid."},
         "depreciationRate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Annual nominal depreciation during lifetime; 0 retains nominal price. Resale is deflated by inflationRate (default 2.5%)."},
         "condition": {
             "type": "object", "additionalProperties": False, "minProperties": 1,

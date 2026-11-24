@@ -96,6 +96,7 @@ it('saves causal rules and car lifetime with nominal depreciation', () => {
   fireEvent.change(screen.getByLabelText(/Minimum portfolio before purchase/), { target: { value: '5000000' } })
   fireEvent.change(screen.getByLabelText(/Minimum portfolio as %/), { target: { value: '120' } })
   fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '15' } })
+  fireEvent.change(screen.getByLabelText('Depreciation schedule'), { target: { value: 'custom' } })
   fireEvent.change(screen.getByLabelText('Annual depreciation (% nominal; 0 = flat price)'), { target: { value: '0' } })
   fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
   const event = onChange.mock.calls[0][0][0]
@@ -178,6 +179,7 @@ it('rejects out-of-range percentages inline before autosaving', () => {
   const onChange = mount()
   fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
   fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '10' } })
+  fireEvent.change(screen.getByLabelText('Depreciation schedule'), { target: { value: 'custom' } })
   fireEvent.change(screen.getByLabelText('Annual depreciation (% nominal; 0 = flat price)'), { target: { value: '140' } })
   fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
   expect(screen.getByRole('alert')).toHaveTextContent('between 0% and 100%')
@@ -208,4 +210,52 @@ it('requires an explicit financing rate while allowing a deliberate interest-fre
   fireEvent.change(screen.getByLabelText('Loan interest rate (%)'), { target: { value: '0' } })
   fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
   expect(onChange.mock.calls[0][0][0].loanRate).toBe(0)
+})
+
+it('links replacement to the sale interval and preserves the profile on save', () => {
+  const onChange = mount()
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
+  fireEvent.change(screen.getByLabelText('Purchase price (2032 $)'), { target: { value: '50000' } })
+  expect(screen.queryByLabelText('Annual depreciation (% nominal; 0 = flat price)')).toBeNull()
+  fireEvent.click(screen.getByLabelText('Replace when sold'))
+  fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '' } })
+  fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '12' } })
+  fireEvent.change(screen.getByLabelText('Depreciation schedule'), { target: { value: 'strong' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(onChange.mock.calls[0][0][0]).toMatchObject({ lifetimeYears: 12, replacementEveryYears: 12, depreciationProfile: 'strong' })
+  expect(onChange.mock.calls[0][0][0].depreciationRate).toBeUndefined()
+})
+
+it('defaults tuition to four annual payments and clears category-specific fields when switching', () => {
+  const onChange = mount()
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'education' } })
+  expect(screen.getByLabelText('Duration (years; optional)')).toHaveValue(4)
+  fireEvent.change(screen.getByLabelText('Annual tuition and living costs (2032 $)'), { target: { value: '80000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(onChange.mock.calls[0][0][0]).toMatchObject({ amountM: 0, annualCostM: .08, durationYears: 4 })
+  expect(onChange.mock.calls[0][0][0].depreciationProfile).toBeUndefined()
+})
+
+it.each(['home', 'vehicle', 'education', 'wedding', 'travel', 'childcare', 'care', 'renovation', 'gift', 'other'])(
+  'saves the %s preset without unrelated ownership fields', kind => {
+    const onChange = mount()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: kind } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+    const saved = onChange.mock.calls[0][0][0]
+    expect(saved.kind).toBe(kind)
+    if (!['home', 'vehicle'].includes(kind)) {
+      expect(saved.loanYears).toBeUndefined()
+      expect(saved.lifetimeYears).toBeUndefined()
+      expect(saved.saleOffsetM).toBeUndefined()
+    }
+  })
+
+it('keeps invalid car age editable and reports an inline error on save', () => {
+  const onChange = mount()
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
+  fireEvent.change(screen.getByLabelText('Car age at each purchase (years; 0 = new)'), { target: { value: '51' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('Vehicle age must be 0–50 years')
+  expect(onChange).not.toHaveBeenCalled()
 })

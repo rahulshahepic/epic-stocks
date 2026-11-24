@@ -33,6 +33,29 @@ The ChatGPT plugin uses the same price writes and shows applicable/announcement 
 
 Nothing is sent on a price's applicable date (January 1): Epic announces the price later and backdates it. Once a price's expected announcement date (March 1 by default) has passed and it is still a tentative estimate, the daily notification sends one **Update your share price** reminder that opens the Prices page; it is not sent if you have already confirmed the price, and moving the expected announcement date re-arms it. Several overdue estimates produce one reminder. A reminder that fails to deliver stays pending for the next run. Shared viewers do not get it. Other event notifications identify monetary values using a tentative price. On the dashboard, a **Next Event** that is an estimated price change reads *Share Price (est.)* with the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
 
+## Purchase planning presets
+
+Cars use a **Sell after** ownership period (10 years initially). Select **Replace when sold** to reuse that period as the replacement interval. Replacement overrides allow a gap or a different price; otherwise each replacement uses the original real purchase price. Each car's sale repays remaining debt and ends its ownership costs. **Existing car trade-in** is net proceeds after payoff, credited only at the first purchase; later car sales are calculated automatically.
+
+Choose a depreciation schedule instead of entering a rate. The following are approximate **nominal retained values**, with linear interpolation between years. An optional age at each purchase applies the remaining curve relative to the used-car price paid. Collector means an assumed flat nominal price, not a promised investment return. Existing plans keep their custom rates until edited.
+
+| Schedule | Year 1 | Year 5 | Year 10 | Annual loss after year 10 |
+| --- | ---: | ---: | ---: | ---: |
+| Collector / investment supercar | 100% | 100% | 100% | 0% |
+| Strong resale (Toyota / Lexus) | 86% | 65% | 45% | 8% |
+| Mainstream car | 80% | 58% | 36% | 10% |
+| Enthusiast sports car | 88% | 72% | 54% | 6% |
+| Luxury car | 73% | 50% | 31% | 10% |
+
+These are planning curves chosen from broad market evidence, not fitted forecasts or exact published annual schedules. Research checked November 23, 2026: [CarEdge Toyota](https://caredge.com/toyota/depreciation) reports about 35% five-year depreciation, [CarEdge BMW](https://caredge.com/bmw/depreciation) about 50%, [iSeeCars' market study](https://www.iseecars.com/cars-that-hold-their-value-study) about 41.8% overall, and [iSeeCars sports cars](https://www.iseecars.com/resale-value/sports-cars) about 71.9% retained. Intermediate points and extrapolation are our assumptions. Actual cars, age, mileage and markets vary. Resale is deflated separately for inflation; a flat nominal collector price loses real purchasing power.
+
+College starts with **annual tuition and living costs for four years**. Childcare and care also lead with annual costs and allow a duration; optional setup costs are under advanced options. Wedding, travel, renovation, gifts and other expenses lead with one-time cost. Recurring costs and repeat intervals are optional. Houses default to cash; choosing financing starts with a 30-year term, versus five years for a car. Enter the actual loan rate. All categories remain required unless you add purchase conditions.
+
+![Car ownership editor](screenshots/car-purchase-editor-light-mobile.png)
+![Purchase outcomes in dark mode](screenshots/retirement-purchase-outcomes-dark-mobile.png)
+
+
+
 ## Contributing and review
 
 Contributors and coding agents must read [AGENTS.md](AGENTS.md),

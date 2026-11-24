@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { localToday } from '../dateUtils.ts'
 import PurchaseResults from './PurchaseResults.tsx'
-import { planCashFlows, type PlannedEvent, type PlannedEventKind, type SimResult } from './Retirement.math.ts'
+import { DEPRECIATION_PROFILES, vehicleResaleFraction, planCashFlows, type PlannedEvent, type PlannedEventKind, type SimResult } from './Retirement.math.ts'
 
 const KINDS: Array<[PlannedEventKind, string]> = [
   ['home', 'House'], ['vehicle', 'Car'], ['education', 'College / tuition'],
@@ -19,7 +19,8 @@ const blank = (kind: PlannedEventKind, date: string): PlannedEvent => ({
   id: '', title: KINDS.find(k => k[0] === kind)?.[1] ?? 'Expense',
   kind, date, amountM: 0, funding: 'mixed',
   ...(kind === 'home' ? { downPaymentPct: 1 } : {}),
-  ...(kind === 'vehicle' ? { downPaymentPct: 1, replacementEveryYears: 0 } : {}),
+  ...(kind === 'vehicle' ? { downPaymentPct: 1, lifetimeYears: 10, depreciationProfile: 'regular' as const } : {}),
+  ...(kind === 'education' ? { durationYears: 4 } : {}),
 })
 
 // Keep the user's keystrokes intact; percentage round trips such as 14 / 100
@@ -53,11 +54,15 @@ export default function LifeEventsPlanner({
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [todayPrice, setTodayPrice] = useState('')
+  const [replaceOnSale, setReplaceOnSale] = useState(false)
   const [priceBasis, setPriceBasis] = useState<'today' | 'retirement'>('today')
   const visibleEvents = events.filter(event => phase === 'all' ||
     (phase === 'before' ? event.date.slice(0, 7) < retirementDate.slice(0, 7) : event.date.slice(0, 7) >= retirementDate.slice(0, 7)))
   const asset = draft.kind === 'home' || draft.kind === 'vehicle'
   const financed = !!draft.loanYears
+  const recurringType = ['education', 'childcare', 'care'].includes(draft.kind)
+  const annualLabel = draft.kind === 'education' ? 'Annual tuition and living costs' : draft.kind === 'childcare' ? 'Annual childcare costs' : draft.kind === 'care' ? 'Annual care costs' : 'Additional annual costs (not in base spending)'
+  const linkedReplacement = replaceOnSale
   const defaultDate = phase === 'before' ? localToday() : retirementDate
   const retirementYear = retirementDate.slice(0, 4)
   const today = new Date()
@@ -72,7 +77,7 @@ export default function LifeEventsPlanner({
   const priceFactor = priceBasis === 'today' ? Math.pow(1 + conversionRate, yearsToRetirement) : 1
   const amountYear = priceBasis === 'today' ? today.getFullYear() : retirementYear
   const money = (key: 'amountM' | 'annualCostM' | 'saleOffsetM' | 'resaleValueM' | 'replacementCostM', label: string) => (
-    <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">
+    <label className={`min-w-0 flex flex-col gap-1 text-xs text-cs-text-2 ${asset && key === 'annualCostM' ? 'col-span-2' : ''}`}>
       {label} ({amountYear} $)
       <input type="number" min="0" step="1000" value={fromM(draft[key])}
         onChange={e => set(key, toM(e.target.value))}
@@ -87,6 +92,7 @@ export default function LifeEventsPlanner({
       return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value &&
         Number(value.slice(0, 4)) >= 1900 && Number(value.slice(0, 4)) <= 2100
     }
+    if (replaceOnSale && draft.lifetimeYears == null) { setError('Enter an ownership period before enabling replacement.'); return }
     if (!draft.title.trim() || !validDate(draft.date) ||
         (draft.endDate && (!validDate(draft.endDate) || draft.endDate < draft.date)) ||
         (draft.resaleDate && (!validDate(draft.resaleDate) || draft.resaleDate < draft.date))) {
@@ -141,7 +147,9 @@ export default function LifeEventsPlanner({
       delete event.resaleDate; delete event.resaleValueM
       event.depreciationRate = event.depreciationRate ?? 0
       event.inflationRate = draft.inflationRate ?? 0.025
-    } else delete event.depreciationRate
+    } else { delete event.depreciationRate; delete event.depreciationProfile; delete event.vehicleAgeYears }
+    if (event.depreciationProfile) delete event.depreciationRate
+    if (event.vehicleAgeYears != null && (!Number.isFinite(event.vehicleAgeYears) || event.vehicleAgeYears < 0 || event.vehicleAgeYears > 50)) { setError('Vehicle age must be 0–50 years.'); return }
     if (event.resaleDate) event.resaleValueM = event.resaleValueM ?? 0
     else delete event.resaleValueM
     if (event.replacementEveryYears && !(event.replacementCostM || event.amountM)) {
@@ -172,11 +180,11 @@ export default function LifeEventsPlanner({
                   event.condition.minPortfolioM != null ? `portfolio ≥ ${dollar(event.condition.minPortfolioM * 1_000_000)}` : '',
                   event.condition.minStartingWealthRatio != null ? `portfolio ≥ ${Math.round(event.condition.minStartingWealthRatio * 100)}% of starting wealth` : '',
                 ].filter(Boolean).join(' and ')}. {event.conditionFailure === 'defer' ? `Otherwise wait and check monthly${event.deadlineDate ? ' until ' + event.deadlineDate : ''}.` : 'Otherwise skip.'}</span>}
-                {event.lifetimeYears && <span className="block text-cs-text-2">Sell after {event.lifetimeYears} years · {((event.depreciationRate ?? 0) * 100).toFixed(1)}% annual nominal depreciation</span>}
+                {event.lifetimeYears && <span className="block text-cs-text-2">Sell after {event.lifetimeYears} years · {event.depreciationProfile ? DEPRECIATION_PROFILES[event.depreciationProfile].label : `${((event.depreciationRate ?? 0) * 100).toFixed(1)}% annual nominal depreciation`}</span>}
                 {event.funding === 'epic' ? <span className="text-cs-muted"> · hypothetical Epic sale</span> : null}
               </div>
               <div className="flex gap-2">
-                <button type="button" className="text-xs underline text-cs-text-2" onClick={() => { setDraft(event); setPriceBasis('retirement'); setEditing(event.id); setOpen(true) }}>Edit</button>
+                <button type="button" className="text-xs underline text-cs-text-2" onClick={() => { setDraft(event); setReplaceOnSale(!!event.lifetimeYears && event.replacementEveryYears === event.lifetimeYears); setPriceBasis('retirement'); setEditing(event.id); setOpen(true) }}>Edit</button>
                 <button type="button" className="text-xs underline text-cs-text-2" onClick={() => onChange(events.filter(e => e.id !== event.id))}>Remove</button>
               </div>
             </li>
@@ -185,14 +193,14 @@ export default function LifeEventsPlanner({
       )}
       {!open ? (
         <button type="button" className="rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text"
-          onClick={() => { setDraft(blank('home', defaultDate)); setPriceBasis('today'); setEditing(null); setOpen(true) }}>
+          onClick={() => { setDraft(blank('home', defaultDate)); setReplaceOnSale(false); setPriceBasis('today'); setEditing(null); setOpen(true) }}>
           + Add planned expense
         </button>
       ) : (
         <div className="space-y-3 rounded-lg border border-cs-border-strong p-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Type
-              <select value={draft.kind} onChange={e => setDraft(blank(e.target.value as PlannedEventKind, draft.date))}
+              <select value={draft.kind} onChange={e => { setDraft(blank(e.target.value as PlannedEventKind, draft.date)); setReplaceOnSale(false) }}
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
                 {KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
@@ -206,7 +214,7 @@ export default function LifeEventsPlanner({
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
             </label>
 
-            {money('amountM', draft.kind === 'home' || draft.kind === 'vehicle' ? 'Purchase price' : 'One-time cost (0 if recurring only)')}
+            {recurringType ? money('annualCostM', annualLabel) : money('amountM', asset ? 'Purchase price' : 'One-time cost (0 if recurring only)')}
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
               <summary className="cursor-pointer font-semibold">Price options · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
               <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Prices entered in
@@ -277,18 +285,55 @@ export default function LifeEventsPlanner({
                   <legend className="sr-only">Ownership lifetime and sale</legend>
                   <label className="min-w-0 flex flex-col gap-1">Sell car after N years (optional)
                     <input type="number" min="1" max="50" step="1" value={draft.lifetimeYears ?? ''}
-                      onChange={e => setDraft(prev => ({ ...prev, lifetimeYears: e.target.value === '' ? undefined : Number(e.target.value), resaleDate: undefined, resaleValueM: undefined }))}
+                      onChange={e => setDraft(prev => ({ ...prev, lifetimeYears: e.target.value === '' ? undefined : Number(e.target.value), replacementEveryYears: linkedReplacement ? Number(e.target.value) || 0 : prev.replacementEveryYears, resaleDate: undefined, resaleValueM: undefined }))}
                       className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                   </label>
-                  {draft.lifetimeYears != null && <label className="min-w-0 flex flex-col gap-1">Annual depreciation (% nominal; 0 = flat price)
-                    <PercentInput min="0" max="100" step="0.1" value={draft.depreciationRate ?? 0}
-                      onChange={value => set('depreciationRate', value ?? 0)}
-                      className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
-                  </label>}
-                  <p>Sale pays remaining debt and stops ownership costs. Zero depreciation keeps the nominal price flat.</p>
+                  {draft.lifetimeYears != null && <>
+                    <label className="min-w-0 flex flex-col gap-1">Depreciation schedule
+                      <select value={draft.depreciationProfile ?? 'custom'}
+                        onChange={e => setDraft(prev => ({
+                          ...prev,
+                          depreciationProfile: e.target.value === 'custom' ? undefined : e.target.value as PlannedEvent['depreciationProfile'],
+                          depreciationRate: e.target.value === 'custom' ? prev.depreciationRate ?? 0 : undefined,
+                        }))}
+                        className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
+                        {Object.entries(DEPRECIATION_PROFILES).map(([key, profile]) => <option key={key} value={key}>{profile.label}</option>)}
+                        <option value="custom">Custom annual rate</option>
+                      </select>
+                    </label>
+                    {!draft.depreciationProfile && <label className="min-w-0 flex flex-col gap-1">Annual depreciation (% nominal; 0 = flat price)
+                      <PercentInput min="0" max="100" step="0.1" value={draft.depreciationRate ?? 0}
+                        onChange={value => set('depreciationRate', value ?? 0)}
+                        className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+                    </label>}
+                    <p className="text-cs-muted">Estimated resale after {draft.lifetimeYears} years: {Math.round(vehicleResaleFraction({ ...draft, vehicleAgeYears: Number.isFinite(draft.vehicleAgeYears) ? Math.max(0, Math.min(50, draft.vehicleAgeYears ?? 0)) : 0 }, Math.max(0, draft.lifetimeYears)) * 100)}% of price paid, before inflation and remaining debt. Planning estimate, not a valuation.</p>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={replaceOnSale || !!draft.replacementEveryYears} onChange={e => { setReplaceOnSale(e.target.checked); set('replacementEveryYears', e.target.checked ? draft.lifetimeYears : 0) }} />
+                      Replace when sold
+                    </label>
+                    {!!draft.replacementEveryYears && <details className="rounded border border-cs-border p-3">
+                      <summary className="cursor-pointer">Replacement overrides · same price and timing by default</summary>
+                      <div className="mt-3 space-y-3">
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={linkedReplacement}
+                          onChange={e => { setReplaceOnSale(e.target.checked); set('replacementEveryYears', e.target.checked ? draft.lifetimeYears : (draft.lifetimeYears ?? 10) + 1) }} />Replace on the sale date</label>
+                        {!linkedReplacement && <label className="min-w-0 flex flex-col gap-1">Years between purchases
+                          <input type="number" min={draft.lifetimeYears} max="50" value={draft.replacementEveryYears}
+                            onChange={e => set('replacementEveryYears', Number(e.target.value))}
+                            className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+                        </label>}
+                        {money('replacementCostM', 'Replacement price (0 = original price)')}
+                      </div>
+                    </details>}
+                    <details className="rounded border border-cs-border p-3"><summary className="cursor-pointer">Buying used?</summary>
+                      <label className="mt-3 flex flex-col gap-1">Car age at each purchase (years; 0 = new)
+                        <input type="number" min="0" max="50" value={draft.vehicleAgeYears ?? 0} onChange={e => set('vehicleAgeYears', Number(e.target.value))}
+                          className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+                      </label>
+                    </details>
+                  </>}
+                  <p>Each sale pays remaining debt and stops ownership costs. Replacements use that car’s sale proceeds automatically.</p>
                 </fieldset>}
-                {money('annualCostM', asset ? 'Annual ownership costs (stop at sale)' : 'Additional annual costs (not in base spending)')}
-                {asset && <p className="text-xs text-cs-muted">Ownership costs stop automatically when sold. Enter only costs additional to regular spending.</p>}
+                {!recurringType && money('annualCostM', asset ? 'Annual ownership costs (stop at sale)' : annualLabel)}
                 {!asset && <>
                   <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Duration (years; optional)
                     <input type="number" min="1" max="50" step="1" value={draft.durationYears ?? ''}
@@ -299,7 +344,7 @@ export default function LifeEventsPlanner({
                 </>}
 
                 {asset && <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Payment
-                  <select value={financed ? 'finance' : 'cash'} onChange={e => setDraft(prev => ({ ...prev, loanYears: e.target.value === 'finance' ? 5 : undefined, downPaymentPct: e.target.value === 'finance' ? 0.2 : 1 }))}
+                  <select value={financed ? 'finance' : 'cash'} onChange={e => setDraft(prev => ({ ...prev, loanYears: e.target.value === 'finance' ? (prev.kind === 'home' ? 30 : 5) : undefined, downPaymentPct: e.target.value === 'finance' ? 0.2 : 1 }))}
                     className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text"><option value="cash">Cash</option><option value="finance">Finance</option></select>
                 </label>}
                 {asset && (
@@ -322,8 +367,9 @@ export default function LifeEventsPlanner({
                       </label>
 
                     </>}
-                    <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">Trade-in and specific sale date</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {money('saleOffsetM', 'Net existing-home sale proceeds / trade-in')}
+                    <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">{draft.kind === 'vehicle' ? 'Existing car trade-in · first purchase only' : 'Existing home sale and future sale'}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {money('saleOffsetM', draft.kind === 'vehicle' ? 'Existing car proceeds after loan payoff (first purchase only)' : 'Existing home proceeds after mortgage payoff (first purchase only)')}
+                      <p className="text-cs-muted">Credits the first purchase only. Future sales follow the ownership schedule; do not enter those proceeds here.</p>
                       {!draft.lifetimeYears && <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Resale date (optional)
                         <input type="date" value={draft.resaleDate ?? ''} onChange={e => set('resaleDate', e.target.value || undefined)}
                           className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
@@ -332,15 +378,16 @@ export default function LifeEventsPlanner({
                     </div></details>
                   </>
                 )}
-                <>
-                  <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
+                {!(draft.kind === 'vehicle' && draft.lifetimeYears != null) && <details className="col-span-2 rounded border border-cs-border p-3"><summary className="cursor-pointer text-xs text-cs-text-2">Repeat this expense · {draft.replacementEveryYears ? `every ${draft.replacementEveryYears} years` : 'once'}</summary>
+                  <label className="mt-3 min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
                     <input type="number" min="0" max="50" value={draft.replacementEveryYears ?? 0}
                       onChange={e => set('replacementEveryYears', Math.max(0, Math.min(50, Math.floor(Number(e.target.value)))))}
                       className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                   </label>
                   {!!draft.replacementEveryYears && money('replacementCostM', 'Repeat cost (0 = same as first purchase)')}
-                </>
+                </details>}
                 <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">Advanced: funding and cost overrides</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {recurringType && money('amountM', 'One-time setup cost (optional)')}
                   <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Specific recurring cost end date (optional)
                     <input type="date" value={draft.endDate ?? ''} onChange={e => setDraft(prev => ({ ...prev, endDate: e.target.value || undefined, durationYears: undefined }))} className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                   </label>

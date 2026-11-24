@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from app.mcp.test_account_tools import _setup, _reset
+from app.mcp.test_account_tools import InvalidResetConfirmation, _setup, _reset
 from app.mcp.tools import ToolContext
 from scaffold.models import ErrorLog
 from scaffold.synthetic_accounts import account_lock, binding
@@ -56,8 +56,11 @@ def seed_profile(user, db, profile, *, confirm=None, reset=False):
                 status = _setup(ctx, {'scenario': profile}, browser=True)
             return {'fictional': True, 'profile': profile, 'mcp_url': STAGING_ORIGIN + '/mcp',
                     'account_context': status}
-        except ValueError:
+        except InvalidResetConfirmation:
             db.rollback()
             _refuse(user, db, 'invalid_confirmation', 'Reset confirmation is invalid or stale. Choose a profile and preview again.')
+        except ValueError:
+            db.rollback()
+            _refuse(user, db, 'workspace_unavailable', 'The fictional workspace could not be loaded. Try again or report this problem using the error reference.')
         finally:
             db.rollback()

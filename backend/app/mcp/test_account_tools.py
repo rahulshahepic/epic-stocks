@@ -14,6 +14,10 @@ from services.vesting import set_schedule
 from .tools import Tool, object_schema, register
 
 
+class InvalidResetConfirmation(ValueError):
+    pass
+
+
 def _stage(browser=False):
     from scaffold.web_test_accounts import enabled
     if not (enabled() if browser else is_staging()):
@@ -118,7 +122,7 @@ def _reset(ctx, args, *, browser=False):
         return {**account_context(ctx), 'reset': False, 'confirm': token, 'scenario_to_restore': scenario,
                 'warning': 'Deletes all testing modifications in this connection only. Ask for explicit confirmation, then repeat with this token.'}
     if not isinstance(args['confirm'], str) or not args['confirm'].isascii() or not hmac.compare_digest(args['confirm'], token):
-        raise ValueError('Reset confirmation is invalid or stale. Preview reset again.')
+        raise InvalidResetConfirmation('Reset confirmation is invalid or stale. Preview reset again.')
     with synthetic_key(ctx.db, row.synthetic_id):
         try:
             owner = ctx.db.get(User, row.synthetic_id)

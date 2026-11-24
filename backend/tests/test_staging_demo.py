@@ -107,6 +107,19 @@ def test_failure_rolls_back_fixture_and_restores_principal_key(browser):
     assert client.get('/api/grants').status_code == 409
 
 
+def test_setup_refusal_is_not_reported_as_a_bad_confirmation(browser):
+    client, db = browser
+    with patch('app.staging_demo._setup', side_effect=ValueError('Synthetic encryption key is unavailable')):
+        response = client.post('/api/demo/seed', json={'profile': 'early'})
+    assert response.status_code == 409
+    assert 'confirmation' not in response.json()['detail'].lower()
+    assert response.headers['X-Error-Ref']
+    diagnostic = db.query(ErrorLog).one()
+    assert diagnostic.error_message == 'workspace_unavailable'
+    assert diagnostic.traceback is None
+    assert db.query(MCPTestAccount).count() == 0
+
+
 def test_browser_and_mcp_fixtures_remain_independent(browser):
     from tests.test_mcp_tools import Mcp
     client, db = browser

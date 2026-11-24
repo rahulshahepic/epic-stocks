@@ -1167,7 +1167,9 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
 
 
 @router.get("/annual-stock-summary")
-def get_annual_stock_summary(year: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_annual_stock_summary(year: int | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if year is None:
+        year = date.today().year - 1
     if not 1901 <= year < date.today().year:
         raise HTTPException(status_code=400, detail="Choose a completed calendar year from 1901 onward")
     from app.annual_summary import annual_summary

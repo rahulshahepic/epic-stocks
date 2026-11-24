@@ -27,6 +27,19 @@ def test_annual_changes_reconcile_to_the_dated_dashboard(client):
     assert 'currently saved records' in summary['note']
 
 
+def test_default_summary_uses_last_completed_server_year(client):
+    class ServerDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 12, 31)
+
+    register_user(client)
+    with patch('app.routers.events.date', ServerDate):
+        response = client.get('/api/annual-stock-summary')
+    assert response.status_code == 200
+    assert response.json()['year'] == 2025
+
+
 def test_annual_reminder_is_opt_in_seasonal_and_records_only_delivery(client, db_session):
     register_user(client)
     _seed_data(client)

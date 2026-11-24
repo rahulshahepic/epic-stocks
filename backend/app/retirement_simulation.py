@@ -36,7 +36,7 @@ ENUMS = {
     "scenario": {"historical", "moderate", "cautious", "custom"},
     "rebalance": {"none", "tax-advantaged", "all"},
 }
-SIDE_CARS = {"retirementDate", "spouseDOB"}
+SIDE_CARS = {"retirementDate", "spouseDOB", "epicExitMode"}
 EDITABLE = NUMERIC | BOOLEANS | set(ENUMS) | {"glidePoints", "plannedEvents"} | SIDE_CARS
 
 
@@ -232,6 +232,9 @@ def validate_changes(changes):
                 if any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in (s, b)) or s + b > 1.00000001:
                     raise ValueError("Glide stock and bond weights must sum to at most 1")
                 last = y
+        elif key == "epicExitMode":
+            if value not in ("auto", "manual"):
+                raise ValueError("epicExitMode must be auto or manual")
         elif key == "retirementDate":
             _date(value, key)
         elif key == "spouseDOB":

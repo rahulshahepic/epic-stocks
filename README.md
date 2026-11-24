@@ -1708,7 +1708,7 @@ This application stores sensitive financial data. Read **[PRIVACY.md](PRIVACY.md
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
 - **Encryption at rest** — all sensitive user data is encrypted per-user with AES-256-GCM: grants, loans, prices, sale prices, sale notes, actual tax paid, loan payment amounts, loan payment notes, tax rates, date of birth, retirement scenario parameters, and import backup snapshots. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once) wraps an operational master key stored encrypted in the database. Each user gets a unique key wrapped by the master key. The master key can be rotated live from the admin panel; all replicas pick it up automatically within seconds.
 - **Open source** — users can audit the code, self-host, or fork.
-- **Data portability** — users can export all their data to Excel at any time.
+- **Data portability** — users can export their financial records to Excel at any time; account preferences are not a complete part of this export.
 
 If you run an instance for others: use HTTPS, set `KEY_ENCRYPTION_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for the full security and ops checklist, including Cloudflare setup, SSH hardening, and VPS firewall rules.
 
@@ -1811,7 +1811,7 @@ These are attempt counts: retries and repeated save/carryover reports can count 
 
 ### Event reminders and annual summaries
 
-New accounts start with email notifications **off**. After a useful dashboard, an actual upcoming vesting or loan payoff offers **Choose reminders**, which opens Settings without enabling anything. Existing notification preferences are preserved; the migration suppresses the new onboarding offer for existing accounts. The account-level **Stop offering notifications** preference also suppresses the contextual offer, including on other devices. Already-enabled channels suppress this offer; browser dismissal suppresses further offers there. Settings describes push on the current device, and the existing push flow handles permission/install requirements. Notification previews omit financial values.
+New accounts start with email notifications **off**. After a useful dashboard, an actual upcoming vesting or loan payoff offers **Choose reminders**, which opens Settings without enabling anything. Existing notification preferences are preserved; the migration preserves prior choices to stop notification offers. The account-level **Stop offering notifications** preference also suppresses the contextual offer, including on other devices. Already-enabled channels suppress this offer; browser dismissal suppresses further offers there. Settings describes push on the current device, and the existing push flow handles permission/install requirements. Notification previews omit financial values.
 
 **Your annual stock summary** on Dashboard compares December 31 positions reconstructed through the canonical dated dashboard service. It labels estimates, tentative prices, missing figures, and historical changes caused by corrected records. The optional **annual stock summary** checkbox in Settings is off by default, independent of email/push channel opt-in. When selected, the scheduler offers a January reminder through enabled channels, marks the year only after delivery succeeds, and catches up later in January. Prior statements are never treated as proof of current accrued-interest balances; year-end reconciliation keeps using the existing checkpoint/reminder service.
 
@@ -1822,3 +1822,19 @@ Implementation: `app/annual_summary.py`, the existing event/notification routers
 | ![Import checks](screenshots/import-evidence-light-mobile.png) | ![Rollout dashboard](screenshots/rollout-dashboard-light-mobile.png) |
 
 ![Anonymous attempt counts](screenshots/trial-metrics-light-mobile.png)
+
+### Retirement planner views and exit assumptions
+
+The planner starts in **basic view**. Use **Show advanced assumptions** for allocation, account types, spending floor, Social Security, spouse and conditional purchases. Both views use one saved plan and the same simulation engine; hiding account details never combines account balances or clears their basis. The basic view summarizes the accounts still included in the calculation. Pre-retirement expenses stay in the **Before retirement** flow and reduce retirement starting wealth.
+
+**Automatic Epic exit projection** recalculates for the selected retirement date using saved prices and future estimates. The simulator does not add another share-growth assumption. If the projection fails or no data is available, simulation pauses and offers Retry or an explicit manual amount; it never silently runs with the old date's value. A manual override stays manual when the date changes. For a legacy plan without mode metadata, the saved amount is kept for its original date and clearly identified. The first date change recalculates automatically, matching previous behavior. Choose manual to pin it, or Refresh to project immediately. Saving pauses visibly if an automatic projection fails. New saves include `epicExitMode` (`auto` or `manual`); changing views preserves it. Shared viewers can explore without saving the owner's plan.
+
+![Retirement basic view](screenshots/retirement-basic-light-mobile.png)
+
+![Retirement advanced view](screenshots/retirement-advanced-light-mobile.png)
+
+### Employee rollout readiness
+
+Before advertising broadly, use [the launch evidence checklist](docs/employee-rollout-readiness.md) and [the first-use pilot protocol](docs/first-use-pilot.md). The checklist separates tested source behavior from live deployment evidence and human decisions. A passing unit suite does not certify backup restoration, campus traffic capacity or company permission.
+
+Privacy screenshots: [light mobile](screenshots/privacy-light-mobile.png), [dark mobile](screenshots/privacy-dark-mobile.png), [light desktop](screenshots/privacy-light-desktop.png), [dark desktop](screenshots/privacy-dark-desktop.png).

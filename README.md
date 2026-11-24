@@ -371,6 +371,24 @@ proceeds fixed; each result shows the amount used. Other starting account balanc
 stay fixed, and pre-retirement purchases reduce the later starting portfolio;
 working-life savings and investment returns are not modeled.
 
+**Reading retirement results:** The main result shows the chance of fully funding
+retirement once, followed by starting and ending wealth. Expand **Funding risk
+details** for shortfalls and the difference between depleted and inaccessible
+assets. Planned purchases show one headline probability, a count chart including
+replacements, and each optional purchase's timing. **Calculation details** holds
+sample counts, the separate *buy + fully fund retirement* measure and its
+definition. **Required expenses** are scheduled in every simulation. Dates and
+price basis are shown with the relevant inputs; entering today's prices converts
+automatically, without a separate price calculator. These changes affect display
+only; saved plans and simulation calculations are unchanged.
+
+| Purchase summary | Expanded details |
+| --- | --- |
+| ![Purchase summary](screenshots/retirement-purchase-outcomes-dark-mobile.png) | ![Purchase details](screenshots/retirement-purchase-details-dark-mobile.png) |
+
+[Web funding details](screenshots/retirement-risk-details-dark-mobile.png) ·
+[Connector funding details](screenshots/mcp-retirement-risk-details-dark-mobile.png)
+
 **Life events and major purchases:** The Retirement tab and MCP Apps card can
 compare a baseline with hypothetical homes, cars, weddings, tuition, childcare,
 eldercare, renovations, gifts and repeat vacations. Set dates, upfront and

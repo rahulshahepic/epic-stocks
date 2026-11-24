@@ -5,6 +5,8 @@ import { retirementHost, retirementSnapshot, purchaseSnapshot } from './plugin-h
 test('retirement card shows distinct shortfall and exhaustion risks', async ({page}) => {
   const card=await retirementHost(page)
   await expect(card.getByText('97.00%',{exact:true})).toBeVisible()
+  await expect(card.getByText('3.00%',{exact:true})).toBeHidden()
+  await card.getByText('Funding risk details', { exact: true }).click()
   await expect(card.getByText('3.00%',{exact:true})).toBeVisible()
   await expect(card.getByText('1.00%',{exact:true})).toBeVisible()
   await expect(card.getByText('$7.70M',{exact:true})).toBeVisible()
@@ -21,15 +23,16 @@ for (const theme of ['light', 'dark'] as const) {
     const card = await retirementHost(page, theme, { initial: purchaseSnapshot, refreshed })
     const outcomes = card.getByRole('region', { name: 'Planned purchase outcomes' })
     await expect(card.locator('#lifeEventsDetails')).not.toHaveAttribute('open', '')
-    await expect(outcomes.getByText('68.00%', { exact: true })).toBeVisible()
+    await expect(outcomes.getByText('68.0%', { exact: true })).toBeVisible()
     await expect(outcomes.getByLabel('Sports car purchase probability', { exact: true })).toHaveAttribute('value', '0.5')
-    await expect(outcomes.getByText('50.00% bought · 50.00% never bought')).toBeVisible()
-    await expect(outcomes.getByText('2044-08-01 · required expense, no market condition')).toBeVisible()
+    await expect(outcomes.getByText('50.0% bought', { exact: true })).toBeVisible()
+    await expect(outcomes.getByText(/Never bought:/).first()).toBeHidden()
+    await expect(outcomes.getByText('Private college · 2044-08-01', { exact: true })).toBeVisible()
     await expect(outcomes.getByLabel('320 paths make 0 conditional purchases, 32.00%')).toBeVisible()
     await expect(card.locator('#plot')).toContainText('Portfolio ($M, retirement-year dollars)')
     await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
     await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
-    await expect(outcomes.getByText('70.00%', { exact: true })).toBeVisible()
+    await expect(outcomes.getByText('70.0%', { exact: true })).toBeVisible()
     await expect(outcomes.getByLabel('300 paths make 0 conditional purchases, 30.00%')).toBeVisible()
     expect(await page.frames()[1].evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
@@ -69,6 +72,8 @@ test('date comparison renders two scenarios without saving', async ({page}) => {
   await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
   await card.getByLabel('Compare against').fill('2032-07-02')
   await card.getByRole('button',{name:'Compare retirement dates'}).click()
+  await expect(card.getByRole('table')).toBeHidden()
+  await card.getByText('Comparison details', { exact: true }).click()
   await expect(card.getByRole('table')).toBeVisible()
   await expect(card.getByRole('cell',{name:'2032-01-02'})).toBeVisible()
   await expect(card.getByRole('cell',{name:'2032-07-02'})).toBeVisible()
@@ -140,11 +145,12 @@ test('MCP card converts a current sticker price without recording a sale', async
   const card = await retirementHost(page)
   await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
   await card.locator('#lifeEventsDetails > summary').click()
+  await card.locator('#eventAmount').fill('100000')
   await card.locator('#eventAdvanced summary').click()
-  await card.locator('#eventTodayPrice').fill('100000')
   await card.locator('#eventInflation').fill('0')
-  await card.getByRole('button', { name: 'Convert to retirement-year dollars' }).click()
-  await expect(card.locator('#eventAmount')).toHaveValue('100000')
+  await expect(card.getByRole('button', { name: 'Convert to retirement-year dollars' })).toHaveCount(0)
+  await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
+  await expect(card.locator('#eventList')).toContainText('$100,000')
   const calls = await page.evaluate(() => (window as unknown as {pluginCalls:{
     params:{name?:string}
   }[]}).pluginCalls)
@@ -375,4 +381,34 @@ test('car presets roundtrip through the connector and replace at the sale interv
   expect(calls.find(c => c.params.name === 'plan_life_events')?.params.arguments.events[0]).toMatchObject({
     lifetimeYears: 12, replacementEveryYears: 12, depreciationProfile: 'strong', vehicleAgeYears: 0, amountM: .05,
   })
+})
+
+
+test('purchase details explain the different funded measure without repeating the headline', async ({ page }) => {
+  const card = await retirementHost(page, 'dark', { initial: purchaseSnapshot })
+  const outcomes = card.getByRole('region', { name: 'Planned purchase outcomes' })
+  await expect(outcomes.getByText('68.0%', { exact: true })).toHaveCount(1)
+  await expect(outcomes.getByText(/680 of 1,000 simulations/)).toBeHidden()
+  await expect(outcomes.getByText(/Buy \+ fully fund retirement: 65.00%/)).toBeHidden()
+  await expect(outcomes.getByRole('img', { name: 'Sports car first purchase timing', exact: true })).toBeVisible()
+  await outcomes.getByText('Calculation details', { exact: true }).click()
+  await expect(outcomes.getByText(/680 of 1,000 simulations/)).toBeVisible()
+  await expect(outcomes.getByText(/Buy \+ fully fund retirement: 65.00%/)).toBeVisible()
+  await outcomes.getByLabel('Details for Sports car', { exact: true }).click()
+  await expect(outcomes.getByText('Never bought: 50.00%', { exact: true })).toBeVisible()
+  const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(audit.violations).toEqual([])
+})
+
+
+test('required-only plans show scheduled expenses without an optional-purchase headline', async ({ page }) => {
+  const initial = { ...purchaseSnapshot, assumptions: { ...purchaseSnapshot.assumptions,
+    plannedEvents: purchaseSnapshot.assumptions.plannedEvents.filter(e => e.kind === 'education') },
+  result: { ...purchaseSnapshot.result, eventOutcomes: [], purchaseSummary: { ...purchaseSnapshot.result.purchaseSummary,
+    purchaseProbability: 0, fundedPurchaseProbability: 0, pathsWithPurchase: 0, distribution: [{ purchases: 0, paths: 1000, probability: 1 }] } } }
+  const card = await retirementHost(page, 'light', { initial })
+  await expect(card.locator('#purchaseSummary')).toBeEmpty()
+  await expect(card.locator('#purchaseDistribution')).toBeHidden()
+  await expect(card.getByText('Scheduled in every simulation', { exact: true })).toBeVisible()
+  await expect(card.getByText('Private college · 2044-08-01', { exact: true })).toBeVisible()
 })

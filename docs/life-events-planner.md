@@ -3,6 +3,22 @@
 This planner is a **hypothetical extension of retirement Monte Carlo**, not a
 purchase, stock sale, mortgage application or brokerage order system.
 
+## Reading the results
+
+The headline probability counts simulations that make at least one optional
+purchase. It includes simulations with a funding shortfall. Expand **Calculation
+details** for the distinct *buy + fully fund retirement* percentage, which counts
+only simulations that both buy and pay every modeled spending and tax bill.
+Neither percentage is a guarantee of affordability. Timing charts use all
+simulations; an average wait is conditional on making a purchase. Purchase counts
+include replacements. Required expenses remain scheduled in every simulation.
+
+The main retirement funding percentage includes the plan's spending adjustments,
+skipped purchases and deferrals. Its shortfall breakdown is under **Funding risk
+details**. Comparison tables and detailed counts are available on demand instead
+of repeating headline figures. Event summaries omit a zero upfront cost when the
+expense is paid annually.
+
 ## Supported events
 
 The same dated `plannedEvents` schema handles:

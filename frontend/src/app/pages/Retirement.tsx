@@ -1494,11 +1494,6 @@ function RetirementAccount() {
           >
             {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Simulate ${params.paths.toLocaleString()} retirements × ${years} years`}
           </button>
-          {result && (
-            <p className="text-[11px] text-cs-muted">
-              {result.finalWealth.length.toLocaleString()} retirements simulated.
-            </p>
-          )}
         </div>
 
         <div ref={resultHeading} tabIndex={-1} className="scroll-mt-28" />
@@ -1519,59 +1514,29 @@ function RetirementAccount() {
         )}
         {result && result.preRetirementFundingGapM <= 1e-9 && (
           <>
-            {(() => {
-              const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
-              const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
-              return (
-                <HeroCard
-                  className="campus-observatory-hero"
-                  watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Eyebrow className="text-white">Will the money last?</Eyebrow>
-                    <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">
-                      <IconCompass className="h-4 w-4" />
-                    </IconTile>
-                  </div>
-                  <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">
-                    {fmtPct(1 - result.pctRuin, 1)} fully funded
-                  </p>
-                  <p className="text-xs text-white">Age {resultEndAge} wealth: {p10Row ? fmt$M(p10Row.value) : '—'} – {p90Row ? fmt$M(p90Row.value) : '—'} (10th–90th percentile), {resultDollarYear} purchasing power</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
-                    <span><span className="font-semibold">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
-                    <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
-                    <span><span className="font-semibold">{fmtPct(result.pctRuin, 1)}</span> chance of a funding shortfall</span>
-                  </div>
-                </HeroCard>
-              )
-            })()}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <HeroCard
+              className="campus-observatory-hero"
+              watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Eyebrow className="text-white">Will the money last?</Eyebrow>
+                <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white"><IconCompass className="h-4 w-4" /></IconTile>
+              </div>
+              <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">{fmtPct(1 - result.pctRuin, 1)} fully funded</p>
+              <p className="mt-2 text-xs text-white">Through age {resultEndAge} · {result.finalWealth.length.toLocaleString()} simulations · amounts in {resultDollarYear} dollars</p>
+            </HeroCard>
+            <div className="grid grid-cols-2 gap-3">
               <StatCard
                 label="Ended richer than you started"
                 value={fmtPct(result.pctAboveStart, 1)}
-                sub={`out of ${result.finalWealth.length.toLocaleString()} simulated retirements`}
+                sub="ending wealth exceeds starting wealth"
                 variant={result.pctAboveStart >= 0.5 ? 'good' : 'neutral'}
               />
-              <StatCard
-                label="Couldn’t fund the plan"
-                value={fmtPct(result.pctRuin, 1)}
-                sub="spending or taxes went unfunded at least once"
-                variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
-              />
-              <StatCard
-                label="Shortfall with assets remaining"
-                value={fmtPct(result.pctLiquidityShortfall, 1)}
-                sub="at the first shortfall, money remained in locked accounts"
-              />
-              <StatCard
-                label="Shortfall with assets exhausted"
-                value={fmtPct(result.pctExhausted, 1)}
-                sub="at the first shortfall, no assets remained"
-              />
+              <StatCard label="Starting portfolio" value={fmt$M(result.startingTotal)} sub="after planned pre-retirement costs" />
               <StatCard
                 label="Typical ending wealth"
                 value={fmt$M(result.medianFinalM)}
-                sub={`half end above this · started at ${fmt$M(result.startingTotal)}`}
+                sub="half of simulations end above this"
               />
               <StatCard
                 label="Bad-case ending wealth"
@@ -1581,10 +1546,29 @@ function RetirementAccount() {
               />
             </div>
 
-            <p className="text-xs text-cs-muted">
-              A plan can have both kinds of shortfall at different times. Remaining balances continue to be simulated;
-              they do not mean every expense was funded. Wealth is net of unpaid taxes.
-            </p>
+            <details className="rounded-xl border border-cs-border p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-cs-text">Funding risk details</summary>
+              <p className="mt-3 text-xs text-cs-text-2">Fully funded means every modeled spending and tax bill is paid. It includes any spending reductions and optional purchase rules in your plan.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <StatCard
+                  label="Any funding shortfall"
+                  value={fmtPct(result.pctRuin, 2)}
+                  sub="spending or taxes went unfunded at least once"
+                  variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
+                />
+                <StatCard
+                  label="Shortfall with assets remaining"
+                  value={fmtPct(result.pctLiquidityShortfall, 2)}
+                  sub="at the first shortfall, money remained in locked accounts"
+                />
+                <StatCard
+                  label="Shortfall with assets exhausted"
+                  value={fmtPct(result.pctExhausted, 2)}
+                  sub="at the first shortfall, no assets remained"
+                />
+              </div>
+              <p className="mt-3 text-xs text-cs-muted">The two shortfall categories describe the first funding shortfall in each simulation. Remaining assets continue to be simulated; ending wealth is net of unpaid taxes.</p>
+            </details>
             <Card pad="md">
               <p className="mb-2 text-xs font-semibold text-cs-text-2">
                 How your wealth could play out over time ({resultDollarYear} purchasing power)

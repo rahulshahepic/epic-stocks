@@ -8,12 +8,15 @@ import { api } from '../../api.ts'
 import type { InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/theme.ts'
 import { Card } from '../components/ui/Card.tsx'
+import StagingSeedPanel from '../../app/components/StagingSeedPanel.tsx'
+import { useMe } from '../hooks/useMe.ts'
 import { AiConnectionsSection } from '../components/AiConnectionsSection.tsx'
 
 export default function Settings() {
   const config = useConfig()
+  const me = useMe()
   const hasNotificationChannels = !!(config?.email_notifications_available || config?.vapid_public_key)
-  const push = usePush(config?.vapid_public_key ?? '')
+  const push = usePush(config?.staging_demo ? '' : (config?.vapid_public_key ?? ''), !config?.staging_demo)
   // Whether this device could do push at all, regardless of server config.
   const pushSupported = push.state !== 'unsupported' && push.state !== 'needs-install'
   const { logout, logoutEverywhere } = useAuth()
@@ -53,8 +56,8 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    if (config?.email_notifications_available || config?.vapid_public_key) loadEmailPref()
-  }, [config?.email_notifications_available, config?.vapid_public_key, loadEmailPref])
+    if (!config?.staging_demo && (config?.email_notifications_available || config?.vapid_public_key)) loadEmailPref()
+  }, [config?.email_notifications_available, config?.vapid_public_key, config?.staging_demo, loadEmailPref])
 
   async function toggleEmail() {
     setEmailLoading(true)
@@ -91,6 +94,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
+      {config?.staging_demo && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
       <h2 className="text-lg font-semibold text-cs-text">Settings</h2>
 
       {/* Display Settings */}
@@ -119,7 +123,7 @@ export default function Settings() {
       </Card>
 
       {/* Notifications */}
-      {(!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
+      {!config?.staging_demo && (!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
         <Card as="section" pad="md">
           <h3 id="notifications" className="scroll-mt-24 text-sm font-medium text-cs-text">Notifications</h3>
           <p className="mt-1 text-xs text-cs-text-2">
@@ -280,7 +284,7 @@ export default function Settings() {
       {config?.ai_connections && <AiConnectionsSection />}
 
       {/* Sharing */}
-      <SharingSection />
+      {!config?.staging_demo && <SharingSection />}
 
       {/* Account Management */}
       <Card as="section" pad="md">

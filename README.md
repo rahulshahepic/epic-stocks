@@ -1885,11 +1885,27 @@ account with its own encryption key. Responses and portfolio/retirement cards
 prominently identify fictional data. Ordinary read/write scopes still apply.
 No actual financial records are copied, altered or exposed by staging MCP tools.
 
-The web staging profile loader refuses to replace existing records or setup
-information. Refusals appear in Admin errors as `StagingSetupRefused`, with a
-fixed reason code and a reference attached to the browser's problem-report trail.
-No stored financial values enter the diagnostic; repeated attempts reuse an
-unresolved diagnostic for the same account and reason.
+The staging website also uses an isolated browser workspace. After signing in,
+choose **Early career**, **Established**, or **Planning an exit**. Existing grants,
+compensation, birthday and saved plans in the signed-in account are never read or
+replaced by this setup. The login identity stays unchanged for authentication,
+admin access and OAuth; financial API requests use the browser fixture and its
+own encryption key. Financial pages wait for setup, and their APIs refuse access
+before a fixture exists. The birthday returned by `/api/me` is the fixture's.
+
+Reopening the same profile preserves edits across reloads and later sign-ins.
+In **Settings**, choose a different profile or **Reset current fictional profile**,
+then explicitly confirm **Reset fictional workspace** to discard testing edits.
+Reset previews save nothing; confirmation tokens become stale after a reset.
+The browser workspace and each MCP connection have independent fictional data.
+Sharing and device/email notifications are disabled in fictional workspaces so
+testing cannot expose shared real records or move a real device subscription.
+Account deletion is also disabled there; admins retain their ordinary identity.
+
+Invalid or stale reset confirmations appear in Admin errors as
+`StagingSetupRefused`, with a fixed reason code and a reference attached to the
+browser's problem-report trail. No stored financial values enter the diagnostic;
+repeated attempts reuse an unresolved diagnostic for the same account and reason.
 
 Repeated setup with the same scenario preserves testing edits. To discard edits
 or change scenarios, call `reset_test_account` without `confirm`, obtain explicit
@@ -1911,8 +1927,18 @@ its owner removes its synthetic financial rows through the canonical deletion
 service. Nightly connector cleanup also removes orphaned fixtures and fixtures
 idle for 30 days; expired fixtures require setup again. The PostgreSQL race tests use the test-only `TEST_POSTGRES_URL` supplied by
 the backend CI service; without it those cases skip locally. The implementation lives
-in `scaffold/synthetic_accounts.py` (isolation/lifecycle) and
-`app/mcp/test_account_tools.py` (demo-profile persistence and MCP tools).
+in `scaffold/synthetic_accounts.py` (isolation/lifecycle),
+`scaffold/web_test_accounts.py` (browser request routing), and
+`app/mcp/test_account_tools.py` (shared fixture persistence and MCP tools).
+Browser bindings use a null OAuth grant with one per owner enforced by a partial
+unique index; the normal Alembic deployment applies this schema change.
+
+The ordinary E2E suite runs in development mode. CI then restarts its disposable
+backend with `E2E_APP_ENV=staging` and runs `staging-mcp.spec.ts`, including mobile
+taps, persistence and confirmed profile changes, and uploads staging screenshots.
+Local targeted runs use `E2E_LOCAL=1 APP_ENV=staging PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`.
+The local E2E exception requires `E2E_TEST=1` and no domain; it does not enable MCP
+provisioning outside the official staging domain.
 
 Synthetic staging MCP cards (fictional fixtures only):
 

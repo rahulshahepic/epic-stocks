@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { Page } from '@playwright/test'
 
+test.use({ hasTouch: true })
+
 async function capture(page: Page, file: string) {
   await page.evaluate(() => new Promise<void>(resolve => { window.scrollTo(0, 0); requestAnimationFrame(() => requestAnimationFrame(() => resolve())) }))
   await page.screenshot({ path: file, fullPage: true, style: '[aria-label="Mobile navigation"]{visibility:hidden!important}' })
@@ -63,3 +65,35 @@ for (const theme of ['light', 'dark'] as const) {
     await capture(page, `../screenshots/oauth-registration-recovery-${theme}-mobile.png`)
   })
 }
+
+
+test('mobile fictional workspace persists edits and confirms profile changes', async ({ page }) => {
+  test.skip(!(await (await page.request.get('/api/config')).json()).staging_demo, 'Staging-only workflow')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.request.post('/api/auth/test-login', { data: { email: `workspace-mobile-${test.info().retry}@e2e.test`, name: 'Fictional Browser Tester' } })
+  await page.goto('/')
+  await page.getByRole('button', { name: /Load Early career/ }).tap()
+  await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toHaveCount(0)
+  expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
+  await page.request.put('/api/retirement/params', { data: { params: { defaultSpend: 77 } } })
+  await page.reload()
+  await expect(page.getByText('Staging environment — fictional test data')).toBeVisible()
+  expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /Load Established/ }).tap()
+  await expect(page.getByRole('button', { name: 'Reset fictional workspace' })).toBeVisible()
+  expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
+  await capture(page, '../screenshots/staging-workspace-reset-dark-mobile.png')
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+  await page.getByRole('button', { name: 'Keep testing edits' }).tap()
+  expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
+  for (const [label, count] of [['Established', 20], ['Planning an exit', 40]] as const) {
+    await page.getByRole('button', { name: `Load ${label}` }).tap()
+    await page.getByRole('button', { name: 'Reset fictional workspace' }).tap()
+    await expect(page.getByRole('heading', { name: 'Fictional staging workspace' })).toHaveCount(0)
+    expect((await (await page.request.get('/api/grants')).json()).length).toBe(count)
+    await page.goto('/settings')
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+})

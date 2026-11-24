@@ -217,6 +217,17 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if bool(user.is_admin) != is_admin:
         user.is_admin = is_admin
         db.commit()
+    from scaffold.web_test_accounts import financial_user
+    active = financial_user(request, db, user)
+    if active is not None:
+        if encryption_enabled() and active.encrypted_key:
+            set_current_key(decrypt_user_key(active.encrypted_key))
+        else:
+            set_current_key(None)
+        return active
+    from scaffold.synthetic_accounts import requires_synthetic
+    if requires_synthetic() and request.url.path == '/api/me' and request.method == 'DELETE':
+        raise HTTPException(403, 'Account deletion is unavailable in fictional staging workspaces.')
     if encryption_enabled() and user.encrypted_key:
         set_current_key(decrypt_user_key(user.encrypted_key))
     else:

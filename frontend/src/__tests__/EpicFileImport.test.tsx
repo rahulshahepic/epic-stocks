@@ -88,7 +88,7 @@ describe('EpicFileImport', () => {
     await readFiles()
     expect(await screen.findByText('679,000')).toBeInTheDocument()
     expect(screen.getByText('$3,795,000')).toBeInTheDocument()
-    expect(screen.getByText(/Everything reconciles/)).toBeInTheDocument()
+    expect(screen.getByText(/No blocking discrepancies found/)).toBeInTheDocument()
   })
 
   it('offers no assistant help when nothing disagrees', async () => {
@@ -134,7 +134,7 @@ describe('EpicFileImport', () => {
 
     await waitFor(() => expect(calls.length).toBe(2))
     expect(calls[1].body?.get('revised_json')).toContain('grants')
-    expect(await screen.findByText(/Everything reconciles/)).toBeInTheDocument()
+    expect(await screen.findByText(/No blocking discrepancies found/)).toBeInTheDocument()
   })
 
   it('accepts the reply as a file too', async () => {
@@ -160,7 +160,7 @@ describe('EpicFileImport', () => {
 
     await userEvent.type(screen.getByLabelText(/Paste the reply/), 'b')
     await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
-    expect(await screen.findByText(/Everything reconciles/)).toBeInTheDocument()
+    expect(await screen.findByText(/No blocking discrepancies found/)).toBeInTheDocument()
     expect(calls.length).toBe(3)
   })
 
@@ -244,7 +244,7 @@ describe('EpicFileImport — current share price', () => {
     renderCard()
     await readFiles()
 
-    await screen.findByText(/Everything reconciles/)
+    await screen.findByText(/No blocking discrepancies found/)
     expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
   })
 

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import ImportEvidence from './ImportEvidence.tsx'
 import EurekaFileGuide from './EurekaFileGuide.tsx'
 import ChangeList from './ChangeList.tsx'
 import type { Change } from '../../api.ts'
@@ -28,7 +29,7 @@ function Stat({ label, value }: { label: string; value: string }) {
  * back the same way. What it would change is listed on one screen: untick
  * anything you do not want, check, and save.
  */
-export default function EpicFileImport() {
+export default function EpicFileImport({ allowAssistant = false }: { allowAssistant?: boolean }) {
   const [csv, setCsv] = useState<File | null>(null)
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('idle')
@@ -103,7 +104,7 @@ export default function EpicFileImport() {
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
       <span className="text-sm font-semibold text-cs-text">Import from Eureka</span>
-      <div className="mt-2"><EurekaFileGuide /></div>
+      <div className="mt-2"><EurekaFileGuide allowAssistant={allowAssistant} /></div>
       <span className="mt-2 text-xs text-cs-muted">
         Vesting dates start from the company grant schedule; you can change any
         of them afterwards on the Grants page.
@@ -150,7 +151,8 @@ export default function EpicFileImport() {
 
       {stage === 'result' && result && (
         <div className="mt-4 border-t border-cs-border pt-3">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+          <ImportEvidence evidence={result.reconciliation ?? []} />
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <Stat label="Grants" value={String(result.summary.grants)} />
             <Stat label="Loans" value={String(result.summary.loans)} />
             <Stat label="Total shares" value={result.summary.total_shares.toLocaleString()} />
@@ -170,7 +172,7 @@ export default function EpicFileImport() {
               ? 'The statement does not add up to its own totals — some of it was misread.'
               : counts.errors > 0
                 ? `${counts.errors} figure(s) do not agree between your two files.`
-                : 'Everything reconciles against the totals in your own paperwork.'}
+                : 'No blocking discrepancies found. Review the checks and missing evidence above before saving.'}
           </p>
 
           <FindingList findings={result.findings} />

@@ -1,3 +1,7 @@
+import ExitDateComparison from '../components/ExitDateComparison.tsx'
+import ReminderOffer from '../components/ReminderOffer.tsx'
+import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
+import EquityTerms from '../components/EquityTerms.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
@@ -169,7 +173,7 @@ export default function Dashboard() {
         .catch(() => { if (!cancelled) setExitPreview(null) })
     }, 200)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [cardDate, showExitPreview, vid])
+  }, [cardDate, showExitPreview, vid, taxSettings])
 
   // Investment interest deduction preview
   const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
@@ -330,6 +334,7 @@ export default function Dashboard() {
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
   const showDeductionCard = !!cv && (hasInterestDeduction || hasInterestLoans)
   const totalValue = cv?.total_stock_value ?? null
+  const datedExit = exitPreview && exitPreview !== 'loading' && exitPreview.date === cardDate ? exitPreview : null
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
@@ -348,9 +353,12 @@ export default function Dashboard() {
             <div>
               <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {cv.net_equity === null ? '—' : fmt$(cv.net_equity)}
+                {showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (cv.net_equity === null ? '—' : fmt$(cv.net_equity))}
               </p>
-              <p className="mt-2 text-sm font-semibold text-white">Net worth in Epic stock</p>
+              <p className="mt-2 text-sm font-semibold text-white">{showExitPreview ? 'Estimated cash from leaving on this date' : 'Stock equity before exit tax'}</p>
+              {showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
+              {showExitPreview && datedExit && <p className="mt-2 text-xs text-white">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection come from your saved settings; price {cv.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>}
+              {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
             </div>
             <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
               <p className="font-bold tabular-nums">
@@ -379,8 +387,9 @@ export default function Dashboard() {
       {/* Date selector for card values */}
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
+          <label htmlFor="dashboard-date" className="shrink-0 text-xs font-medium text-cs-muted">As of</label>
           <input
+            id="dashboard-date"
             type="date"
             value={cardDate}
             max={maxDate}
@@ -418,6 +427,10 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <EquityTerms terms={['vesting', 'basis', 'loan', 'tax', 'exit', 'price']} />
+
+      {!readOnly && cardDate === today && snapshot && <ReminderOffer event={events?.find(e => e.date > today && (e.event_type === 'Vesting' || e.event_type === 'Loan Payoff')) ?? null} />}
+
       {events && <StockJourney events={events} asOf={cardDate} />}
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -427,21 +440,6 @@ export default function Dashboard() {
 
       {!snapshot && <div role={dashError ? 'alert' : 'status'} className="text-sm text-cs-muted">
         {dashError ? <>Could not load totals for {fmtFullDate(cardDate)}. <button type="button" onClick={reloadDash} className="underline">Retry</button></> : 'Loading totals…'}
-      </div>}
-
-      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
-      {cv && <div aria-live="polite" aria-atomic="true" className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
-
-        <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
-          totalValue={totalValue} openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-
-        <EarningsCards cv={cv} breakdowns={breakdowns}
-          openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-
-        <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
-          hasInterestDeduction={hasInterestDeduction}
-          openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
       </div>}
 
       {snapshot && showExitPreview && (
@@ -467,20 +465,44 @@ export default function Dashboard() {
                       <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </span>
                   </div>
-                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Net Cash at Exit</p>
+                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Total Cash Through Exit</p>
                   <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
+                  <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
                 </button>
                 <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
                 <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" subtitle="Principal + accrued interest" />
                 <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
               </div>
               {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
+              <ExitDateComparison date={cardDate} invitationId={vid} />
             </>
           ) : (
-            <p className="text-xs text-cs-muted">No price data for this date</p>
+            <p className="text-xs text-cs-muted">Exit estimate unavailable for this date</p>
           )}
         </div>
       )}
+
+
+      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
+      {cv && <div aria-live="polite" aria-atomic="true" className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
+
+        <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
+          totalValue={totalValue} openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+
+        <details className="space-y-3">
+          <summary className="cursor-pointer py-2 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
+          <EarningsCards cv={cv} breakdowns={breakdowns}
+            openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+
+          <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
+            hasInterestDeduction={hasInterestDeduction}
+            openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+        </details>
+      </div>}
+
+
+      {!readOnly && snapshot && <AnnualStockSummary />}
 
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction

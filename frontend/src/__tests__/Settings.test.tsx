@@ -243,3 +243,41 @@ describe('Settings', () => {
     )
   })
 })
+
+
+it('keeps the annual checkbox disabled until the initial preference is known', async () => {
+  mockPushSupport()
+  let finish!: (response: Response) => void
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/api/config')) return new Response(JSON.stringify({email_notifications_available: true}), {status: 200})
+    if (url.includes('/api/notifications/email')) return new Promise<Response>(resolve => { finish = resolve })
+    return new Response(JSON.stringify(STATUS()), {status: 200})
+  })
+  renderPage()
+  const checkbox = await screen.findByRole('checkbox', {name: /Include an annual stock summary/})
+  expect(checkbox).toBeDisabled()
+  await userEvent.click(checkbox)
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+  finish(new Response(JSON.stringify({enabled: false, annual_summary_enabled: true}), {status: 200}))
+  await waitFor(() => { expect(checkbox).toBeEnabled(); expect(checkbox).toBeChecked() })
+})
+
+
+it('offers a retry when notification preferences cannot be read', async () => {
+  mockPushSupport()
+  let reads = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/api/config')) return new Response(JSON.stringify({email_notifications_available: true}), {status: 200})
+    if (url.includes('/api/notifications/email')) {
+      reads++
+      return reads === 1 ? new Response(JSON.stringify({detail: 'Unavailable'}), {status: 503}) : new Response(JSON.stringify({enabled: false, annual_summary_enabled: false}), {status: 200})
+    }
+    return new Response(JSON.stringify(STATUS()), {status: 200})
+  })
+  renderPage()
+  await userEvent.click(await screen.findByRole('button', {name: 'Retry notifications'}))
+  await waitFor(() => expect(screen.getByRole('checkbox', {name: /Include an annual stock summary/})).toBeEnabled())
+  expect(reads).toBe(2)
+})

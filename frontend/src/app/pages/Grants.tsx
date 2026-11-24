@@ -1,3 +1,4 @@
+import EquityTerms from '../components/EquityTerms.tsx'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
@@ -608,6 +609,7 @@ export default function Grants() {
           </div>
         )}
       </div>
+      <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax']} />
       {epicMode && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-cs-brand dark:bg-indigo-900/20 dark:text-rose-300">
           {readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic — view only'}

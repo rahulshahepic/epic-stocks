@@ -1,3 +1,4 @@
+import EquityTerms from './EquityTerms.tsx'
 import { Link } from 'react-router-dom'
 import ChatImportIntro from './ChatImportIntro.tsx'
 import EpicFileImport from './EpicFileImport.tsx'
@@ -15,9 +16,15 @@ export default function GetStarted() {
           Pick whichever is easiest. You can mix them, and change anything later.
         </p>
       </div>
-      <EpicFileImport />
+      <EpicFileImport allowAssistant={!!config?.ai_connections && !config?.epic_mode} />
 
       {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
+      <Card as="section" pad="md">
+        <h3 className="text-sm font-medium text-cs-text">Your first stock offer?</h3>
+        <p className="mt-1 text-xs leading-relaxed text-cs-text-2">You can start with a single grant from your offer; you do not need a full history. Add the proposed shares, purchase price and any loan from the agreement, then review the assumptions before comparing compensation.</p>
+        <Link to="/comp-calculator" className="mt-2 inline-block py-2 text-xs font-medium text-cs-brand hover:underline">Explore total compensation</Link>
+      </Card>
+      <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax', 'price']} />
       <Card as="section" pad="md">
         <h3 className="text-sm font-medium text-cs-text">Enter it yourself</h3>
         <p className="mt-1 text-xs text-cs-text-2">

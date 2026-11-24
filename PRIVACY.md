@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-08-29
+**Last updated:** 2026-11-24
 
 Epic Stocks is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
 
@@ -52,7 +52,7 @@ When you use **Report a problem**, the report stores what you typed, the page yo
 
 **No financial data is ever included in a report** — no share counts, no prices, no loan amounts, no computed figures. Reports raised from a failed import carry only the identifiers of the rules that fired (`C1`, `G3`, and so on), never the text of those findings, because that text quotes figures from your own statement. The dialog shows the full payload before you send it.
 
-A one-way hash of your IP address is stored with each report, to rate-limit abuse of an endpoint that has to work without a login. The address itself is not stored, and the hash cannot be turned back into one.
+A one-way hash of your IP address is stored with each report, to rate-limit abuse of an endpoint that has to work without a login. The report does not store the raw address. Server and proxy access logs are separate and depend on operator configuration.
 
 Reports are readable by the site operator, who is emailed when one arrives, and can be deleted by them once handled.
 
@@ -63,7 +63,7 @@ The application computes an event timeline (vesting events, income, capital gain
 ### What We Don't Collect
 
 - Passwords (authentication is handled entirely by your identity provider via OIDC)
-- Analytics or usage tracking
+- Per-person analytics, cross-site tracking, or a third-party analytics service. The anonymous preview records daily request totals for import attempts, valid files, source checks, format refusals, processing-time buckets, computed previews, save clicks and signup carryover reports. The upload form can turn counting off, Do Not Track is respected, and rows older than 180 days are pruned on the next counted event. These counts have no visitor identifier or financial payload and are not unique-user conversion or accuracy measurements.
 - Cookies beyond the authentication session token
 - Data from other users
 - Any data from your identity provider beyond the profile fields listed above
@@ -82,7 +82,7 @@ The application computes an event timeline (vesting events, income, capital gain
 You have full access to your own data through the application UI and API. You can:
 
 - View, create, update, and delete all your grants, loans, and prices
-- Export all your data to Excel at any time
+- Export your financial records to Excel at any time
 - **Sign out everywhere** — invalidate every active session for your account on every browser and device in one action (Settings > Account > Sign Out Everywhere)
 - **Reset your data** — delete all grants, loans, and prices while keeping your account (Settings > Danger Zone > Reset All Data)
 - **Delete your account** — permanently remove your account and all associated data, including grants, loans, prices, sales, loan payments, tax settings, retirement scenario inputs, dashboard preferences, date of birth, notification preferences, push subscriptions, and any active sharing invitations (Settings > Danger Zone > Delete Account)
@@ -91,7 +91,7 @@ Both data-deletion actions are self-service, immediate, and irreversible. No adm
 
 ### The Site Operator
 
-The person or organization running this server has **technical access** to the server environment. Your financial data — grants, loans, prices, sales (including notes and actual tax paid), loan payments (including notes), tax rates, date of birth, retirement scenario inputs, and pre-import backup snapshots — is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). Dashboard display preferences are stored as plain values. However, the operator holds the master key and could decrypt the encrypted data if they chose to.
+The person or organization running this server has **technical access** to the server environment. Your financial data — grants, loans, prices, sales (including notes and actual tax paid), loan payments (including notes), tax rates, date of birth, retirement scenario inputs, and pre-import backup snapshots — uses per-user AES-256-GCM encryption when server encryption is configured. Encryption configuration must be verified by the operator. Dashboard display preferences are stored as plain values. However, the operator holds the master key and could decrypt the encrypted data if they chose to.
 
 **If you are uncomfortable with this, you have options:**
 
@@ -142,24 +142,24 @@ The site operator uses the following third-party infrastructure. Your data may p
 
 - **Your OIDC identity provider** (e.g. Google, Azure Entra ID) — to verify your identity during sign-in. Your provider receives your credentials; the application only receives your profile fields (email, name, profile picture, subject ID).
 - **Hetzner** — the VPS hosting provider. The application and database run on Hetzner hardware. Hetzner has physical and administrative access to the server environment.
-- **Cloudflare** — used for DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network, which means Cloudflare can observe (but does not decrypt, under standard configuration) the metadata of your requests.
+- **Cloudflare** — used for DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network, which means a deployment using Cloudflare as a TLS-terminating proxy allows it to process request contents as well as connection metadata. The exact handling depends on the operator's configuration.
 - **Porkbun** — domain registrar. Porkbun manages the domain name; they have no access to your application data.
 - **Resend** — used to deliver email notifications and invitation emails (if configured). Resend receives the recipient address and email content. Email notifications contain **no financial data** — only a summary count of events (e.g., "you have 2 events today") and a link to log in. Invitation emails contain only the inviter's display name, a one-time code, and a link — no financial data. No share counts, prices, or loan amounts are included in any email.
 - **Push notifications** (if enabled) — delivered via the Web Push protocol through your browser vendor's push service (e.g., Google FCM for Chrome). Notification content contains no financial data — only an event count summary.
 
-None of these services receive your financial data for their own purposes, and your data is never sold to any of them or to any other third party.
+Hosting providers and a TLS-terminating proxy can have technical access to request contents or server data. Email and push messages omit financial amounts. We do not sell your data.
 
 ## Data Retention
 
 - Your data persists until you explicitly delete it or delete your account
 - **Resetting your data** (Settings > Danger Zone) removes all grants, loans, and prices but keeps your account active
-- **Deleting your account** (Settings > Danger Zone) permanently removes your user record and all associated data: grants, loans, prices, sales, loan payments, tax settings, retirement scenario inputs, dashboard preferences, date of birth, push subscriptions, email preferences, and active invitations
-- Both actions take effect immediately and cannot be undone
-- There are no backups unless the site operator configures them independently
+- **Deleting your account** (Settings > Danger Zone) removes your live user record and associated account data: grants, loans, prices, sales, loan payments, tax settings, retirement scenario inputs, dashboard preferences, date of birth, push subscriptions, email preferences, and active invitations
+- Both actions affect the live database immediately and cannot be undone through the app. Diagnostic reports are retained with account-identifying fields removed; anonymous daily totals have no account link.
+- If configured, encrypted off-site backups can retain deleted records under the operator's retention policy. The backup system keeps at least the newest seven complete backups, so archives can remain beyond the nominal retention window, especially if backups stop. Deletion removes live account data immediately; it does not rewrite existing backup archives. The operator must prevent a restore from reactivating deleted accounts. Ask the operator for the configured retention and restore procedure.
 
 ## Data Portability
 
-You can export all your data at any time using the Excel export feature. The export includes your grants, loans, prices, and computed event timeline.
+You can export your financial records at any time using the Excel export feature. The export includes your grants, loans, prices, and computed event timeline.
 
 ## For Self-Hosters / Site Operators
 

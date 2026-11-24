@@ -12,12 +12,12 @@ from tests.conftest import register_user, user_key
 # EMAIL PREFERENCE ENDPOINTS
 # ============================================================
 
-def test_email_pref_default_enabled(client):
-    """New users get email notifications enabled by default."""
+def test_email_pref_default_disabled(client):
+    """New users choose email notifications explicitly."""
     register_user(client)
     resp = client.get("/api/notifications/email")
     assert resp.status_code == 200
-    assert resp.json()["enabled"] is True
+    assert resp.json()["enabled"] is False
 
 
 def test_email_pref_enable(client):
@@ -50,8 +50,8 @@ def test_email_pref_user_isolation(client, make_client):
 
     with make_client("user2@test.com") as client2:
         resp = client2.get("/api/notifications/email")
-        # user2 still has default enabled
-        assert resp.json()["enabled"] is True
+        # user2 has the separate default-off preference
+        assert resp.json()["enabled"] is False
 
 
 # ============================================================
@@ -204,7 +204,7 @@ def test_send_daily_notifications_with_email(client, db_session):
 
     register_user(client)
     user = db_session.query(User).first()
-    # Email is enabled by default for new users, no need to create preference
+    client.put("/api/notifications/email?enabled=true", json={})
     with user_key(user):
         db_session.add(Grant(
             user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
@@ -270,13 +270,13 @@ def test_invite_accepted_uses_name_over_email(client, make_client, db_session):
 # ============================================================
 
 def test_new_user_gets_email_preference_row(client, db_session):
-    """New user creation auto-creates EmailPreference with enabled=1."""
+    """New user creation auto-creates EmailPreference with enabled=0."""
     register_user(client)
     from scaffold.models import User, EmailPreference
     user = db_session.query(User).first()
     pref = db_session.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
     assert pref is not None
-    assert pref.enabled == 1
+    assert pref.enabled == 0
 
 
 # ============================================================

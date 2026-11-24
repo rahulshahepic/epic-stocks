@@ -120,6 +120,7 @@ class TestOneClickUnsubscribe:
         for them — which is the whole reason RFC 8058 asks for a POST.
         """
         register_user(client, "bob@test.com")
+        client.put("/api/notifications/email?enabled=true", json={})
         from scaffold.email_sender import generate_unsubscribe_token
         token = generate_unsubscribe_token("bob@test.com", "notify")
         with patch.dict(os.environ, {"APP_URL": "https://example.com"}):

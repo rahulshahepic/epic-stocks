@@ -221,8 +221,9 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
     if exit_projection is not None:
         interest_paid_total = round(sum(p.interest_paid for p in exit_projection.payoffs
                                         if date.today() <= p.date), 2)
-    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding
-                        - projected_loans - accrued_interest - unfunded), 2)
+    liquidation_balance = round(gross_vested + unvested_cost - liq_tax - outstanding
+                                - projected_loans - accrued_interest - unfunded, 2)
+    liq_net = max(0.0, liquidation_balance)
     net_cash = round(prior_sales_net + liq_net + deduction_savings, 2)
 
     return {
@@ -244,6 +245,8 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         "deduction_years": deduction_years,
         "deduction_excluded_years": sorted(excluded_years) if deduction_enabled and excluded_years else [],
         "net_cash": net_cash,
+        "liquidation_net_cash": liq_net,
+        "liquidation_shortfall": max(0.0, -liquidation_balance),
     }
 
 
@@ -1161,3 +1164,33 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
         return {**payload, 'as_of': cutoff.isoformat(), **details}
     return _as_of_view(payload, as_of, timeline) if as_of is not None else payload
+
+
+@router.get("/annual-stock-summary")
+def get_annual_stock_summary(year: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not 1901 <= year < date.today().year:
+        raise HTTPException(status_code=400, detail="Choose a completed calendar year from 1901 onward")
+    from app.annual_summary import annual_summary
+    return annual_summary(user, db, year)
+
+
+def _compare_exit_year(user, db, date_str):
+    import calendar
+    try:
+        start = date.fromisoformat(date_str)
+        end = start.replace(year=start.year + 1, day=min(start.day, calendar.monthrange(start.year + 1, start.month)[1]))
+    except (ValueError, OverflowError):
+        raise HTTPException(status_code=422, detail="Choose a valid date before year 9999") from None
+    first = _preview_exit_data(user, db, start.isoformat())
+    later = _preview_exit_data(user, db, end.isoformat())
+    if first is None or later is None:
+        return None
+    return {"date": start.isoformat(), "later_date": end.isoformat(),
+            "cash_change": round(later["net_cash"] - first["net_cash"], 2),
+            "first_price": first["share_price"], "later_price": later["share_price"],
+            "note": "A projection using only saved grants, schedules, sales, loans, prices and tax/settlement assumptions. Future prices may be estimates; no future grant or salary is assumed. Total cash includes modeled interim sales and deduction savings. This difference is not guaranteed compensation or investment return."}
+
+
+@router.get("/compare-exit-year")
+def compare_exit_year(date: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _compare_exit_year(user, db, date)

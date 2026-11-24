@@ -34,7 +34,15 @@ export interface UnansweredSale {
   notes: string
 }
 
+export interface ReconciliationEvidence {
+  label: string
+  status: 'matched' | 'mismatch' | 'not_available' | 'estimated' | 'stale'
+  detail: string
+  rule_ids: string[]
+}
+
 export interface AnalyzeResponse {
+  reconciliation?: ReconciliationEvidence[]
   draft: Record<string, unknown>
   /** True when the newest price in the files is from an earlier year. */
   price_is_stale: boolean

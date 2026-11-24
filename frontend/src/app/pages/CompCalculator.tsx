@@ -1,3 +1,4 @@
+import EquityTerms from '../components/EquityTerms.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar, Cell, CartesianGrid, ComposedChart, Line, ReferenceLine,
@@ -1113,6 +1114,7 @@ function CompCalculatorAccount() {
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The arithmetic study</p>
         <h1 className="mt-1 font-serif text-2xl font-semibold text-cs-text">Total Comp Calculator</h1>
+        <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax']} />
       </div>
 
       <div className="rounded-xl border border-cs-border bg-cs-raised ">

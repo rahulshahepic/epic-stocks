@@ -117,6 +117,17 @@ test.describe('Screenshots', () => {
     })
   }
 
+  for (const theme of ['light', 'dark'] as const) {
+    test('MCP saved amount connection - ' + theme, async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const card = await retirementHost(page, theme, { initial: { ...mobileEditorSnapshot, canProjectExit: false } })
+      await card.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
+      await card.locator('#exitEstimateDetails > summary').click()
+      await expect(card.locator('#projectExit')).toBeDisabled()
+      await card.locator('#editView > section').first().screenshot({ path: `${OUT}/mcp-retirement-fixed-${theme}-mobile.png` })
+    })
+  }
+
   test('MCP assumptions editor - light - mobile', async ({ page }) => {
     await page.setViewportSize(MOBILE)
     const card = await retirementHost(page, 'light')

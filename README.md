@@ -418,9 +418,13 @@ proceeds for the selected retirement date by default. An explicitly supplied sal
 amount stays fixed; **Epic sale estimate settings** lets you choose a fixed amount
 instead. **Save** updates only your edited inputs unless you explicitly choose
 **Also save this Epic sale estimate as a fixed amount** in those settings.
-Projections use your saved price assumptions and are not guarantees.
+Connections without stock-data access keep using the fixed amount, with the
+projection controls disabled and explained. Projections use your saved price
+assumptions and are not guarantees.
 
 ![Retirement controls](screenshots/mcp-retirement-controls-dark-mobile.png)
+
+![Fixed amount without stock-data access](screenshots/mcp-retirement-fixed-dark-mobile.png)
 
 | Event actions | Mobile navigation |
 | --- | --- |

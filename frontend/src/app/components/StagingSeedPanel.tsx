@@ -24,10 +24,15 @@ export default function StagingSeedPanel({
     setError('')
     setPendingReset(null)
     try {
-      const response = await apiFetchRaw('/api/demo/seed', {
+      const request = {
         method: 'POST',
         body: JSON.stringify({ profile, ...(confirm ? { confirm } : {}), ...(reset ? { reset: true } : {}) })
-      })
+      }
+      let response = await apiFetchRaw('/api/demo/seed', request)
+      for (let retry = 0; retry < 2 && response.status === 409 && response.headers.get('Retry-After') === '1'; retry++) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        response = await apiFetchRaw('/api/demo/seed', request)
+      }
       if (!response.ok) {
         const data = await response.json().catch(() => null)
         if (data?.detail?.code === 'reset_required' && typeof data.detail.confirm === 'string') {

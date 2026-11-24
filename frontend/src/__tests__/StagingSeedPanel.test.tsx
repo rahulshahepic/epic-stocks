@@ -59,3 +59,13 @@ it('keeps testing edits when reset is cancelled', async () => {
   expect(screen.queryByRole('button', { name: 'Reset fictional workspace' })).not.toBeInTheDocument()
   expect(apiFetchRaw).toHaveBeenCalledTimes(1)
 })
+it('retries a transient busy response using the server retry hint', async () => {
+  const onSeeded = vi.fn()
+  vi.mocked(apiFetchRaw)
+    .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Synthetic account is busy' }), { status: 409, headers: { 'Retry-After': '1' } }))
+    .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+  render(<StagingSeedPanel onSeeded={onSeeded} />)
+  fireEvent.click(screen.getByRole('button', { name: /Load Early career/ }))
+  await vi.waitFor(() => expect(onSeeded).toHaveBeenCalledOnce(), { timeout: 2500 })
+  expect(apiFetchRaw).toHaveBeenCalledTimes(2)
+})

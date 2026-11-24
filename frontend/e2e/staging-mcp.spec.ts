@@ -76,7 +76,14 @@ test('mobile fictional workspace persists edits and confirms profile changes', a
   await page.getByRole('button', { name: /Load Early career/ }).tap()
   await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toHaveCount(0)
   expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
-  await page.request.put('/api/retirement/params', { data: { params: { defaultSpend: 77 } } })
+  await expect(page.getByText('Estimated cash from leaving on this date', { exact: false })).toBeVisible()
+  const savedParams = (await (await page.request.get('/api/retirement/params')).json()).params
+  await expect.poll(async () => {
+    const response = await page.request.put('/api/retirement/params', { data: { params: { ...savedParams, defaultSpend: 77 } } })
+    if (response.status() !== 409) expect(response.ok(), await response.text()).toBe(true)
+    return response.status()
+  }).toBe(200)
+  expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)
   await page.reload()
   await expect(page.getByText('Staging environment — fictional test data')).toBeVisible()
   expect((await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)

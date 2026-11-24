@@ -274,6 +274,7 @@ test('saving a projected exit requires a completed projection for the selected d
   await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
   await card.locator('#exitEstimateDetails > summary').click()
   await card.locator('#projectExit').check()
+  await card.getByLabel('Also save this Epic sale estimate as a fixed amount', { exact: true }).check()
   await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
   await expect(card.locator('#resultsView')).toBeVisible()
   await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
@@ -303,7 +304,7 @@ test('lowering spending does not send a resolved spending floor or other derived
     name?: string; arguments?: { overrides?: Record<string, unknown>; changes?: Record<string, unknown> }
   } }[] }).pluginCalls)
   expect(calls.find(c => c.params.name === 'refresh_retirement_view')?.params.arguments?.overrides).toEqual({ defaultSpend: 50 })
-  expect(calls.find(c => c.params.name === 'update_retirement_params')?.params.arguments?.changes).toEqual({ defaultSpend: 50, epicExit: 9 })
+  expect(calls.find(c => c.params.name === 'update_retirement_params')?.params.arguments?.changes).toEqual({ defaultSpend: 50 })
 })
 
 test('financing requires a supplied rate and permits an intentional zero rate', async ({ page }) => {
@@ -462,4 +463,20 @@ test('date-based Epic sale estimate is the default while explicit amounts stay f
   await fixed.getByRole('button', { name: 'Edit plan assumptions' }).click()
   await expect(fixed.locator('#projectExit')).not.toBeChecked()
   await expect(fixed.locator('#exitModeSummary')).toContainText('fixed Epic sale amount')
+})
+
+test('saving ordinary inputs does not require or save an Epic sale projection', async ({ page }) => {
+  const card = await retirementHost(page)
+  await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
+  await card.locator('#spend').fill('200')
+  await card.getByRole('button', { name: 'Save these inputs' }).click()
+  await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
+  const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: { name?: string; arguments?: { changes?: Record<string, unknown> } } }[] }).pluginCalls)
+  expect(calls.some(c => c.params.name === 'refresh_retirement_view')).toBe(false)
+  expect(calls.find(c => c.params.name === 'update_retirement_params')?.params.arguments?.changes).toEqual({ defaultSpend: 200 })
+  await card.locator('#exitEstimateDetails > summary').click()
+  await expect(card.locator('#saveExit')).not.toBeChecked()
+  await card.locator('#saveExit').check()
+  await card.locator('#projectExit').uncheck()
+  await expect(card.locator('#saveExit')).not.toBeChecked()
 })

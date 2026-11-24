@@ -416,7 +416,9 @@ The comparison action is labelled **Compare impact**, and navigation labels wrap
 within their buttons on narrow screens. Running a simulation estimates Epic sale
 proceeds for the selected retirement date by default. An explicitly supplied sale
 amount stays fixed; **Epic sale estimate settings** lets you choose a fixed amount
-instead. Projections use your saved price assumptions and are not guarantees.
+instead. **Save** updates only your edited inputs unless you explicitly choose
+**Also save this Epic sale estimate as a fixed amount** in those settings.
+Projections use your saved price assumptions and are not guarantees.
 
 ![Retirement controls](screenshots/mcp-retirement-controls-dark-mobile.png)
 

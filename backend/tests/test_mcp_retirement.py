@@ -560,3 +560,25 @@ def test_invalid_depreciation_presets_rejected(patch):
     event = {"id": "car", "title": "Car", "kind": "vehicle", "date": "2032-01-01", "amountM": .1, "lifetimeYears": 10}
     with pytest.raises(ValueError):
         validate_planned_events([{**event, **patch}])
+
+
+@pytest.mark.parametrize("scope,can_project", [("comp:read", False), ("comp:read equity:read", True)])
+def test_card_reports_projection_capability(client, monkeypatch, scope, can_project):
+    from app.mcp import retirement_tools
+    register_user(client)
+    monkeypatch.setattr(retirement_tools, "run", lambda *a, **kw: {
+        "retirementDate": "2032-01-02", "exitSource": "saved_exit",
+        "assumptions": {}, "result": {}, "saved": False,
+    })
+    reader = Mcp(client, scope=scope)
+    for tool in ("show_retirement", "refresh_retirement_view"):
+        assert reader.call(tool)["canProjectExit"] is can_project
+    events = [{"id": "college", "title": "Tuition", "kind": "education",
+               "date": "2040-01-01", "amountM": 0.1}]
+    monkeypatch.setattr(retirement_tools, "run", lambda *a, **kw: {
+        "retirementDate": "2032-01-02", "exitSource": "saved_exit",
+        "assumptions": {}, "result": {"pctFundingShortfall": 0.01, "medianFinalM": 5, "p10FinalM": 1}, "saved": False,
+    })
+    planned = reader.call("plan_life_events", events=events, recalculate_exit=False)
+    assert planned["baseline"]["canProjectExit"] is can_project
+    assert planned["withEvents"]["canProjectExit"] is can_project

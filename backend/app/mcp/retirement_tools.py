@@ -98,6 +98,7 @@ _RUN_INPUT = object_schema({
 _RESULT = object_schema({
     "retirementDate": {"type": "string"},
     "exitSource": {"type": "string"},
+    "canProjectExit": {"type": "boolean", "description": "Whether this connection can estimate dated Epic sale proceeds from equity data."},
     "assumptions": {"type": "object", "description": "Resolved values for display, including defaults and computed projections. Never reuse as input overrides."},
     "inputOverrides": {"type": "object", "description": "Only explicitly supplied overrides. Preserve these across interactive runs; derived assumptions are not user inputs."},
     "result": {"type": "object"},
@@ -116,8 +117,9 @@ def _run(ctx: ToolContext, args: dict):
     saved = owner.retirement_params or {}
     missing_exit = "epicExit" not in saved and "epicExit" not in (args.get("overrides") or {})
     implicit_exit = missing_exit and "recalculate_exit" not in args and EQUITY_READ in ctx.connector.scopes
-    return run(owner, overrides=args.get("overrides"),
-               recalculate_exit=args.get("recalculate_exit", implicit_exit))
+    return {**run(owner, overrides=args.get("overrides"),
+                  recalculate_exit=args.get("recalculate_exit", implicit_exit)),
+            "canProjectExit": EQUITY_READ in ctx.connector.scopes}
 
 
 def _update(ctx: ToolContext, args: dict):
@@ -160,7 +162,8 @@ def _compare(ctx: ToolContext, args: dict):
             raise ValueError("Date-specific Epic exit projections require equity:read")
         result = run(owner, overrides=item.get("overrides"),
                      recalculate_exit=recalc)
-        results.append({"name": name, **result})
+        results.append({"name": name, **result,
+                        "canProjectExit": EQUITY_READ in ctx.connector.scopes})
     return {"scenarios": results, "saved": False,
             "note": "All scenarios use the same random seed by default. Epic exit projections use the date-specific price assumptions and are not guarantees."}
 
@@ -229,6 +232,8 @@ def _plan_life_events(ctx: ToolContext, args: dict):
     base = {**(args.get("overrides") or {}), "plannedEvents": []}
     before = run(owner, overrides=base, recalculate_exit=recalc)
     after = run(owner, overrides={**base, "plannedEvents": events}, recalculate_exit=recalc)
+    for result in (before, after):
+        result["canProjectExit"] = EQUITY_READ in ctx.connector.scopes
     a, b = before["result"], after["result"]
     # The shared JS cash-flow engine schedules by calendar month, not day.
     current_month = date.today().isoformat()[:7]

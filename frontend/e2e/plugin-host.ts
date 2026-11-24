@@ -71,10 +71,20 @@ export async function pluginHost(page: Page, options: { view?: keyof typeof snap
 
 const retirementHtml = readFileSync(fileURLToPath(new URL('../../backend/app/mcp/retirement.html', import.meta.url)), 'utf8')
 export const retirementSnapshot = {
-  retirementDate:'2032-01-02',exitSource:'saved_exit',saved:false,inputOverrides:{} as Record<string, unknown>,
+  retirementDate:'2032-01-02',exitSource:'saved_exit',canProjectExit:true,saved:false,inputOverrides:{} as Record<string, unknown>,
   assumptions:{epicExit:6,taxableAdditional:1,traditional:.5,roth:.2,defaultSpend:180,minSpend:100,healthInsurance:25,stockPct:.7,bondPct:.2,scenario:'cautious',currentAge:48,endAge:91,paths:1000,seed:1729},
   result:{paths:1000,startingTotalM:7.7,pctFundingShortfall:.03,pctExhausted:.01,medianFinalM:12.4,
     wealthByAge:[{age:48,p10:7.7,p50:7.7,p90:7.7},{age:68,p10:4,p50:10,p90:20},{age:91,p10:2,p50:12.4,p90:40}]},
+}
+
+export const mobileEditorSnapshot = {
+  ...retirementSnapshot,
+  saved: true,
+  assumptions: { ...retirementSnapshot.assumptions, plannedEvents: [
+    { id: 'home', title: 'Future home with space for visiting family', kind: 'home', date: '2038-01-01', amountM: 2, annualCostM: 0.03, condition: { requireFullSpending: true, minStartingWealthRatio: 1.3 } },
+    { id: 'college', title: 'Four years of private college', kind: 'education', date: '2044-08-01', amountM: 0, annualCostM: 0.1, durationYears: 4 },
+    { id: 'car', title: 'Weekend sports car', kind: 'vehicle', date: '2036-01-01', amountM: 0.2, annualCostM: 0.01, lifetimeYears: 15, replacementEveryYears: 15 },
+  ] },
 }
 
 export const purchaseSnapshot = {

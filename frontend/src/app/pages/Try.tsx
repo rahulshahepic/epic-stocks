@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import EurekaFileGuide from '../components/EurekaFileGuide.tsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
@@ -164,12 +165,7 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
   return (
     <Card className="text-left">
       <Eyebrow className="mb-2">No account needed</Eyebrow>
-      <p className="text-sm leading-relaxed text-cs-text-2">
-        Download these two files from Eureka:
-        your latest <strong>Stock Loan Statement</strong> and{' '}
-        <strong>Data for Stock Workbook</strong>. Upload them exactly as they
-        download — no editing needed.
-      </p>
+      <EurekaFileGuide />
 
       <div className="mt-4 space-y-3">
         <div>
@@ -207,8 +203,9 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
       )}
 
       <p className="mt-3 text-[11px] leading-relaxed text-cs-muted">
-        Your files are read and thrown away — nothing is stored and no account is
-        created. Close or refresh this tab and it is gone.
+        Files are sent to the server to be read, then discarded. The preview stays
+        in this tab until you close or refresh it. Choosing Save & sign up keeps
+        the draft on this device for sign-in. Anonymous daily usage counts are recorded.
       </p>
     </Card>
   )
@@ -490,7 +487,7 @@ export default function Try() {
             </h1>
             <UnofficialBadge className="mt-2" />
             <p className="mx-auto mt-2 max-w-[26rem] text-sm leading-relaxed text-cs-text-2">
-              No sign-up, no email. Upload the two files Eureka already gives you
+              No sign-up, no email. Upload your Eureka files
               and get your dashboard and full vesting timeline in this tab.
             </p>
           </div>
@@ -573,6 +570,15 @@ export default function Try() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
+        {(!csv || !pdf) && (
+          <Card>
+            <p className="text-sm text-cs-text-2">
+              {!csv
+                ? 'Partial preview: no stock workbook was uploaded. Grant and share details need checking.'
+                : 'No loan statement uploaded. If you have loans, this preview may understate debt. If you have none, no statement is needed.'}
+            </p>
+          </Card>
+        )}
         {(result.blocked || errors > 0) && (
           <Card>
             <p className={`text-xs font-medium ${result.blocked ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`}>

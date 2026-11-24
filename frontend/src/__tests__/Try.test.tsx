@@ -120,6 +120,16 @@ describe('Try — upload stage', () => {
     expect(screen.getByText(/No account needed/i)).toBeInTheDocument()
   })
 
+  it('explains partial inputs and server processing before upload', async () => {
+    mockFetch(CLEAN)
+    renderTry()
+    await userEvent.click(screen.getByText('Which files do I need?'))
+    expect(screen.getByText(/No loans\? You can skip/)).toBeVisible()
+    expect(screen.getByText(/Files are sent to the server/)).toBeVisible()
+    await upload()
+    expect(screen.getByText(/No loan statement uploaded/)).toBeVisible()
+  })
+
   it('surfaces a server error instead of a blank panel', async () => {
     mockFetch(new Response(JSON.stringify({ detail: 'Upload your share summary CSV' }), { status: 400 }))
     renderTry()

@@ -74,7 +74,7 @@ export default function Layout() {
             </div>
           </div>
           <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 overflow-x-auto px-6 pb-2.5 lg:px-8 md:flex">
-            {navItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-cs-brand text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</NavLink>)}
+            {navItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</NavLink>)}
           </nav>
         </header>
       </div>

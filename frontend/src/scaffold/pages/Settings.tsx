@@ -26,6 +26,7 @@ export default function Settings() {
 
   const [emailEnabled, setEmailEnabled] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
+  const summaryChannelEnabled = !!((config?.email_notifications_available && emailEnabled) || (config?.vapid_public_key && (push.state === 'on' || push.otherDevices > 0)))
   const [advanceDays, setAdvanceDays] = useState(0)
   const [advanceDaysLoading, setAdvanceDaysLoading] = useState(false)
   const [pushTestLoading, setPushTestLoading] = useState(false)
@@ -134,7 +135,7 @@ export default function Settings() {
             {!notificationPrefsLoaded && !notificationPrefsError && <p role="status" className="mt-3 text-xs text-cs-muted">Loading notification preferences…</p>}
             {notificationPrefsError && <p role="alert" className="mt-3 text-xs text-cs-text-2">Could not load notification preferences. <button type="button" onClick={() => void loadEmailPref()} className="underline">Retry notifications</button></p>}
             <label className="mt-3 flex items-start gap-2 text-xs text-cs-text-2">
-              <input type="checkbox" checked={annualSummary} disabled={summarySaving || !notificationPrefsLoaded} onChange={async e => {
+              <input type="checkbox" checked={annualSummary} disabled={summarySaving || !notificationPrefsLoaded || (!summaryChannelEnabled && !annualSummary)} onChange={async e => {
                 const enabled = e.target.checked
                 ++preferenceRequest.current
                 setSummarySaving(true)
@@ -145,6 +146,7 @@ export default function Settings() {
               }} />
               Include an annual stock summary in January through my enabled notification channels. No financial amounts in the preview.
             </label>
+            {notificationPrefsLoaded && !summaryChannelEnabled && <p className="mt-2 text-xs text-cs-text-2">Turn on email or push notifications to receive the annual summary. Your summary preference is kept, but delivery is paused until a channel is enabled.</p>}
             {summarySaving && <p role="status" className="mt-2 text-xs text-cs-muted">Saving annual-summary preference…</p>}
             {summaryError && <p role="alert" className="mt-2 text-xs text-cs-text-2">Could not save the annual-summary preference. Try again.</p>}
           </>}

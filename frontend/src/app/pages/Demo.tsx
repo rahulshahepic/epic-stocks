@@ -7,6 +7,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer
 } from 'recharts'
 import {
@@ -40,7 +41,9 @@ export default function Demo() {
   const colors = useChartColors()
   const [profile, setProfile] = useState<DemoProfile>('established')
   const [asOf, setAsOf] = useState(DEMO_DATE)
+  const [retirementDate, setRetirementDate] = useState('2032-01-01')
   const [tab, setTab] = useState<Tab>('Overview')
+  const viewDate = tab === 'Retirement' ? retirementDate : asOf
   const [data, setData] = useState<DemoData | null>(null)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -56,7 +59,7 @@ export default function Demo() {
   useEffect(() => {
     const abort = new AbortController()
     let active = true
-    loadDemo(profile, asOf, abort.signal, requestedShares)
+    loadDemo(profile, viewDate, abort.signal, tab === 'Retirement' ? undefined : requestedShares)
       .then((result) => {
         if (active) {
           setData(result)
@@ -73,7 +76,7 @@ export default function Demo() {
       active = false
       abort.abort()
     }
-  }, [profile, asOf, requestedShares, revision])
+  }, [profile, viewDate, requestedShares, revision, tab])
   useEffect(() => () => worker.current?.terminate(), [])
 
   function invalidate() {
@@ -90,6 +93,7 @@ export default function Demo() {
     invalidate()
     setProfile('established')
     setAsOf(DEMO_DATE)
+    setRetirementDate('2032-01-01')
     setRequestedShares(undefined)
     setSaleShares('100')
     setSpend('65')
@@ -112,7 +116,7 @@ export default function Demo() {
     setError('')
     const info = data.profiles[profile]
     const age =
-      info.age + Number(asOf.slice(0, 4)) - Number(DEMO_DATE.slice(0, 4))
+      info.age + Number(retirementDate.slice(0, 4)) - Number(DEMO_DATE.slice(0, 4))
     const w = new Worker(
       new URL('../workers/demoSimulation.ts', import.meta.url),
       { type: 'module' }
@@ -142,7 +146,7 @@ export default function Demo() {
       minSpend: Number(spend) * 0.7,
       currentAge: age,
       endAge: 95,
-      simulationStartDate: asOf,
+      simulationStartDate: retirementDate,
       asOfDate: DEMO_DATE,
       stateLTCGRate: 0.0536
     })
@@ -199,16 +203,19 @@ export default function Demo() {
       </section>
       <div className="flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1 text-xs font-semibold">
-          Explore as of
+          {tab === 'Retirement' ? 'Retirement date' : 'Explore as of'}
           <input
             className={input}
             type="date"
             min={DEMO_DATE}
             max="2042-12-31"
-            value={asOf}
+            value={viewDate}
             onChange={(e) => {
+              const value = e.target.value
+              if (!value || value < DEMO_DATE || value > '2042-12-31') return
               invalidate()
-              setAsOf(e.target.value)
+              if (tab === 'Retirement') setRetirementDate(value)
+              else setAsOf(value)
               setRequestedShares(undefined)
             }}
           />
@@ -227,7 +234,7 @@ export default function Demo() {
               key={t}
               aria-pressed={tab === t}
               className={`${button} ${tab === t ? 'bg-cs-brand-subtle border-cs-brand' : ''}`}
-              onClick={() => setTab(t)}
+              onClick={() => { if ((tab === 'Retirement') !== (t === 'Retirement')) invalidate(); setTab(t) }}
             >
               {t}
             </button>
@@ -409,7 +416,7 @@ export default function Demo() {
                 Try a fictional retirement
               </h2>
               <p className="text-sm text-cs-text-2">
-                Retire on the selected date using modeled exit cash plus{' '}
+                Retire on {fmtFullDate(retirementDate)} using modeled exit cash plus{' '}
                 {fmt$(data.profiles[profile].other_assets_m * 1_000_000)} of
                 fictional brokerage savings (basis equals balance). This uses
                 the account simulator with 2,000 repeatable paths.
@@ -495,6 +502,7 @@ export default function Demo() {
                         <XAxis dataKey="age" stroke={colors.axis} tick={{ fontSize: 11 }} minTickGap={20} />
                         <YAxis width={45} stroke={colors.axis} tick={{ fontSize: 11 }} />
                         <Tooltip contentStyle={{ background: colors.tooltipBg, color: colors.tooltipText, border: `1px solid ${colors.grid}` }} />
+                        <Legend />
                         <Line
                           isAnimationActive={false}
                           dataKey="p10"

@@ -30,3 +30,27 @@ Local targeted audit suite on 2026-11-24: **281 passed, 1 skipped** across uploa
 Do not convert an unverified row to Passed based on a source comment. For each blocker, record the responsible person, environment, exact commit/deployment, date, procedure, observable result and a redacted evidence link. The operator owns operational checks; Rahul owns company permission and pilot recruitment. Re-run affected checks after material changes. Broad advertisement waits for operational blockers and the pilot's critical defects to clear; the candidate release is frozen except for usability, accuracy and security fixes.
 
 Current decision: **Hold broad rollout pending live evidence and first-use pilot.** This does not block ordinary reviewed code fixes.
+
+## Outstanding evidence handoff (2026-11-24 hygiene)
+
+Use this record for **each** live check; empty entries are pending, never passes:
+
+| Field | Required value |
+|---|---|
+| Owner | Responsible operator or authorized employee |
+| Environment / build | Staging or production and exact deployed SHA |
+| Performed at | UTC time of the actual check |
+| Procedure | Command/runbook and synthetic fixture used |
+| Result | Observable success, refusal or failure; no secret or financial payload |
+| Evidence | Redacted log/artifact reference and related issue |
+| Recheck trigger | Relevant configuration, code or schema change |
+
+#664 needs authorized internal document-discovery verification (procedure in
+`first-use-pilot.md`). #666 remains blocked on the live evidence rows above,
+including the offline key holder's restore drill; passing repository tests
+cannot fill these. #667 needs recruitment and actual uncoached observations;
+the score calculator now validates denominators and blockers. #671 has daily
+request counts and a de-identified pilot scoring path; production activation
+tracking still needs an approved measurement model. Keep these issues open
+until their specific evidence is attached. The four software regressions
+#691/#693/#694/#695 are independently fixable without claiming rollout approval.

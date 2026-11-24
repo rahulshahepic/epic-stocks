@@ -20,6 +20,7 @@ for (const theme of ['light', 'dark'] as const) {
           mutations.push(r.url())
       })
       await page.goto('/login')
+      expect((await new AxeBuilder({page}).analyze()).violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await page
         .getByRole('link', { name: /Explore a fictional employee demo/ })
         .click()

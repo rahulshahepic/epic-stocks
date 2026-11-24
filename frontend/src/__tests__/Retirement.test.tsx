@@ -45,6 +45,7 @@ const TAX_SETTINGS = {
 }
 
 function mockApi(opts: {
+  emptyGrants?: boolean
   netCash?: number | null
   dob?: string | null
   savedParams?: Record<string, unknown> | null
@@ -73,6 +74,7 @@ function mockApi(opts: {
     if (url.includes('/api/sharing/view/') && url.includes('/tax-settings')) {
       return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
     }
+    if (url === '/api/grants') return new Response(JSON.stringify(opts.emptyGrants ? [] : [{id: 1}]), {status: 200})
     if (url.includes('/api/preview-exit')) {
       const nc = opts.netCash
       const body = nc == null
@@ -690,4 +692,24 @@ it('aborts the previous autosave when a newer spending edit supersedes it', asyn
   }, { timeout: 2500 })
   fireEvent.change(spending, { target: { value: '77' } })
   await waitFor(() => expect(signal?.aborted).toBe(true))
+})
+
+
+it('saves an empty-account plan with zero exit and preserves spending on reload', async () => {
+  mockApi({ emptyGrants: true, netCash: null, savedParams: null })
+  const first = render(<MemoryRouter><Retirement /></MemoryRouter>)
+  expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
+  expect(screen.getByRole('button', {name: /Simulate.*retirements/})).toBeEnabled()
+  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '77'}})
+  let saved: Record<string, unknown> | undefined
+  await waitFor(() => {
+    saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+      .map(([, init]) => JSON.parse(String(init?.body)).params).find(p => p?.defaultSpend === 77)
+    expect(saved).toMatchObject({epicExit: 0, epicExitMode: 'auto'})
+  })
+  first.unmount()
+  mockApi({ emptyGrants: true, netCash: null, savedParams: saved })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
+  expect(screen.getByLabelText(/^Default spend/)).toHaveValue(77)
 })

@@ -58,7 +58,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
         />
         <Card
           label="Next Event"
-          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}${estimatedPriceChange ? ' (est.)' : ''}` : 'None'}
+          value={cv.next_event ? `${fmtFullDate(cv.next_event.date)} — ${cv.next_event.event_type}${estimatedPriceChange ? ' (est.)' : ''}` : 'None'}
           variant="event"
           subtitle={estimatedPriceChange
             ? `Estimated price; announcement expected ~${next?.expected_announcement_date ? fmtFullDate(next.expected_announcement_date) : 'later'}`

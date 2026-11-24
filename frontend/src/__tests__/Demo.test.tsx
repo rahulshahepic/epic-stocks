@@ -86,7 +86,7 @@ describe('anonymous demo', () => {
       ).toHaveAttribute('aria-pressed', 'true')
     )
     fireEvent.click(screen.getByRole('button', { name: 'Retirement' }))
-    expect(screen.getByText(/\$1,200,000/)).toBeInTheDocument()
+    expect(await screen.findByText(/\$1,200,000/)).toBeInTheDocument()
   })
   it('shows failed requests and retries without stale cards', async () => {
     vi.mocked(loadDemo).mockRejectedValueOnce(
@@ -139,6 +139,69 @@ it('does not simulate retirement while the modeled exit has an unfunded shortfal
   show()
   await screen.findByText('Share cards')
   fireEvent.click(screen.getByRole('button', { name: 'Retirement' }))
-  expect(screen.getByRole('button', { name: 'Run simulation' })).toBeDisabled()
+  expect(await screen.findByRole('button', { name: 'Run simulation' })).toBeDisabled()
   expect(screen.getByRole('status')).toHaveTextContent('exit shortfall')
+})
+
+
+it('uses a separate future retirement date and ignores cleared or out-of-range dates', async () => {
+  show()
+  await screen.findByText('Share cards')
+  fireEvent.change(screen.getByLabelText('Explore as of'), {target: {value: ''}})
+  expect(screen.getByLabelText('Explore as of')).toHaveValue('2026-11-24')
+  fireEvent.click(screen.getByRole('button', {name: 'Retirement'}))
+  expect(await screen.findByRole('button', {name: 'Run simulation'})).toBeVisible()
+  expect(screen.getByLabelText('Retirement date')).toHaveValue('2032-01-01')
+  expect(loadDemo).toHaveBeenLastCalledWith('established', '2032-01-01', expect.any(AbortSignal), undefined)
+  fireEvent.change(screen.getByLabelText('Retirement date'), {target: {value: '2035-01-01'}})
+  await waitFor(() => expect(loadDemo).toHaveBeenLastCalledWith('established', '2035-01-01', expect.any(AbortSignal), undefined))
+  await screen.findByRole('button', {name: 'Run simulation'})
+  fireEvent.change(screen.getByLabelText('Retirement date'), {target: {value: '2050-01-01'}})
+  expect(screen.getByLabelText('Retirement date')).toHaveValue('2035-01-01')
+  fireEvent.click(screen.getByRole('button', {name: 'Overview'}))
+  await screen.findByText('Share cards')
+  expect(screen.getByLabelText('Explore as of')).toHaveValue('2026-11-24')
+})
+
+
+it('reloads when overview and retirement dates happen to match', async () => {
+  show()
+  await screen.findByText('Share cards')
+  fireEvent.change(screen.getByLabelText('Explore as of'), {target: {value: '2032-01-01'}})
+  await screen.findByText('Share cards')
+  fireEvent.click(screen.getByRole('button', {name: 'Retirement'}))
+  expect(await screen.findByRole('button', {name: 'Run simulation'})).toBeVisible()
+  fireEvent.click(screen.getByRole('button', {name: 'Overview'}))
+  expect(await screen.findByText('Share cards')).toBeVisible()
+})
+
+
+it('sends the retirement date, age and dated exit to the worker together', async () => {
+  const post = vi.fn()
+  const terminate = vi.fn()
+  vi.stubGlobal('Worker', class { postMessage = post; terminate = terminate })
+  const data = result('established')
+  data.exit = {net_cash: 1_000_000, liquidation_shortfall: 0} as DemoData['exit']
+  vi.mocked(loadDemo).mockResolvedValue(data)
+  try {
+    show()
+    await screen.findByText('Share cards')
+    fireEvent.click(screen.getByRole('button', {name: 'Retirement'}))
+    fireEvent.click(await screen.findByRole('button', {name: 'Run simulation'}))
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({simulationStartDate: '2032-01-01', currentAge: 44, epicExit: 1}))
+  } finally { vi.unstubAllGlobals() }
+})
+
+
+it('does not send an overview sale quote into the retirement projection', async () => {
+  show()
+  await screen.findByText('Share cards')
+  fireEvent.click(screen.getByRole('button', {name: 'Sale what-if'}))
+  fireEvent.change(screen.getByLabelText('Shares to sell'), {target: {value: '1000'}})
+  fireEvent.click(screen.getByRole('button', {name: 'Estimate sale'}))
+  await waitFor(() => expect(loadDemo).toHaveBeenLastCalledWith('established', '2026-11-24', expect.any(AbortSignal), 1000))
+  await screen.findByLabelText('Shares to sell')
+  fireEvent.click(screen.getByRole('button', {name: 'Retirement'}))
+  await screen.findByRole('button', {name: 'Run simulation'})
+  expect(loadDemo).toHaveBeenLastCalledWith('established', '2032-01-01', expect.any(AbortSignal), undefined)
 })

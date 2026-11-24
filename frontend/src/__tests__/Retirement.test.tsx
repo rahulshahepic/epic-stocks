@@ -674,3 +674,20 @@ it('pauses an automatic plan when projection fails and allows an explicit manual
   expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeEnabled()
   expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5)
 })
+
+it('aborts the previous autosave when a newer spending edit supersedes it', async () => {
+  mockApi({ netCash: 0, savedParams: { defaultSpend: 40, epicExitMode: 'manual', epicExit: 1 } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  const spending = await screen.findByLabelText(/^Default spend/)
+  fireEvent.change(spending, { target: { value: '60' } })
+  let signal: AbortSignal | undefined
+  await waitFor(() => {
+    const calls = vi.mocked(globalThis.fetch).mock.calls
+    const first = calls.find(([, init]) => init?.method === 'PUT' && String(init.body).includes('"defaultSpend":60'))
+    expect(first).toBeTruthy()
+    signal = first?.[1]?.signal ?? undefined
+    expect(signal?.aborted).toBe(false)
+  }, { timeout: 2500 })
+  fireEvent.change(spending, { target: { value: '77' } })
+  await waitFor(() => expect(signal?.aborted).toBe(true))
+})

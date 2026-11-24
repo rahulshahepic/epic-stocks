@@ -453,6 +453,7 @@ function RetirementAccount() {
   const [ownerDOB, setOwnerDOB] = useState<string | null>(null)
   const [ownerName, setOwnerName] = useState<string | null>(null)
   const [savingDOB, setSavingDOB] = useState(false)
+  const dobSaveController = useRef<AbortController | null>(null)
   const [spouseDOB, setSpouseDOB] = useState<string | null>(null)
   const resultsStale = completedRun != null && (
     completedRun.retirementDate !== retirementDate ||
@@ -465,6 +466,7 @@ function RetirementAccount() {
   const [showRuinTable, setShowRuinTable] = useState(false)
 
   const vid = viewing?.invitationId
+  useEffect(() => () => dobSaveController.current?.abort(), [vid])
 
   // Resolve who's DOB we're showing. When viewing, fetch the owner's profile;
   // otherwise use the cached /me data.
@@ -626,13 +628,20 @@ function RetirementAccount() {
 
   const saveDOB = useCallback(async (newDOB: string) => {
     if (vid) return // viewer can't edit owner's DOB
+    dobSaveController.current?.abort()
+    const controller = new AbortController()
+    dobSaveController.current = controller
     setSavingDOB(true)
     try {
-      const result = await api.updateProfile({ date_of_birth: newDOB || '' })
-      setOwnerDOB(result.date_of_birth)
-      updateMeCache({ date_of_birth: result.date_of_birth })
+      const result = await api.updateProfile({ date_of_birth: newDOB || '' }, controller.signal)
+      if (!controller.signal.aborted) {
+        setOwnerDOB(result.date_of_birth)
+        updateMeCache({ date_of_birth: result.date_of_birth })
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) throw error
     } finally {
-      setSavingDOB(false)
+      if (dobSaveController.current === controller) setSavingDOB(false)
     }
   }, [vid])
 
@@ -643,6 +652,7 @@ function RetirementAccount() {
   useEffect(() => {
     if (vid || !paramsLoadedRef.current || (exitMode === 'auto' && (exitPreviewLoading || exitError))) return
     const request = ++saveRequestRef.current
+    const controller = new AbortController()
     setSaveStatus('saving')
     setSaveError('')
     const t = setTimeout(() => {
@@ -651,17 +661,17 @@ function RetirementAccount() {
         retirementDate,
         ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
-      })
+      }, controller.signal)
         .then(() => {
-          if (request === saveRequestRef.current) setSaveStatus('saved')
+          if (!controller.signal.aborted && request === saveRequestRef.current) setSaveStatus('saved')
         })
         .catch((err: unknown) => {
-          if (request !== saveRequestRef.current) return
+          if (controller.signal.aborted || request !== saveRequestRef.current) return
           setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
           setSaveStatus('error')
         })
     }, 500)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); controller.abort() }
   }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth

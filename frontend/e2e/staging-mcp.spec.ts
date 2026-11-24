@@ -78,14 +78,18 @@ test('mobile fictional workspace persists edits and confirms profile changes', a
   expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
   await page.goto('/retirement')
   const spending = page.getByLabel(/^Default spend/)
-  await expect(spending).toBeVisible()
+  await expect(spending).toHaveValue('40')
   let busyInjected = false
   await page.route('**/api/retirement/params', async route => {
-    if (route.request().method() === 'PUT' && !busyInjected) {
+    if (route.request().method() === 'PUT' && route.request().postDataJSON()?.params?.defaultSpend === 66 && !busyInjected) {
       busyInjected = true
       await route.fulfill({ status: 409, headers: { 'Retry-After': '1' }, contentType: 'application/json', body: JSON.stringify({ detail: 'Synthetic account is busy; retry this request shortly.' }) })
     } else await route.continue()
   })
+  const refusedSave = page.waitForResponse(response => response.url().endsWith('/api/retirement/params') && response.request().method() === 'PUT' && response.status() === 409)
+  await spending.fill('66')
+  await spending.press('Tab')
+  await refusedSave
   await spending.fill('77')
   await spending.press('Tab')
   await expect.poll(async () => (await (await page.request.get('/api/retirement/params')).json()).params.defaultSpend).toBe(77)

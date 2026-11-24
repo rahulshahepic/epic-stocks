@@ -295,6 +295,7 @@ jobs:
         # a live Claude/ChatGPT session, or real customer account data.
         env:
           E2E_BASE_URL: http://127.0.0.1:8000
+          SCREENSHOT_BASE_URL: http://127.0.0.1:8000
           SCREENSHOT_EMAIL: synthetic-mcp-screenshots@example.test
         run: |
           cd frontend

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiFetch, apiFetchBlob, apiFetchRaw, isLoggedIn } from '../api.ts'
+import { api, apiFetch, apiFetchBlob, apiFetchRaw, isLoggedIn } from '../api.ts'
 import { platform } from '../platform/index.ts'
 
 describe('isLoggedIn', () => {
@@ -189,4 +189,23 @@ describe('transient account contention', () => {
     await expect(apiFetch('/api/retirement/params', { method: 'PUT', body: '{}' })).rejects.toThrow('Synthetic account is busy')
     expect(fetch).toHaveBeenCalledTimes(3)
   })
+})
+
+it('cancels an older busy autosave so it cannot overwrite a newer value', async () => {
+  vi.restoreAllMocks()
+  let saved = 0
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+    const value = JSON.parse(String(init?.body)).params.defaultSpend
+    if (value === 60 && saved === 0) return new Response('{}', { status: 409, headers: { 'Retry-After': '1' } })
+    saved = value
+    return new Response('{}', { status: 200 })
+  })
+  const controller = new AbortController()
+  const old = api.saveRetirementParams({ defaultSpend: 60 }, controller.signal).catch(error => error)
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+  controller.abort()
+  await api.saveRetirementParams({ defaultSpend: 77 })
+  expect((await old).name).toBe('AbortError')
+  expect(saved).toBe(77)
+  expect(fetch).toHaveBeenCalledTimes(2)
 })

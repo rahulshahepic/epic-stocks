@@ -116,7 +116,7 @@ def _reset(ctx, args):
     if args.get('confirm') is None:
         return {**account_context(ctx), 'reset': False, 'confirm': token, 'scenario_to_restore': scenario,
                 'warning': 'Deletes all testing modifications in this connection only. Ask for explicit confirmation, then repeat with this token.'}
-    if not isinstance(args['confirm'], str) or not hmac.compare_digest(args['confirm'], token):
+    if not isinstance(args['confirm'], str) or not args['confirm'].isascii() or not hmac.compare_digest(args['confirm'], token):
         raise ValueError('Reset confirmation is invalid or stale. Preview reset again.')
     with synthetic_key(ctx.db, row.synthetic_id):
         try:

@@ -87,6 +87,7 @@ def test_reset_tokens_isolation_and_stale_import(staging, db_session):
     reset = staging.call('reset_test_account')
     assert reset['reset'] is False
     assert 'invalid' in staging.error('reset_test_account', confirm='wrong')
+    assert 'invalid' in staging.error('reset_test_account', confirm='not-a-token-\u2603')
     assert staging.call('list_prices')['current_price'] == 500
     restored = staging.call('reset_test_account', confirm=reset['confirm'])
     assert restored['generation'] != status['generation']

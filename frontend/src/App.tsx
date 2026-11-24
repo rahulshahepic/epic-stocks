@@ -12,6 +12,7 @@ import { useMaintenance } from './scaffold/contexts/maintenance.ts'
 import { ViewingProvider } from './scaffold/contexts/ViewingContext.tsx'
 import Login from './scaffold/pages/Login.tsx'
 import Try from './app/pages/Try.tsx'
+import Demo from './app/pages/Demo.tsx'
 import AuthCallback from './scaffold/pages/AuthCallback.tsx'
 import InviteLanding from './scaffold/pages/InviteLanding.tsx'
 import Unsubscribe from './scaffold/pages/Unsubscribe.tsx'
@@ -68,6 +69,7 @@ export default function App() {
                   <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/try" element={<Try />} />
+                    <Route path="/demo" element={<Demo />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/invite" element={<InviteLanding />} />
                     <Route path="/unsubscribe" element={<Unsubscribe />} />

@@ -18,6 +18,7 @@ RETENTION_DAYS = 30
 _LOCK_SLOTS = threading.BoundedSemaphore(2)
 _READ_LOCK_SLOTS = threading.BoundedSemaphore(16)
 _LOCK_ENGINES = {}
+_LOCK_ENGINES_GUARD = threading.Lock()
 _MEMORY_LOCK_NAMESPACE = uuid.uuid4().hex
 _ALL_GRANTS = object()
 
@@ -58,9 +59,10 @@ def account_lock(db, principal_id, *, shared=False):
         # Lock connections do not borrow from the financial session pool. This
         # prevents N locks from consuming all N connections before work starts.
         url = db.get_bind().url
-        engine = _LOCK_ENGINES.get(url)
-        if engine is None:
-            engine = _LOCK_ENGINES[url] = create_engine(url, poolclass=NullPool)
+        with _LOCK_ENGINES_GUARD:
+            engine = _LOCK_ENGINES.get(url)
+            if engine is None:
+                engine = _LOCK_ENGINES[url] = create_engine(url, poolclass=NullPool)
         slots = _READ_LOCK_SLOTS if shared else _LOCK_SLOTS
         if not slots.acquire(blocking=False):
             raise SyntheticAccountBusy('Synthetic accounts are busy; retry this request shortly.')
@@ -95,9 +97,20 @@ def account_lock(db, principal_id, *, shared=False):
 
 
 @contextmanager
+def lifecycle_lock(db, user_id):
+    # Production cannot provision fixtures. Historical bindings still need the
+    # guard for cleanup, but ordinary production accounts need no lock slot.
+    if not requires_synthetic() and not db.query(MCPTestAccount.id).filter_by(user_id=user_id).first():
+        yield
+        return
+    with account_lock(db, user_id):
+        yield
+
+
+@contextmanager
 def deletion_lock(db, user_id):
     """Keep the guard until the caller's outer transaction commits/rolls back."""
-    guard = account_lock(db, user_id)
+    guard = lifecycle_lock(db, user_id)
     guard.__enter__()
     released = False
     def release(session, transaction):

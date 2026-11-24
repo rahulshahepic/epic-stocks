@@ -426,6 +426,7 @@ function RetirementAccount() {
   const [legacyExitDate, setLegacyExitDate] = useState<string | null>(null)
   const legacyExitHeld = legacyExitDate === retirementDate
   const [exitError, setExitError] = useState('')
+  const [emptyEquity, setEmptyEquity] = useState(false)
   const [exitRetry, setExitRetry] = useState(0)
   const [advancedView, setAdvancedView] = useState(false)
   const defaultSpendOverriddenRef = useRef(false)
@@ -568,10 +569,20 @@ function RetirementAccount() {
     let cancelled = false
     setExitPreviewLoading(true)
     setExitError('')
+    setEmptyEquity(false)
     const fetcher = vid ? api.getSharedPreviewExit(vid, retirementDate) : api.previewExit(retirementDate)
     fetcher
-      .then(p => {
+      .then(async p => {
         if (cancelled) return
+        if (!p) {
+          const grants = await (vid ? api.getSharedGrants(vid) : api.getGrants())
+          if (cancelled) return
+          if (grants.length === 0) {
+            setEmptyEquity(true)
+            setParams(prev => ({ ...prev, epicExit: 0 }))
+            return
+          }
+        }
         if (!p || p.date !== retirementDate) throw new Error('No exit projection is available for this date. Retry, or choose a manual exit amount.')
         const m = Number((p.net_cash / 1_000_000).toFixed(3))
         setParams(prev => ({ ...prev, epicExit: Math.max(0, m) }))
@@ -958,6 +969,7 @@ function RetirementAccount() {
             <p className="text-xs text-cs-text-2">{legacyExitHeld ? 'Saved exit amount kept for this date. Changing the date will project a new amount; choose manual to keep a fixed override.' : exitMode === 'auto' ? 'Epic exit: projected automatically for the retirement date using saved share prices and future price estimates. No additional Epic share growth is assumed here; edit future prices on the Prices page.' : 'Epic exit: manual amount. Date changes keep this override.'}</p>
             <button type="button" onClick={() => { setLegacyExitDate(null); setExitMode(m => m === 'auto' ? 'manual' : 'auto') }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
             {legacyExitHeld && <button type="button" onClick={() => setLegacyExitDate(null)} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
+            {exitMode === 'auto' && emptyEquity && <p className="text-xs text-cs-text-2">No stock imported yet. Epic exit is $0; you can save your other inputs. Import your stock to project an exit, or enter a manual amount.</p>}
             {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => setExitRetry(n => n + 1)} className="underline">Retry exit projection</button></p>}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">

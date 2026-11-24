@@ -1949,3 +1949,27 @@ Synthetic staging MCP cards (fictional fixtures only):
 
 ![Fictional portfolio](screenshots/mcp-synthetic-portfolio-light-mobile.png)
 ![Fictional retirement plan](screenshots/mcp-synthetic-retirement-dark-mobile.png)
+
+### Rollout follow-up and first-use fixes
+
+An empty stock account can save retirement inputs with a $0 automatic Epic
+exit; importing stock later supplies the projection. Existing holdings whose
+projection fails still require a retry or explicit manual exit amount.
+The anonymous demo has its own retirement date (initially January 1, 2032),
+separate from its stock overview date. Its chart legend identifies the three
+percentile paths; cleared/out-of-range dates keep the last valid selection.
+The landing-page hero links directly to the demo.
+Annual-summary opt-in requires an enabled email or push channel. An existing
+opt-in is retained when all channels are off, with a visible delivery-paused
+explanation. Ordinary production Disconnect and account deletion use no
+synthetic lock slot; staging and historical fixture cleanup retain isolation.
+
+The [first-use pilot](docs/first-use-pilot.md) includes a strict de-identified
+observation schema and `ops/score_first_use_pilot.py` aggregate scorer. It counts
+first attempts, retries, coaching, verified accuracy, stage completion and
+blockers separately. The [readiness register](docs/employee-rollout-readiness.md)
+lists the live operational and human evidence still required before rollout.
+
+| Empty-account retirement | Summary awaiting a channel |
+|---|---|
+| ![Retirement inputs without stock](screenshots/retirement-empty-light-mobile.png) | ![Summary delivery eligibility](screenshots/summary-no-channel-dark-mobile.png) |

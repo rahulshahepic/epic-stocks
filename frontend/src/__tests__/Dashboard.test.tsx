@@ -237,7 +237,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
     expect(screen.getAllByText('$75,000').length).toBeGreaterThan(0)
-    expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
+    expect(screen.getByText('Mar 1, 2027 — Vesting')).toBeInTheDocument()
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
 
@@ -406,11 +406,11 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
+      expect(screen.getByText('Mar 1, 2027 — Vesting')).toBeInTheDocument()
     })
     expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
 
-    const nextEventButton = screen.getByText(/2027-03-01/).closest('button')
+    const nextEventButton = screen.getByText('Mar 1, 2027 — Vesting').closest('button')
     expect(nextEventButton).toBeTruthy()
     fireEvent.click(nextEventButton!)
 
@@ -435,7 +435,7 @@ describe('Dashboard', () => {
     try {
       renderDashboard()
       await waitFor(() => {
-        expect(screen.getByText('2027-01-01 — Share Price (est.)')).toBeInTheDocument()
+        expect(screen.getByText('Jan 1, 2027 — Share Price (est.)')).toBeInTheDocument()
       })
       expect(screen.getByText(/announcement expected/i)).toBeInTheDocument()
     } finally {

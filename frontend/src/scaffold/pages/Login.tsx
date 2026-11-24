@@ -57,7 +57,9 @@ export default function Login() {
               <span className="campus-sticker ml-0">Verona · unofficial</span>
               <h1 className="mt-6 max-w-2xl font-serif text-4xl font-semibold leading-[1.08] tracking-tight text-cs-text sm:text-5xl xl:text-6xl">Know what your Epic stock is actually worth.</h1>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-cs-text-2 sm:text-lg">{appTagline}</p>
-              <div className="mt-5 flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0" /><span><span className="font-extrabold text-cs-brand">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
+              <Link to="/demo" aria-label="Explore a fictional employee demo" className="mt-5 inline-block rounded-xl bg-rose-700 px-5 py-3 text-sm font-semibold text-white hover:bg-rose-800">Explore the fictional demo →</Link>
+              <p className="mt-2 text-xs text-cs-text-2">No sign-in or uploads. Try stock, sale and retirement workflows.</p>
+              <div className="mt-5 flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0" /><span><span className="font-extrabold text-cs-brand dark:text-rose-300">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
             </div>
             <figure className="relative z-0 mt-5">
               <picture>
@@ -81,14 +83,13 @@ export default function Login() {
             <p className="mt-2 text-sm leading-relaxed text-cs-text-2">Sign in to your encrypted account, or wander around with your own files first. Nothing here needs to look like a bank portal.</p>
             <DisclaimerNotice className="mt-5" />
             {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">{error}</p>}
-            <div className="mt-5 space-y-2">{providers.map((p, i) => <button key={p.name} onClick={() => handleSignIn(p.name)} disabled={loading !== null} className={`w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-card transition disabled:opacity-50 ${i === 0 ? 'bg-cs-brand text-white hover:bg-cs-brand-hover' : 'border border-cs-border-strong bg-cs-surface text-cs-text hover:bg-cs-raised'}`}>{loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}</button>)}{providers.length === 0 && <p className="text-center text-sm text-cs-text-2">No sign-in providers configured.</p>}</div>
+            <div className="mt-5 space-y-2">{providers.map((p, i) => <button key={p.name} onClick={() => handleSignIn(p.name)} disabled={loading !== null} className={`w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-card transition disabled:opacity-50 ${i === 0 ? 'bg-rose-700 text-white hover:bg-rose-800' : 'border border-cs-border-strong bg-cs-surface text-cs-text hover:bg-cs-raised'}`}>{loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}</button>)}{providers.length === 0 && <p className="text-center text-sm text-cs-text-2">No sign-in providers configured.</p>}</div>
             <div className="my-5 flex items-center gap-3"><span className="h-px flex-1 bg-cs-border" /><span className="text-xs font-medium uppercase tracking-wide text-cs-text-2">or</span><span className="h-px flex-1 bg-cs-border" /></div>
-            <a href="/mcp-setup" className="mb-3 block text-sm font-semibold text-cs-brand underline">Connect an AI assistant — setup guide</a>
-            <Link to="/demo" className="block rounded-xl border border-cs-border-strong bg-cs-surface p-4 text-left shadow-card transition hover:bg-cs-raised"><p className="text-sm font-semibold text-cs-text">Explore a fictional employee demo →</p><p className="mt-1 text-xs leading-snug text-cs-text-2">Try stock, sale and retirement workflows without signing in or uploading files.</p></Link>
+            <a href="/mcp-setup" className="mb-3 block text-sm font-semibold text-cs-brand dark:text-rose-300 underline">Connect an AI assistant — setup guide</a>
             <Link to="/try" className="campus-wayfinder block rounded-xl border border-cs-border-strong bg-cs-surface p-4 text-left shadow-card transition hover:bg-cs-raised"><p className="text-sm font-semibold text-cs-text">See it first, without an account →</p><p className="mt-1 text-xs leading-snug text-cs-text-2">Preview your Eureka files before signing in. They are processed on the server, then discarded; choosing to save keeps a draft on this device for sign-in.</p></Link>
           </Card>
           <Card className="mt-4 text-left"><Eyebrow className="mb-2">A note pinned by the door</Eyebrow><ul className="space-y-1.5 text-xs leading-relaxed text-cs-text-2"><li><span className="font-medium text-cs-text">Secure sign-in.</span> We never handle your password.</li><li><span className="font-medium text-cs-text">Per-user encryption.</span> Financial data is encrypted using AES-256-GCM with a key unique to your account.</li><li><span className="font-medium text-cs-text">We will never sell your data.</span></li></ul></Card>
-          <p className="mt-4 text-center text-xs text-cs-text-2">By using this site, you agree to our <Link to="/privacy" className="font-medium text-cs-brand underline">Privacy Policy</Link>. <span className="mx-1">·</span><ReportProblemLink className="font-medium text-cs-brand" /></p>
+          <p className="mt-4 text-center text-xs text-cs-text-2">By using this site, you agree to our <Link to="/privacy" className="font-medium text-cs-brand dark:text-rose-300 underline">Privacy Policy</Link>. <span className="mx-1">·</span><ReportProblemLink className="font-medium text-cs-brand dark:text-rose-300" /></p>
         </aside>
       </div>
     </div>

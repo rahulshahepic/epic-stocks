@@ -259,7 +259,7 @@ it('keeps the annual checkbox disabled until the initial preference is known', a
   expect(checkbox).toBeDisabled()
   await userEvent.click(checkbox)
   expect(fetcher.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
-  finish(new Response(JSON.stringify({enabled: false, annual_summary_enabled: true}), {status: 200}))
+  finish(new Response(JSON.stringify({enabled: true, annual_summary_enabled: true}), {status: 200}))
   await waitFor(() => { expect(checkbox).toBeEnabled(); expect(checkbox).toBeChecked() })
 })
 
@@ -272,7 +272,7 @@ it('offers a retry when notification preferences cannot be read', async () => {
     if (url.includes('/api/config')) return new Response(JSON.stringify({email_notifications_available: true}), {status: 200})
     if (url.includes('/api/notifications/email')) {
       reads++
-      return reads === 1 ? new Response(JSON.stringify({detail: 'Unavailable'}), {status: 503}) : new Response(JSON.stringify({enabled: false, annual_summary_enabled: false}), {status: 200})
+      return reads === 1 ? new Response(JSON.stringify({detail: 'Unavailable'}), {status: 503}) : new Response(JSON.stringify({enabled: true, annual_summary_enabled: false}), {status: 200})
     }
     return new Response(JSON.stringify(STATUS()), {status: 200})
   })
@@ -280,4 +280,38 @@ it('offers a retry when notification preferences cannot be read', async () => {
   await userEvent.click(await screen.findByRole('button', {name: 'Retry notifications'}))
   await waitFor(() => expect(screen.getByRole('checkbox', {name: /Include an annual stock summary/})).toBeEnabled())
   expect(reads).toBe(2)
+})
+
+
+it('requires an enabled delivery channel before a new annual-summary opt-in', async () => {
+  mockPushUnsupported()
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.includes('/api/config')) return new Response(JSON.stringify({email_notifications_available: true}), {status: 200})
+    if (url.includes('/api/notifications/email')) return new Response(JSON.stringify({enabled: init?.method === 'PUT', annual_summary_enabled: false}), {status: 200})
+    return new Response(JSON.stringify(STATUS()), {status: 200})
+  })
+  renderPage()
+  const checkbox = await screen.findByRole('checkbox', {name: /Include an annual stock summary/})
+  expect(await screen.findByText(/Turn on email or push notifications to receive/)).toBeVisible()
+  expect(checkbox).toBeDisabled()
+  await userEvent.click(checkbox)
+  expect(fetcher.mock.calls.some(([url]) => String(url).includes('/annual-summary'))).toBe(false)
+  await userEvent.click(screen.getByRole('button', {name: 'Enable'}))
+  await waitFor(() => expect(checkbox).toBeEnabled())
+  expect(screen.queryByText(/Turn on email or push notifications to receive/)).toBeNull()
+})
+
+it('shows paused delivery without clearing an existing annual-summary preference', async () => {
+  mockPushUnsupported()
+  mockFetch({
+    '/api/config': {email_notifications_available: true},
+    '/api/notifications/email': {enabled: false, annual_summary_enabled: true},
+    '/api/push/status': STATUS(),
+  })
+  renderPage()
+  const checkbox = await screen.findByRole('checkbox', {name: /Include an annual stock summary/})
+  await waitFor(() => expect(checkbox).toBeChecked())
+  expect(checkbox).toBeEnabled()
+  expect(screen.getByText(/delivery is paused/)).toBeVisible()
 })

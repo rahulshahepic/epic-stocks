@@ -46,11 +46,11 @@ export default function AppSettingsSections() {
       {!config?.epic_mode && (
         <Card as="section" pad="md">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-cs-text">Stock down payment</h3>
+            <h2 className="text-sm font-medium text-cs-text">Stock down payment</h2>
             {!editingDp && (
               <button
                 onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
-                className="text-xs text-cs-brand hover:text-cs-brand-hover "
+                className="text-xs text-cs-brand dark:text-rose-300 hover:text-cs-brand-hover "
               >Edit</button>
             )}
           </div>
@@ -114,11 +114,11 @@ export default function AppSettingsSections() {
       {/* Tax Rates */}
       <Card as="section" pad="md">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-cs-text">Tax Rates</h3>
+          <h2 className="text-sm font-medium text-cs-text">Tax Rates</h2>
           {!editingTax && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}
-              className="text-xs text-cs-brand hover:text-cs-brand-hover "
+              className="text-xs text-cs-brand dark:text-rose-300 hover:text-cs-brand-hover "
             >Edit</button>
           )}
         </div>

@@ -990,6 +990,8 @@ function CompCalculatorAccount() {
   const [compEvents, setCompEvents] = useState<CompEvent[]>([])
   const compEventsDirtyRef = useRef(false)
   const retirementParamsRef = useRef<Record<string, unknown>>({})
+  const exitSaveController = useRef<AbortController | null>(null)
+  useEffect(() => () => exitSaveController.current?.abort(), [vid])
 
   const deductOn = deductOverride ?? data?.taxSettings?.deduct_investment_interest ?? false
 
@@ -1027,12 +1029,13 @@ function CompCalculatorAccount() {
 
   useEffect(() => {
     if (vid) return
+    const controller = new AbortController()
     const t = setTimeout(() => {
       if (!compEventsDirtyRef.current) return
       // Save as array using the same field via the existing endpoint
-      api.saveCompEntries(compEvents).catch(() => {})
+      api.saveCompEntries(compEvents, controller.signal).catch(() => {})
     }, 500)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); controller.abort() }
   }, [compEvents, vid])
 
   function handleExitDateChange(date: string | null) {
@@ -1046,7 +1049,11 @@ function CompCalculatorAccount() {
       }
       retirementParamsRef.current = merged
       setExitSaveError('')
-      api.saveRetirementParams(merged).catch((err: unknown) => {
+      exitSaveController.current?.abort()
+      const controller = new AbortController()
+      exitSaveController.current = controller
+      api.saveRetirementParams(merged, controller.signal).catch((err: unknown) => {
+        if (controller.signal.aborted) return
         setExitSaveError(err instanceof Error ? err.message : 'Unable to save planned exit date')
       })
     }

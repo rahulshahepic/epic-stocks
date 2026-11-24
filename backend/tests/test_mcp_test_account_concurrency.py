@@ -249,3 +249,30 @@ def test_both_lock_modes_release_after_errors_and_transactions(isolated_database
                 raise RuntimeError('deliberate')
         with account_lock(db, owner_id):
             pass
+
+
+def test_browser_read_guard_excludes_reset(isolated_database):
+    from types import SimpleNamespace
+    from app.staging_demo import seed_profile
+    from scaffold.auth import create_token
+    from scaffold.web_test_accounts import request_workspace
+    factory, context, owner_id, _ = isolated_database
+    with context() as ctx:
+        initial = seed_profile(ctx.connector.user, ctx.db, 'early')['account_context']
+    token = create_token(owner_id)
+    with factory() as db:
+        with request_workspace(db, token, '/api/grants', 'GET') as target:
+            db.close()
+            with context() as ctx:
+                with pytest.raises(ValueError, match='busy'):
+                    seed_profile(ctx.connector.user, ctx.db, 'exit')
+            with factory() as other:
+                with request_workspace(other, token, '/api/prices', 'GET') as second:
+                    assert target == second
+    with context() as ctx:
+        from app.mcp.test_account_tools import _reset
+        browser = ToolContext(connector=SimpleNamespace(user=ctx.connector.user, grant=SimpleNamespace(id=None)), db=ctx.db)
+        with account_lock(ctx.db, owner_id):
+            preview = _reset(browser, {'scenario': 'exit'}, browser=True)
+            restored = _reset(browser, {'scenario': 'exit', 'confirm': preview['confirm']}, browser=True)
+        assert restored['generation'] != initial['generation']

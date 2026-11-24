@@ -295,11 +295,12 @@ jobs:
         # a live Claude/ChatGPT session, or real customer account data.
         env:
           E2E_BASE_URL: http://127.0.0.1:8000
+          SCREENSHOT_BASE_URL: http://127.0.0.1:8000
           SCREENSHOT_EMAIL: synthetic-mcp-screenshots@example.test
         run: |
           cd frontend
           npx playwright test --project=main e2e/screenshots.spec.ts \
-            --grep 'MCP Apps retirement card' --workers=1
+            --grep 'MCP Apps retirement card|settings page - (light|dark) - mobile' --workers=1
 
       - name: Upload MCP Apps retirement screenshots
         if: always()
@@ -307,6 +308,35 @@ jobs:
         with:
           name: mcp-apps-retirement-pr-${{ github.event.pull_request.number }}
           path: screenshots/mcp-apps-retirement-*.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Test isolated staging browser workspaces
+        env:
+          E2E_APP_ENV: staging
+          E2E_BASE_URL: http://127.0.0.1:8000
+          E2E_API_URL: http://127.0.0.1:8000
+        run: |
+          docker compose -f docker-compose.e2e.yml up -d --no-deps --force-recreate e2e-app
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/health && break
+            if [ "$i" -eq 60 ]; then exit 1; fi
+            sleep 1
+          done
+          rm -f screenshots/staging-seed-*.png screenshots/staging-connect-ai-*.png screenshots/staging-workspace-reset-*.png
+          cd frontend
+          npx playwright test --project=main e2e/staging-mcp.spec.ts --workers=1
+      - name: Upload staging workspace screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-workspaces-pr-${{ github.event.pull_request.number }}
+          path: |
+            screenshots/staging-seed-*.png
+            screenshots/staging-connect-ai-*.png
+            screenshots/staging-workspace-reset-*.png
+            screenshots/settings-light-mobile.png
+            screenshots/settings-dark-mobile.png
           if-no-files-found: error
           retention-days: 14
 

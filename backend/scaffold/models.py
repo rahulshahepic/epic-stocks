@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, reconstructor, relationship, validates
 from database import Base
 from scaffold.crypto import (
@@ -73,17 +73,19 @@ class User(Base):
 
 
 class MCPTestAccount(Base):
-    """One isolated fixture per connection; no financial values live here."""
+    """Isolated fixtures; a null grant identifies the owner's browser workspace."""
     __tablename__ = "mcp_test_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    grant_id: Mapped[int] = mapped_column(Integer, ForeignKey("oauth_grants.id", ondelete="CASCADE"), unique=True, nullable=False)
+    grant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("oauth_grants.id", ondelete="CASCADE"), unique=True, nullable=True)
     synthetic_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     scenario: Mapped[str] = mapped_column(String(30), nullable=False)
     fixture_version: Mapped[int] = mapped_column(Integer, nullable=False)
     generation: Mapped[str] = mapped_column(String(36), nullable=False)
     last_used_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    __table_args__ = (Index("uq_mcp_test_browser_owner", "user_id", unique=True,
+                           sqlite_where=text("grant_id IS NULL"), postgresql_where=text("grant_id IS NULL")),)
 
 
 class Grant(Base):

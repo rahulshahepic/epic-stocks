@@ -490,22 +490,33 @@ class EncryptionMiddleware:
         return None
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and encryption_enabled():
-            db = database.SessionLocal()
-            try:
-                from scaffold.crypto import reload_master_key_if_stale
-                reload_master_key_if_stale(db)
-                token = self._token_from_scope(scope)
-                if token:
-                    self._try_set_key(token, db)
-            finally:
-                db.close()
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        from scaffold.synthetic_accounts import SyntheticAccountBusy
+        from scaffold.web_test_accounts import request_workspace
+        db = database.SessionLocal()
         try:
-            await self.app(scope, receive, send)
+            from scaffold.crypto import reload_master_key_if_stale
+            if encryption_enabled():
+                reload_master_key_if_stale(db)
+            token = self._token_from_scope(scope)
+            try:
+                with request_workspace(db, token, scope.get('path', ''), scope.get('method', 'GET')) as target:
+                    if target is not None:
+                        scope.setdefault('state', {})['staging_workspace_id'] = target
+                    if token and encryption_enabled():
+                        self._try_set_key(token, db, effective_user_id=target)
+                    db.close()
+                    await self.app(scope, receive, send)
+            except HTTPException as exc:
+                await JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)(scope, receive, send)
+            except SyntheticAccountBusy as exc:
+                await JSONResponse({'detail': str(exc)}, status_code=409, headers={'Retry-After': '1'})(scope, receive, send)
         finally:
+            db.close()
             set_current_key(None)
 
-    def _try_set_key(self, token: str, db=None):
+    def _try_set_key(self, token: str, db=None, *, effective_user_id=None):
         from scaffold.auth import _decode_token
         from scaffold.models import User
         try:
@@ -517,8 +528,10 @@ class EncryptionMiddleware:
                 db = database.SessionLocal()
             try:
                 user = db.get(User, user_id)
-                if user and user.encrypted_key and token_sv == int(user.session_version):
-                    set_current_key(decrypt_user_key(user.encrypted_key))
+                if user and token_sv == int(user.session_version):
+                    target = db.get(User, effective_user_id) if effective_user_id is not None else user
+                    if target and target.encrypted_key:
+                        set_current_key(decrypt_user_key(target.encrypted_key))
             finally:
                 if own_db:
                     db.close()
@@ -684,6 +697,25 @@ def client_config(request: Request):
 
 @_fastapi_app.get("/api/me")
 def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    from scaffold.synthetic_accounts import requires_synthetic, account_lock, synthetic_key
+    if requires_synthetic():
+        from scaffold.web_test_accounts import browser_binding, workspace_id
+        from scaffold.models import User
+        with account_lock(db, user.id, shared=True):
+            row = browser_binding(db, user.id)
+            birthday = None
+            if row:
+                target = workspace_id(db, user.id)
+                with synthetic_key(db, target):
+                    fixture = db.get(User, target)
+                    birthday = fixture.date_of_birth.isoformat() if fixture.date_of_birth else None
+            return {'id': user.id, 'email': user.email, 'name': user.name,
+                    'is_admin': bool(user.is_admin), 'is_content_admin': bool(user.is_content_admin),
+                    'shared_accounts': [], 'date_of_birth': birthday,
+                    'staging_account': {'initialized': bool(row), 'synthetic': bool(row),
+                                        'scenario': row.scenario if row else None,
+                                        'fixture_version': row.fixture_version if row else None,
+                                        'generation': row.generation if row else None}}
     from scaffold.models import Invitation, User as _User
     shared = (
         db.query(Invitation)

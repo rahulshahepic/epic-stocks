@@ -123,7 +123,17 @@ export async function apiFetchRaw(path: string, init?: RequestInit): Promise<Res
     headers['Content-Type'] = 'application/json'
   }
 
-  return fetch(apiUrl(path), { ...init, headers, credentials: platform.auth.credentials })
+  const send = () => fetch(apiUrl(path), { ...init, headers, credentials: platform.auth.credentials })
+  let response = await send()
+  const replayable = !(typeof ReadableStream !== 'undefined' && init?.body instanceof ReadableStream)
+  // The server emits this hint only when the account guard refused the request
+  // before its handler ran. Version conflicts have no retry hint.
+  for (let retry = 0; retry < 2 && replayable && response.status === 409 && response.headers.get('Retry-After') === '1'; retry++) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    init?.signal?.throwIfAborted()
+    response = await send()
+  }
+  return response
 }
 
 /**
@@ -149,7 +159,7 @@ async function throwForStatus(
     throw new Error('Unauthorized')
   }
 
-  if (resp.status === 409) {
+  if (resp.status === 409 && !resp.headers.has('Retry-After')) {
     let currentVersion = 0
     try {
       const body = await resp.json()
@@ -393,8 +403,8 @@ function post<T>(path: string, body: object) {
   return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) })
 }
 
-function put<T>(path: string, body: object) {
-  return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+function put<T>(path: string, body: object, signal?: AbortSignal) {
+  return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body), ...(signal ? { signal } : {}) })
 }
 
 function del(path: string) {
@@ -514,13 +524,13 @@ export const api = {
 
   // User info
   getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null }>('/api/me'),
-  updateProfile: (body: { date_of_birth?: string | null }) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body) }),
+  updateProfile: (body: { date_of_birth?: string | null }, signal?: AbortSignal) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body), ...(signal ? { signal } : {}) }),
   getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
-  saveRetirementParams: (params: Record<string, unknown>) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }),
+  saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }, signal),
   getCompEntries: () => apiFetch<{ entries: unknown }>('/api/retirement/comp-entries'),
-  saveCompEntries: (entries: unknown) => put<{ entries: unknown }>('/api/retirement/comp-entries', { entries }),
+  saveCompEntries: (entries: unknown, signal?: AbortSignal) => put<{ entries: unknown }>('/api/retirement/comp-entries', { entries }, signal),
   getDashboardPrefs: () => apiFetch<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs'),
-  saveDashboardPrefs: (prefs: Record<string, unknown>) => put<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs', { prefs }),
+  saveDashboardPrefs: (prefs: Record<string, unknown>, signal?: AbortSignal) => put<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs', { prefs }, signal),
   getSharedProfile: (invId: number) => apiFetch<{ name: string | null; date_of_birth: string | null }>(`/api/sharing/view/${invId}/profile`),
   getSharedRetirementParams: (invId: number) => apiFetch<{ params: Record<string, unknown> | null }>(`/api/sharing/view/${invId}/retirement-params`),
   getSharedCompEntries: (invId: number) => apiFetch<{ entries: unknown }>(`/api/sharing/view/${invId}/comp-entries`),

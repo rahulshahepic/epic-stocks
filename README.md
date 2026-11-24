@@ -682,11 +682,11 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 **Setup is public:** open [`/mcp-setup`](https://epic-stocks.com/mcp-setup) before signing in, or let an assistant fetch `/mcp/setup.json` and `/llms.txt`. The guide includes credential-free ChatGPT/Claude plugin ZIPs for the **current environment**. OAuth resource/authorization-server metadata links to the guide. Installation, sign-in and scope consent still require the user; discovering a server never grants access to private data.
 
-**Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and use **Set up a fictional staging account** on an empty dashboard. Choose Early career, Established or Planning an exit to load invented grants, loans, prices, age and retirement assumptions. Existing financial records, a saved birthday, compensation and retirement plans are refused; no other account is changed. The account uses the normal stored-data calculation and loan-payoff workflows (including generated future payoff sales), so it can be edited and tested through HTTP and MCP. No authentication bypass or new user impersonation endpoint is enabled.
+**Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and choose **Early career**, **Established** or **Planning an exit**. This opens an isolated writable browser workspace with invented grants, loans, prices, age and retirement assumptions; existing records, birthday and saved plans in the signed-in account stay untouched. Reopening the same profile keeps edits. Settings offers confirmed resets and profile changes. Each MCP connection uses its own independent fictional fixture. All use the normal calculation services; no authentication bypass is enabled.
 
 Create a separate assistant app named **Epic Stocks Staging Test**, using `https://staging.epic-stocks.com/mcp` with OAuth and PKCE, or download the staging ZIP from `/mcp-setup`. Select `equity:read`, `equity:write`, `comp:read`, `comp:write` for full testing. Sign in to the same staging account. MCP initialization and result metadata mark the environment for test-only use; never copy these figures into production or personal finances. Both signed-in and public staging downloads use `epic-stocks-staging-test` in the filename, plugin name and MCP server key, display **Epic Stocks Staging Test**, and target staging. Production downloads keep the production name and endpoint.
 
-The seed control exists only with `APP_ENV=staging` on the official staging domain (or an explicit local E2E staging run). Both the capability flag and mutation endpoint enforce this server-side; production refuses seeding even if the client crafts a request. Local screenshots can use `APP_ENV=staging E2E_LOCAL=1 PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`; the disposable Docker E2E app uses staging mode to exercise this flow, while retaining its existing development-only test authentication.
+The seed control exists only on the official staging deployment (or an explicit local E2E staging run). Both the capability flag and mutation endpoint enforce this server-side; production refuses seeding even if the client crafts a request. Local screenshots can use `APP_ENV=staging E2E_LOCAL=1 PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`; CI runs ordinary tests in development mode and then restarts its disposable Docker app in staging mode for this flow, retaining its existing development-only test authentication.
 
 | Staging seed | Staging MCP connection | Public setup |
 |---|---|---|
@@ -1885,6 +1885,30 @@ account with its own encryption key. Responses and portfolio/retirement cards
 prominently identify fictional data. Ordinary read/write scopes still apply.
 No actual financial records are copied, altered or exposed by staging MCP tools.
 
+The staging website also uses an isolated browser workspace. After signing in,
+choose **Early career**, **Established**, or **Planning an exit**. Existing grants,
+compensation, birthday and saved plans in the signed-in account are never read or
+replaced by this setup. The login identity stays unchanged for authentication,
+admin access and OAuth; financial API requests use the browser fixture and its
+own encryption key. Financial pages wait for setup, and their APIs refuse access
+before a fixture exists. The birthday returned by `/api/me` is the fixture's.
+
+Reopening the same profile preserves edits across reloads and later sign-ins.
+In **Settings**, choose a different profile or **Reset current fictional profile**,
+then explicitly confirm **Reset fictional workspace** to discard testing edits.
+Reset previews save nothing; confirmation tokens become stale after a reset.
+The browser workspace and each MCP connection have independent fictional data.
+Sharing and device/email notifications are disabled in fictional workspaces so
+testing cannot expose shared real records or move a real device subscription.
+Account deletion is also disabled there; admins retain their ordinary identity.
+
+![Confirm a fictional workspace reset](screenshots/staging-workspace-reset-dark-mobile.png)
+
+Setup failures and invalid or stale reset confirmations appear in Admin errors as
+`StagingSetupRefused`, with a fixed reason code and a reference attached to the
+browser's problem-report trail. No stored financial values enter the diagnostic;
+repeated attempts reuse an unresolved diagnostic for the same account and reason.
+
 Repeated setup with the same scenario preserves testing edits. To discard edits
 or change scenarios, call `reset_test_account` without `confirm`, obtain explicit
 confirmation, and repeat with the returned token. Reset invalidates outstanding
@@ -1895,6 +1919,9 @@ conflicting operations receive a retryable busy error. PostgreSQL lock connectio
 use separate bounded budgets (16 reads and 2 exclusive operations per worker),
 so parallel reads do not consume the exclusive-operation budget or exhaust the
 financial connection pool. Capacity limits also return a retryable busy error.
+Browser API requests retry up to twice when the server explicitly supplies the
+one-second busy hint; version conflicts and stale confirmations are not retried.
+Editing again cancels a superseded autosave and its retries, preserving the newer edit.
 
 Provisioning and reset are available only when trusted server configuration has
 `DOMAIN=staging.epic-stocks.com` and `APP_ENV` is not `production`; request headers
@@ -1905,8 +1932,18 @@ its owner removes its synthetic financial rows through the canonical deletion
 service. Nightly connector cleanup also removes orphaned fixtures and fixtures
 idle for 30 days; expired fixtures require setup again. The PostgreSQL race tests use the test-only `TEST_POSTGRES_URL` supplied by
 the backend CI service; without it those cases skip locally. The implementation lives
-in `scaffold/synthetic_accounts.py` (isolation/lifecycle) and
-`app/mcp/test_account_tools.py` (demo-profile persistence and MCP tools).
+in `scaffold/synthetic_accounts.py` (isolation/lifecycle),
+`scaffold/web_test_accounts.py` (browser request routing), and
+`app/mcp/test_account_tools.py` (shared fixture persistence and MCP tools).
+Browser bindings use a null OAuth grant with one per owner enforced by a partial
+unique index; the normal Alembic deployment applies this schema change.
+
+The ordinary E2E suite runs in development mode. CI then restarts its disposable
+backend with `E2E_APP_ENV=staging` and runs `staging-mcp.spec.ts`, including mobile
+taps, persistence and confirmed profile changes, and uploads staging screenshots.
+Local targeted runs use `E2E_LOCAL=1 APP_ENV=staging PLAYWRIGHT_SPECS=e2e/staging-mcp.spec.ts ./e2e.sh`.
+The local E2E exception requires `E2E_TEST=1` and no domain; it does not enable MCP
+provisioning outside the official staging domain.
 
 Synthetic staging MCP cards (fictional fixtures only):
 

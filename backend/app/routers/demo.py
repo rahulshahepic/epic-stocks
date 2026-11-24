@@ -56,9 +56,11 @@ def preview(body: DemoRequest, request: Request):
 class SeedRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     profile: Literal['early', 'established', 'exit']
+    confirm: str | None = Field(default=None, max_length=128)
+    reset: bool = False
 
 
 @router.post('/seed')
 def seed(body: SeedRequest, user=Depends(get_current_user), db=Depends(get_db)):
     from app.staging_demo import seed_profile
-    return seed_profile(user, db, body.profile)
+    return seed_profile(user, db, body.profile, confirm=body.confirm, reset=body.reset)

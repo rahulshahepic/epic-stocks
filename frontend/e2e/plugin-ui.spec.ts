@@ -62,7 +62,7 @@ for (const theme of ['light','dark'] as const) {
 test('retirement card sends causal purchase rules and car lifetime', async ({ page }) => {
   const { retirementHost } = await import('./plugin-host')
   const card = await retirementHost(page)
-  await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
+  await card.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
   await card.locator('summary').filter({ hasText: 'Life events' }).click()
   await card.locator('#eventKind').selectOption('vehicle')
   await card.getByLabel('Date', { exact: true }).fill('2037-01-02')
@@ -74,8 +74,9 @@ test('retirement card sends causal purchase rules and car lifetime', async ({ pa
   await card.locator('#eventRule').selectOption('conditional')
   await card.getByLabel('Minimum portfolio as % of starting wealth (optional)').fill('120')
   await card.getByRole('button', { name: 'Add planned event', exact: true }).click()
-  await expect(card.getByText(/conditional purchase.*sell after 15 years/)).toBeVisible()
-  await card.getByRole('button', { name: 'Compare with / without events', exact: true }).click()
+  await expect(card.locator('#eventList').getByText(/Buy only with.*120% of starting wealth/)).toBeVisible()
+  await expect(card.locator('#eventList').getByText('Sell after 15 years', { exact: true })).toBeVisible()
+  await card.getByRole('button', { name: 'Compare impact with and without events', exact: true }).click()
   await expect(card.getByRole('status')).toContainText('Life-event comparison complete')
   const calls = await page.evaluate(() => (window as unknown as {pluginCalls: {method:string;params: {name?:string;arguments?: {events?:unknown[]}}}[]}).pluginCalls)
   const events = calls.find(c => c.params.name === 'plan_life_events')?.params.arguments?.events

@@ -411,6 +411,19 @@ for the limits and the AI/app division of responsibilities.
 
 ![MCP assumption editor](screenshots/mcp-retirement-editor-light-mobile.png)
 
+On phones, event summaries keep their Edit and Remove actions in a separate row.
+The comparison action is labelled **Compare impact**, and navigation labels wrap
+within their buttons on narrow screens. Running a simulation estimates Epic sale
+proceeds for the selected retirement date by default. An explicitly supplied sale
+amount stays fixed; **Epic sale estimate settings** lets you choose a fixed amount
+instead. Projections use your saved price assumptions and are not guarantees.
+
+![Retirement controls](screenshots/mcp-retirement-controls-dark-mobile.png)
+
+| Event actions | Mobile navigation |
+| --- | --- |
+| ![Event actions](screenshots/mcp-event-actions-dark-mobile.png) | ![Mobile navigation](screenshots/mcp-retirement-tabs-dark-mobile.png) |
+
 | Expense rule | Saved expense |
 | --- | --- |
 | ![A140% conditional purchase](screenshots/life-events-planner-light-mobile.png) | ![A saved purchase plan](screenshots/life-events-review-light-mobile.png) |

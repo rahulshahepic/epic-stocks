@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, retirementHost, purchaseSnapshot } from './plugin-host'
+import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -102,10 +102,25 @@ test.describe('Screenshots', () => {
     })
   })
 
+  for (const theme of ['light', 'dark'] as const) {
+    test('MCP mobile event actions - ' + theme, async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const card = await retirementHost(page, theme, { initial: mobileEditorSnapshot })
+      await card.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
+      await card.locator('#editView > section').first().screenshot({ path: `${OUT}/mcp-retirement-controls-${theme}-mobile.png` })
+      await card.locator('#exitEstimateDetails > summary').click()
+      await card.locator('#exitEstimateDetails').screenshot({ path: `${OUT}/mcp-exit-estimate-${theme}-mobile.png` })
+      await card.locator('#lifeEventsDetails > summary').click()
+      await card.locator('.event-toolbar').screenshot({ path: `${OUT}/mcp-event-toolbar-${theme}-mobile.png` })
+      await card.locator('#eventList').screenshot({ path: `${OUT}/mcp-event-actions-${theme}-mobile.png` })
+      await card.locator('.view-nav').screenshot({ path: `${OUT}/mcp-retirement-tabs-${theme}-mobile.png` })
+    })
+  }
+
   test('MCP assumptions editor - light - mobile', async ({ page }) => {
     await page.setViewportSize(MOBILE)
     const card = await retirementHost(page, 'light')
-    await card.getByRole('button', { name: 'Edit assumptions', exact: true }).click()
+    await card.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
     await expect(card.locator('#resultsView')).toBeHidden()
     await shoot(page, 'mcp-retirement-editor-light-mobile', { fullPage: true })
   })

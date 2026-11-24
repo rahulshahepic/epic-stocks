@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Area,
@@ -427,6 +428,7 @@ function RetirementAccount() {
   const legacyExitHeld = legacyExitDate === retirementDate
   const [exitError, setExitError] = useState('')
   const [emptyEquity, setEmptyEquity] = useState(false)
+  const [missingPrice, setMissingPrice] = useState(false)
   const [exitRetry, setExitRetry] = useState(0)
   const [advancedView, setAdvancedView] = useState(false)
   const defaultSpendOverriddenRef = useRef(false)
@@ -570,6 +572,7 @@ function RetirementAccount() {
     setExitPreviewLoading(true)
     setExitError('')
     setEmptyEquity(false)
+    setMissingPrice(false)
     const fetcher = vid ? api.getSharedPreviewExit(vid, retirementDate) : api.previewExit(retirementDate)
     fetcher
       .then(async p => {
@@ -579,6 +582,13 @@ function RetirementAccount() {
           if (cancelled) return
           if (grants.length === 0) {
             setEmptyEquity(true)
+            setParams(prev => ({ ...prev, epicExit: 0 }))
+            return
+          }
+          const prices = await (vid ? api.getSharedPrices(vid) : api.getPrices())
+          if (cancelled) return
+          if (!prices.some(price => price.effective_date <= retirementDate)) {
+            setMissingPrice(true)
             setParams(prev => ({ ...prev, epicExit: 0 }))
             return
           }
@@ -661,14 +671,18 @@ function RetirementAccount() {
   // Skips until the initial load completes so we don't save defaults over a
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
-    if (vid || !paramsLoadedRef.current || (exitMode === 'auto' && (exitPreviewLoading || exitError))) return
+    if (vid || !paramsLoadedRef.current) return
     const request = ++saveRequestRef.current
     const controller = new AbortController()
     setSaveStatus('saving')
     setSaveError('')
     const t = setTimeout(() => {
+      const savedParams: Record<string, unknown> = { ...params }
+      // An unresolved automatic exit must not block saving spending and other
+      // assumptions, or persist an old date's amount as the new projection.
+      if (exitMode === 'auto' && !legacyExitHeld && (exitPreviewLoading || exitError)) delete savedParams.epicExit
       api.saveRetirementParams({
-        ...(params as unknown as Record<string, unknown>),
+        ...savedParams,
         retirementDate,
         ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
@@ -771,7 +785,7 @@ function RetirementAccount() {
           {vid
             ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
             : exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
-              ? (exitError ? 'Saving paused — resolve exit projection' : 'Refreshing exit amount…')
+              ? (saveStatus === 'saved' ? 'Inputs saved — exit projection pending' : saveStatus === 'error' ? 'Save failed' : 'Saving inputs — exit projection pending')
               : saveStatus === 'saving'
                 ? 'Saving…'
                 : saveStatus === 'saved'
@@ -970,6 +984,7 @@ function RetirementAccount() {
             <button type="button" onClick={() => { setLegacyExitDate(null); setExitMode(m => m === 'auto' ? 'manual' : 'auto') }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
             {legacyExitHeld && <button type="button" onClick={() => setLegacyExitDate(null)} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
             {exitMode === 'auto' && emptyEquity && <p className="text-xs text-cs-text-2">No stock imported yet. Epic exit is $0; you can save your other inputs. Import your stock to project an exit, or enter a manual amount.</p>}
+            {exitMode === 'auto' && missingPrice && <p className="text-xs text-cs-text-2">Add a share price to project your exit. Epic exit is temporarily $0; your other inputs still save. {!vid && <Link to="/prices" className="font-semibold underline">Add a price</Link>}</p>}
             {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => setExitRetry(n => n + 1)} className="underline">Retry exit projection</button></p>}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">

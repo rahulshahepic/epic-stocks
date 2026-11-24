@@ -35,6 +35,7 @@ function eventLabel(group: TimelineEvent[]) {
 function eventDetail(group: TimelineEvent[], estimated: boolean) {
   const [event] = group
   if (event.event_type === 'Vesting') {
+    if (group.some(e => !e.share_price)) return `Price not entered · ${group.length} tranche${group.length === 1 ? '' : 's'}`
     const marketValue = group.reduce((sum, e) => sum + (e.vested_shares ?? 0) * e.share_price, 0)
     const valueAdded = group.reduce((sum, e) => sum + e.vesting_cap_gains + e.income, 0)
     return `${estimated ? 'Est. ' : ''}${fmt$(marketValue)} market value · ${estimated ? 'est. ' : ''}${fmt$(valueAdded)} value added · ${group.length} tranche${group.length === 1 ? '' : 's'}`

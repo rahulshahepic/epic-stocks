@@ -186,9 +186,13 @@ The preview then says what an account adds that a one-off read cannot: notificat
    |-------------|---------------|
    | ![Get started](screenshots/get-started-light-mobile.png) | ![Vesting editor](screenshots/vesting-editor-light-mobile.png) |
 
-3. **Add share prices** — go to **Prices** and enter the annual share price (Epic announces this each March). Without at least one price, no events can be computed. Use **+ Estimate** to project future prices at an annual % growth rate — useful for modeling expected increases before they're officially announced. Estimates appear in italics with an "est." badge and are automatically removed when the real price for that date is added.
+3. **Add share prices** — go to **Prices** and enter the annual share price (Epic announces this each March). Without an applicable price, share counts still appear, but valuations show **Price not entered** with a link to Prices. Retirement inputs continue saving; the automatic Epic exit is temporarily $0 until you add a price for the retirement date. Other exit projection failures pause simulation, while spending and other inputs still save. Use **+ Estimate** to project future prices at an annual % growth rate — useful for modeling expected increases before they're officially announced. Estimates appear in italics with an "est." badge and are automatically removed when the real price for that date is added.
 
-4. **View the Dashboard** — once you have grants and at least one price, the dashboard shows your full financial picture. See [The Dashboard](#the-dashboard) below.
+   | Missing price on the dashboard | Retirement inputs still save |
+   | --- | --- |
+   | ![Missing dashboard price](screenshots/missing-price-dashboard-light-mobile.png) | ![Retirement without a price](screenshots/missing-price-retirement-light-mobile.png) |
+
+4. **View the Dashboard** — once you have grants, the dashboard shows your full financial picture. See [The Dashboard](#the-dashboard) below.
 
 5. **Explore the Events timeline** — the **Events** page shows the full computed timeline: every vesting tranche, exercise date, loan payoff, and recorded sale, with income, capital gains, and running totals for each event. Use **Today** or **Go to date** to jump to the first visible event on or after that date (or the last event if none follow).
 

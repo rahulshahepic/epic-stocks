@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 import database
 
@@ -322,7 +323,7 @@ class MaintenanceMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             from scaffold.maintenance import is_maintenance_active
-            if is_maintenance_active():
+            if await run_in_threadpool(is_maintenance_active):
                 path = scope.get("path", "")
                 if path.startswith("/api/"):
                     method = scope.get("method", "GET")
@@ -387,7 +388,7 @@ class EpicModeMiddleware:
                     )
                     if not allowed:
                         from scaffold.epic_mode import is_epic_mode
-                        if is_epic_mode():
+                        if await run_in_threadpool(is_epic_mode):
                             response = JSONResponse(
                                 {"detail": "Data is managed externally in this deployment"},
                                 status_code=403,

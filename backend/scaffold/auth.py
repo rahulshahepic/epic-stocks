@@ -207,7 +207,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if siat and time.time() - siat > ABSOLUTE_SESSION_HOURS * 3600:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired — please log in again")
     user = db.get(User, user_id)
-    if not user:
+    if not user or user.is_synthetic:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     # "Sign out everywhere" bumps session_version, invalidating older tokens.
     if token_sv != int(user.session_version):

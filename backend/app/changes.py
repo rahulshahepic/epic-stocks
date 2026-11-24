@@ -142,7 +142,15 @@ def _fingerprint(user, db) -> str:
 
 
 def confirmation(user, db, changes) -> str:
-    body = json.dumps({"changes": changes, "account": _fingerprint(user, db)}, sort_keys=True, default=str)
+    generation = user.session_version
+    if user.is_synthetic:
+        from scaffold.models import MCPTestAccount
+        fixture = db.query(MCPTestAccount.generation).filter(MCPTestAccount.synthetic_id == user.id).scalar()
+        if fixture is None:
+            raise ChangeError("Synthetic fixture is unavailable; preview again after setup")
+        generation = fixture
+    body = json.dumps({"changes": changes, "user": user.id, "generation": generation,
+                       "account": _fingerprint(user, db)}, sort_keys=True, default=str)
     return hashlib.sha256(body.encode()).hexdigest()[:24]
 
 

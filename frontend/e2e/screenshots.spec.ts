@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot } from './plugin-host'
+import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot, snapshots, retirementSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -175,6 +175,7 @@ test.describe('Screenshots', () => {
       await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `car-editor-${theme}@screenshots.example.test`, name: 'Car Editor Demo' } })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
+      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByRole('button', { name: '+ Add planned expense', exact: true }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
       await page.getByLabel(/Purchase price/).fill('50000')
@@ -187,6 +188,23 @@ test.describe('Screenshots', () => {
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await editor.screenshot({ path: `${OUT}/car-purchase-editor-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+    })
+  }
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`synthetic MCP account notice - ${theme}`, async ({ page }) => {
+      await page.setViewportSize(MOBILE)
+      const account_context = { environment: 'staging', synthetic: true, initialized: true, scenario: 'established', fixture_version: 2 }
+      const portfolio = await pluginHost(page, { theme, initial: { ...snapshots.summary, account_context } })
+      await expect(portfolio.locator('#syntheticNotice')).toContainText('FICTIONAL TEST ACCOUNT')
+      await portfolio.locator('main').screenshot({ path: `${OUT}/mcp-synthetic-portfolio-${theme}-mobile.png` })
+      const retirement = await retirementHost(page, theme, { initial: { ...retirementSnapshot, account_context } })
+      await expect(retirement.locator('#syntheticNotice')).toContainText('fixture v2')
+      await retirement.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
+      await retirement.getByRole('button', { name: 'Run simulation', exact: true }).click()
+      await expect(retirement.locator('#syntheticNotice')).toContainText('FICTIONAL TEST ACCOUNT')
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([])
+      await retirement.locator('main').screenshot({ path: `${OUT}/mcp-synthetic-retirement-${theme}-mobile.png` })
     })
   }
 

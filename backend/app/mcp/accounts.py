@@ -20,12 +20,15 @@ ME = "me"
 
 
 def resolve_account(user: User, ref: str | None, db: Session) -> User:
-    """The user whose rows a tool should read.
+    """The active financial account selected by the transport.
 
     Raises ValueError for anything unsupported — the transport turns that into
     a tool error the model can read and explain, rather than a protocol fault.
     """
     if ref in (None, "", ME):
+        from scaffold.synthetic_accounts import requires_synthetic
+        if requires_synthetic() and not user.is_synthetic:
+            raise ValueError("Staging financial access requires setup_test_account; actual accounts are never accessible.")
         return user
     raise ValueError(
         f"Unknown account '{ref}'. This connection can only read your own data; "
@@ -36,7 +39,7 @@ def resolve_account(user: User, ref: str | None, db: Session) -> User:
 ACCOUNT_PROPERTY = {
     "type": "string",
     "description": (
-        "Whose data to read. Only 'me' (the signed-in account) is supported; "
+        "Active financial account: the provisioned fixture in staging, or the signed-in account elsewhere. Only 'me' is supported; "
         "omit it."
     ),
     "default": ME,

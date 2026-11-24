@@ -11,7 +11,7 @@ PROFILES = {
     'established': {'label': 'Established', 'tenure': 10, 'age': 38, 'other_assets_m': 0.4, 'spend_k': 65},
     'exit': {'label': 'Planning an exit', 'tenure': 20, 'age': 50, 'other_assets_m': 1.2, 'spend_k': 90},
 }
-VERSION = 1
+VERSION = 2
 AS_OF = date(2026, 11, 24)
 
 
@@ -22,7 +22,7 @@ def profile_inputs(profile: str) -> CalculationInputs:
     # Invented round-number history, followed by explicitly estimated prices.
     for year in range(first_year, 2043):
         prices.append(Row(id=year, effective_date=date(year, 1, 1),
-                          price=round(100 * 1.08 ** (year - first_year), 2),
+                          price=100 + 25 * (year - first_year),
                           is_estimate=year > AS_OF.year, expected_announcement_date=None,
                           announced_date=None))
     for year in range(first_year, AS_OF.year + 1):

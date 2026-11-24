@@ -15,6 +15,8 @@ STATEMENT_MESSAGE = (
 
 
 def statement_reminder_events(user, db, today):
+    if user.is_synthetic:
+        return []
     # January gives a year-end statement time to arrive, and catches a missed timer.
     year = today.year if today.month == 12 and today.day == 31 else today.year - 1 if today.month == 1 else None
     if year is None or (user.statement_reminder_year or 0) >= year:

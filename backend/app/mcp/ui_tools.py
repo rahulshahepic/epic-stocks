@@ -72,6 +72,7 @@ _INPUT = object_schema({
     "to_date": {"type": "string", "description": "Events only: YYYY-MM-DD. Defaults to one year from today."},
 })
 _OUTPUT = object_schema({
+    "account_context": {"type": "object", "description": "Verified synthetic account context, when testing in staging."},
     "view": {"type": "string", "enum": list(VIEWS)},
     "account": {"type": "string", "const": "me"},
     "as_of": {"type": "string"},

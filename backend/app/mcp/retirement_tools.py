@@ -97,6 +97,7 @@ _RUN_INPUT = object_schema({
     },
 })
 _RESULT = object_schema({
+    "account_context": {"type": "object", "description": "Verified synthetic account context, when testing in staging."},
     "retirementDate": {"type": "string"},
     "exitSource": {"type": "string"},
     "canProjectExit": {"type": "boolean", "description": "Whether this connection can estimate dated Epic sale proceeds from equity data."},

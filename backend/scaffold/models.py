@@ -22,6 +22,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     provider_name: Mapped[str] = mapped_column(String, nullable=False, server_default="google")
     google_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -69,6 +70,20 @@ class User(Base):
     tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     sent_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.inviter_id]", back_populates="inviter", cascade="all, delete-orphan")
     received_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.invitee_id]", back_populates="invitee")
+
+
+class MCPTestAccount(Base):
+    """One isolated fixture per connection; no financial values live here."""
+    __tablename__ = "mcp_test_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    grant_id: Mapped[int] = mapped_column(Integer, ForeignKey("oauth_grants.id", ondelete="CASCADE"), unique=True, nullable=False)
+    synthetic_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    scenario: Mapped[str] = mapped_column(String(30), nullable=False)
+    fixture_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    generation: Mapped[str] = mapped_column(String(36), nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Grant(Base):

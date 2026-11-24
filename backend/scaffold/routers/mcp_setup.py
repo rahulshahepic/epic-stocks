@@ -27,8 +27,8 @@ def setup_document():
                   'Use server_url with OAuth authentication; no API key or client secret is required.',
                   'Sign in to this environment and explicitly approve the account permissions.',
                   'Choose equity:read and comp:read for analysis; add equity:write and comp:write for editing tests.',
-                  'Select the installed app in your chat and ask it to call get_dashboard.'],
-        'data_notice': ('Staging test environment. Treat figures as fictional test scenarios; never sync these numbers '
+                  ('Select the app, call get_account_context, then list_test_scenarios and setup_test_account before get_dashboard.' if staging else 'Select the installed app in your chat and ask it to call get_dashboard.')],
+        'data_notice': ('Staging isolates every MCP connection in a persistent fictional account. Financial tools refuse access until setup_test_account succeeds. Never sync these numbers '
                         'into production, personal finances or financial advice.' if staging else
                         'Private account data stays behind OAuth. This public document contains no account data.'),
         'automatic_setup_limit': 'Discovery can supply configuration; installation, sign-in and permission approval remain user actions.',
@@ -45,7 +45,7 @@ def setup_page():
     doc = setup_document()
     heading = escape(doc['name'])
     steps = ''.join('<li>' + escape(s) + '</li>' for s in doc['setup'])
-    seed = '<p>On staging, sign in and choose a fictional profile on an empty dashboard before connecting your assistant.</p>' if doc['environment'] == 'staging' else ''
+    seed = '<p>On staging, connect normally. Ask your assistant to verify get_account_context, list_test_scenarios and call setup_test_account. The dashboard account is separate and cannot be accessed through the staging MCP.</p>' if doc['environment'] == 'staging' else ''
     body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{heading} MCP setup</title><link rel="stylesheet" href="/mcp-setup.css"><link rel="alternate" type="application/json" href="/mcp/setup.json"></head><body><main><a href="/login">Epic Stocks Unofficial</a><h1>{heading} MCP setup</h1><p>{escape(doc['data_notice'])}</p><h2>Server address</h2><p><code>{escape(doc['server_url'])}</code></p><p>Streamable HTTP · OAuth with PKCE · no API key</p><ol>{steps}</ol>{seed}<h2>Download a connector</h2><p><a href="/mcp-setup/plugin/chatgpt">Download ChatGPT plugin ZIP</a> · <a href="/mcp-setup/plugin/claude">Download Claude plugin ZIP</a></p><p>Packages contain public configuration only, never credentials.</p><h2>Discovery for assistants</h2><ul><li><a href="/mcp/setup.json">Machine-readable setup JSON</a></li><li><a href="/.well-known/oauth-protected-resource/mcp">OAuth protected resource metadata</a></li><li><a href="/.well-known/oauth-authorization-server">OAuth authorization server metadata</a></li></ul><p>{escape(doc['automatic_setup_limit'])}</p><p><a href="/demo">Explore fictional profiles</a> · <a href="/privacy">Privacy</a></p></main></body></html>'''
     return HTMLResponse(body, headers={'Cache-Control': 'public, max-age=300'})
 

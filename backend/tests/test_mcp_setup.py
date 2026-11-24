@@ -45,14 +45,16 @@ def test_staging_mcp_is_explicitly_test_data(client):
     from tests.conftest import register_user
     from tests.test_mcp_tools import Mcp
     register_user(client)
-    mcp = Mcp(client)
-    with patch('app.mcp.transport.site_origin', return_value='https://staging.epic-stocks.com'):
+    with patch.dict('os.environ', {'DOMAIN': 'staging.epic-stocks.com'}):
+        mcp = Mcp(client)
         init = client.post('/mcp', headers=mcp.auth, json={'jsonrpc': '2.0', 'id': 9, 'method': 'initialize', 'params': {}})
         assert init.status_code == 200
         result = init.json()['result']
         assert result['serverInfo']['name'] == 'epic-stocks-staging-test'
         assert 'Never sync' in result['instructions']
 
+        assert 'setup_test_account' in mcp.error('get_dashboard')
+        mcp.call('setup_test_account', scenario='early')
         tool_result = mcp.raw_call('get_dashboard')
         assert tool_result['_meta']['epic-stocks/environment'] == 'staging-test-data'
 

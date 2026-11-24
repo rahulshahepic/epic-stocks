@@ -15,8 +15,9 @@ export default function GetStarted() {
           Pick whichever is easiest. You can mix them, and change anything later.
         </p>
       </div>
-      {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
       <EpicFileImport />
+
+      {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
       <Card as="section" pad="md">
         <h3 className="text-sm font-medium text-cs-text">Enter it yourself</h3>
         <p className="mt-1 text-xs text-cs-text-2">

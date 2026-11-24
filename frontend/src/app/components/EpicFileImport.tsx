@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import EurekaFileGuide from './EurekaFileGuide.tsx'
 import ChangeList from './ChangeList.tsx'
 import type { Change } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from './FindingList.tsx'
@@ -102,12 +103,7 @@ export default function EpicFileImport() {
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
       <span className="text-sm font-semibold text-cs-text">Import from Eureka</span>
-      <span className="mt-1 text-xs text-cs-muted">
-        Download these two files from Eureka:
-        your latest <strong>Stock Loan Statement</strong> and{' '}
-        <strong>Data for Stock Workbook</strong>. Upload them here exactly as they
-        download &mdash; no editing needed.
-      </span>
+      <div className="mt-2"><EurekaFileGuide /></div>
       <span className="mt-2 text-xs text-cs-muted">
         Vesting dates start from the company grant schedule; you can change any
         of them afterwards on the Grants page.

@@ -689,7 +689,7 @@ The guides live in `frontend/src/scaffold/components/connectAiGuides.ts`. Suppor
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with **Equity editing** ticked, then give it whatever you have — a purchase agreement Docusign, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page and the empty dashboard show a message to start the chat with.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with **Equity editing** ticked, then give it whatever you have — a purchase agreement Docusign, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page and empty dashboard lead with direct Eureka import, followed by an assistant option for complex paperwork.
 
 The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields, Epic's usual schedule as a starting point, and what your account already holds), works out the edits, and calls `apply_changes` **without** a confirm token. That is a preview: every edit is checked exactly as the app would store it, nothing is saved, and it comes back with what would change and how your position moves. The assistant walks you through it in plain words, says what it guessed, and only after you say yes calls `apply_changes` again with the preview's token. The token ties the save to exactly what you were shown — if the edits or your account changed in between, it is refused and previewed again. Every edit lands together or not at all.
 
@@ -816,7 +816,7 @@ Epic requires an 83(b) election with every purchase, so a grant bought at a pric
 
 ![Import / Export](screenshots/import-export-mobile.png)
 
-Download these two documents from Eureka:
+Start with **Data for Stock Workbook** from Eureka. Add the latest **Stock Loan Statement** if you have loans; no loans means no statement is needed. Either file can be previewed alone, but a missing statement does not prove a zero loan balance.
 
 | Document | What is read from it |
 |----------|----------------------|
@@ -1485,7 +1485,7 @@ epic-stocks/
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── dateUtils.ts  # Local-day clock + leap-safe calendar date arithmetic
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
-│   │   │   ├── components/  # GetStarted, EpicFileImport, ChangeList (one screen of edits: tick, check, save), ChatImportIntro, VestingEditor, FindingList, TipCarousel, StockJourney, AppSettingsSections
+│   │   │   ├── components/  # GetStarted, EurekaFileGuide, EpicFileImport, ChangeList (one screen of edits: tick, check, save), ChatImportIntro, VestingEditor, FindingList, TipCarousel, StockJourney, AppSettingsSections
 │   │   │   ├── vesting.ts   # A grant's vesting rows, read the way the server stores them
 │   │   │   ├── pages/Dashboard.math.ts # The dashboard's sums as pure functions — card values, per-grant holdings, active loans, breakdowns
 │   │   │   ├── pages/dashboard/ # The dashboard's card rows (ShareCards, EarningsCards, CostCards), its Breakdown row and its charts

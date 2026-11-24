@@ -150,10 +150,11 @@ export default function ImportExport() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-cs-text">Import / Export</h2>
 
-      {/* The fastest path leads: hand the documents to an assistant. */}
-      {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
+      {/* Direct import leads; assistants can handle other paperwork. */}
 
       <EpicFileImport />
+
+      {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
 
       {/* Fallback for anyone without the documents to hand. */}
       <button

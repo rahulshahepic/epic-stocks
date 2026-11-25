@@ -51,43 +51,42 @@ function purchaseRule(event: PlannedEvent): string {
 }
 
 export default function LifeEventsPlanner({
-  events, retirementDate, onChange, comparison, onRun, running, phase = 'all', showRun = true,
+  events, retirementDate, onChange, comparison, onRun, running, showRun = true,
 }: {
   showRun?: boolean
-  phase?: 'before' | 'retirement' | 'all'
   events: PlannedEvent[]
-  retirementDate: string
+  retirementDate?: string
   onChange: (events: PlannedEvent[]) => void
   comparison: { baseline: SimResult; withEvents: SimResult } | null
   onRun: () => void
   running: boolean
 }) {
   const sectionName = useId()
-  const [draft, setDraft] = useState<PlannedEvent>(() => blank('home', retirementDate))
+  const todayDate = localToday()
+  const [draft, setDraft] = useState<PlannedEvent>(() => blank('home', todayDate))
   const [editing, setEditing] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [replaceOnSale, setReplaceOnSale] = useState(false)
   const [priceBasis, setPriceBasis] = useState<'today' | 'retirement'>('today')
-  const visibleEvents = events.filter(event => phase === 'all' ||
-    (phase === 'before' ? event.date.slice(0, 7) < retirementDate.slice(0, 7) : event.date.slice(0, 7) >= retirementDate.slice(0, 7)))
   const asset = draft.kind === 'home' || draft.kind === 'vehicle'
   const financed = !!draft.loanYears
   const recurringType = ['education', 'childcare', 'care'].includes(draft.kind)
   const annualLabel = draft.kind === 'education' ? 'Annual tuition and living costs' : draft.kind === 'childcare' ? 'Annual childcare costs' : draft.kind === 'care' ? 'Annual care costs' : 'Additional annual costs (not in base spending)'
   const linkedReplacement = replaceOnSale
-  const defaultDate = phase === 'before' ? localToday() : retirementDate
-  const retirementYear = retirementDate.slice(0, 4)
-  const today = new Date()
-  const yearsToRetirement = (Number(retirementYear) - today.getFullYear()) +
-    (Number(retirementDate.slice(5, 7)) - today.getMonth() - 1) / 12
+  const retirementYear = retirementDate?.slice(0, 4)
+  const todayYear = todayDate.slice(0, 4)
+  const basisDate = retirementDate ?? todayDate
+  const yearsToRetirement = Number(basisDate.slice(0, 4)) - Number(todayYear) +
+    (Number(basisDate.slice(5, 7)) - Number(todayDate.slice(5, 7))) / 12
   const conversionRate = draft.inflationRate ?? 0.025
-  const hypotheticalEpicTargetM = planCashFlows(events.filter(event => !event.condition), retirementDate, 1).preRetirementEpicNeedM
+  const hypotheticalEpicTargetM = retirementDate
+    ? planCashFlows(events.filter(event => !event.condition), retirementDate, 1).preRetirementEpicNeedM : 0
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
   }
   const priceFactor = priceBasis === 'today' ? Math.pow(1 + conversionRate, yearsToRetirement) : 1
-  const amountYear = priceBasis === 'today' ? today.getFullYear() : retirementYear
+  const amountYear = priceBasis === 'today' ? todayYear : draft.priceBasisDate?.slice(0, 4) ?? retirementYear ?? todayYear
   const money = (key: 'amountM' | 'annualCostM' | 'saleOffsetM' | 'resaleValueM' | 'replacementCostM', label: string) => (
     <label className={`min-w-0 flex flex-col gap-1 text-xs text-cs-text-2 ${asset && key === 'annualCostM' ? 'col-span-2' : ''}`}>
       {label} ({amountYear} $)
@@ -121,13 +120,14 @@ export default function LifeEventsPlanner({
     }
     if (events.length >= 20 && !editing) { setError('Maximum 20 planned events.'); return }
     const event = { ...convertMoney(draft, priceFactor), id: editing ?? 'event-' + Date.now().toString(36) }
+    if (priceBasis === 'today' || (!retirementDate && !event.priceBasisDate)) event.priceBasisDate = retirementDate ? undefined : todayDate
     event.replacementEveryYears = Math.min(50, Math.max(0, Math.floor(event.replacementEveryYears ?? 0)))
     if (event.kind === 'home' || event.kind === 'vehicle') {
       event.loanYears = Math.min(50, Math.max(0, Math.floor(event.loanYears ?? 0)))
       if (!event.loanYears || (event.downPaymentPct ?? 1) >= 1 || !event.amountM) {
         delete event.loanYears
         delete event.loanRate
-        if (!event.lifetimeYears) delete event.inflationRate
+        if (!event.lifetimeYears && !event.priceBasisDate) delete event.inflationRate
         event.downPaymentPct = 1
       } else if (event.loanRate == null) {
         setError('Enter the loan interest rate, including 0% for interest-free financing.'); return
@@ -140,7 +140,7 @@ export default function LifeEventsPlanner({
     }
     if (event.condition) {
       event.condition = Object.fromEntries(Object.entries(event.condition).filter(([, value]) => value !== undefined))
-      if (event.date.slice(0, 7) < retirementDate.slice(0, 7)) {
+      if (retirementDate && event.date.slice(0, 7) < retirementDate.slice(0, 7)) {
         setError('Conditional purchases must start at or after retirement.'); return
       }
       if (Object.entries(event.condition).some(([key, value]) => key !== 'requireFullSpending' &&
@@ -169,23 +169,26 @@ export default function LifeEventsPlanner({
       return
     }
     onChange(editing ? events.map(e => e.id === editing ? event : e) : [...events, event])
-    setEditing(null); setDraft(blank(draft.kind, retirementDate)); setOpen(false); setError('')
+    setEditing(null); setDraft(blank(draft.kind, todayDate)); setOpen(false); setError('')
   }
   return (
-    <section className="rounded-xl border border-cs-border bg-cs-raised p-4 space-y-4" aria-label="Life events and major purchases">
+    <section className="rounded-xl border border-cs-border bg-cs-raised p-4 space-y-4" aria-label="Planned expenses">
       <div>
-        <h2 className="font-serif text-lg font-semibold text-cs-text">Life events & major purchases</h2>
+        <h2 className="font-serif text-lg font-semibold text-cs-text">Planned Expenses</h2>
         <p className="mt-1 text-xs text-cs-muted">
-          Purchases and costs beyond your regular spending.
+          Plan for a car, college, or another major expense.
         </p>
       </div>
-      {visibleEvents.length > 0 && (
+      {events.length > 0 && (
         <ul className="space-y-2">
-          {visibleEvents.map(event => (
+          {events.map(event => (
             <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cs-border p-3">
               <div className="text-xs text-cs-text">
-                <strong>{event.title}</strong> · {event.date} · {event.amountM > 0 || !event.annualCostM ? dollar(event.amountM * 1_000_000) : `${dollar(event.annualCostM * 1_000_000)}/yr`} <span className="text-cs-muted">({retirementYear} dollars)</span>
+                <strong>{event.title}</strong> · {event.date} · {event.amountM > 0 || !event.annualCostM ? dollar(event.amountM * 1_000_000) : `${dollar(event.annualCostM * 1_000_000)}/yr`} <span className="text-cs-muted">({event.priceBasisDate?.slice(0, 4) ?? retirementYear ?? todayYear} dollars)</span>
                 {event.annualCostM && event.amountM > 0 ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
+                {retirementDate && <span className="block text-cs-text-2">
+                  {event.date.slice(0, 7) < retirementDate.slice(0, 7) ? 'Starts before retirement' : 'Starts during retirement'}
+                </span>}
                 {event.durationYears ? <span className="text-cs-muted"> · {event.durationYears} years</span> : null}
                 {event.loanYears ? <span className="text-cs-muted"> · financed over {event.loanYears} years</span> : null}
                 {event.condition && <span className="block text-cs-text-2">{purchaseRule(event)}</span>}
@@ -202,14 +205,14 @@ export default function LifeEventsPlanner({
       )}
       {!open ? (
         <button type="button" className="rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text"
-          onClick={() => { setDraft(blank('home', defaultDate)); setReplaceOnSale(false); setPriceBasis('today'); setEditing(null); setOpen(true) }}>
+          onClick={() => { setDraft(blank('home', todayDate)); setReplaceOnSale(false); setPriceBasis('today'); setEditing(null); setOpen(true) }}>
           + Add planned expense
         </button>
       ) : (
         <div className="space-y-3 rounded-lg border border-cs-border-strong p-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Type
-              <select value={draft.kind} onChange={e => { setDraft(blank(e.target.value as PlannedEventKind, draft.date)); setReplaceOnSale(false) }}
+              <select value={draft.kind} onChange={e => { setDraft(blank(e.target.value as PlannedEventKind, draft.date)); setReplaceOnSale(false); if (draft.priceBasisDate) setPriceBasis('today') }}
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
                 {KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
@@ -247,7 +250,7 @@ export default function LifeEventsPlanner({
             {draft.condition && <p className="mt-1 text-xs leading-relaxed text-cs-text-2">{purchaseRule(draft)}</p>}
           </section>}
           <div className="grid grid-cols-2 gap-3">
-            <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
+            {retirementDate && !draft.priceBasisDate && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
               <summary className="cursor-pointer font-semibold">Price basis · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
               <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Prices entered in
                 <select value={priceBasis} onChange={e => { const basis = e.target.value as 'today' | 'retirement'; setDraft(prev => convertMoney(prev, Math.pow(1 + conversionRate, yearsToRetirement) ** (basis === 'retirement' ? 1 : -1))); setPriceBasis(basis) }}
@@ -256,7 +259,7 @@ export default function LifeEventsPlanner({
                 </select>
               </label>
               <p className="mt-2 text-cs-muted">Today's amounts are converted automatically to {retirementYear} dollars when saved, using {(conversionRate * 100).toFixed(1)}% inflation.</p>
-            </details>
+            </details>}
             {draft.condition && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><summary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</summary><fieldset className="mt-3 space-y-3">
               <legend className="sr-only">Purchase conditions</legend>
               <label className="min-w-0 flex flex-col gap-1">Minimum portfolio as % of starting retirement wealth (optional)
@@ -282,7 +285,7 @@ export default function LifeEventsPlanner({
                       onChange={e => set('condition', { ...draft.condition, requireFullSpending: e.target.checked })} />
                     Only if regular spending is not being cut
                   </label>
-                  <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear} $; optional)
+                  <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear ? `${retirementYear} $` : 'retirement-year $'}; optional)
                     <input type="number" min="0" max="1000000000" step="10000" value={draft.condition.minPortfolioM == null ? '' : fromM(draft.condition.minPortfolioM)}
                       onChange={e => set('condition', { ...draft.condition, minPortfolioM: e.target.value === '' ? undefined : Number(e.target.value) / 1_000_000 })}
                       className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />

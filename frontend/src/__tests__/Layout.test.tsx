@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { AppProvider } from '../app/AppProvider.tsx'
 import { ThemeProvider } from '../scaffold/contexts/ThemeContext.tsx'
@@ -116,19 +115,13 @@ describe('Layout top chrome', () => {
 })
 
 describe('Layout responsive navigation', () => {
-  it('keeps primary routes in the mobile bar and exposes secondary routes from More', async () => {
-    const user = userEvent.setup()
+  it('shows the same three primary routes on mobile and desktop', () => {
     renderLayout()
-
-    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
-    expect(mobileNav).toHaveTextContent('Dashboard')
-    expect(mobileNav).toHaveTextContent('Events')
-    expect(mobileNav).toHaveTextContent('Retirement')
-    expect(mobileNav).toHaveTextContent('Grants')
-
-    await user.click(screen.getByRole('button', { name: 'More' }))
-    expect(within(mobileNav).getByRole('link', { name: 'Comp Calc' })).toBeInTheDocument()
-    expect(within(mobileNav).getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+    for (const name of ['Mobile navigation', 'Main navigation']) {
+      const navigation = screen.getByRole('navigation', { name })
+      expect(within(navigation).getAllByRole('link').map(link => link.textContent))
+        .toEqual(['Dashboard', 'Planning', 'Settings'])
+    }
   })
 })
 

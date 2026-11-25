@@ -357,8 +357,13 @@ export default function Dashboard() {
 
   const isEmpty = events?.length === 0
 
+  const recordLinks = <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
+    <Link to="/events" className="inline-flex min-h-11 items-center rounded-lg border border-cs-border-strong px-3">Stock Records</Link>
+    <Link to="/comp-calculator" className="inline-flex min-h-11 items-center rounded-lg border border-cs-border-strong px-3">Compensation Calculator</Link>
+  </div>
+
   if (isEmpty && !readOnly) {
-    return <>{(carryover === 'failed' || carryover === 'expired') && <p role="alert" className="mb-4 rounded-xl border border-cs-border p-4 text-sm text-cs-text">{carryover === 'expired' ? 'Your preview expired after 30 minutes.' : 'We couldn’t save your preview automatically.'} Import your files again below; your account is ready.</p>}<GetStarted onImported={() => { setImportSaved(true); reloadEvents(); reloadPrices(); reloadLoans(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></>
+    return <>{(carryover === 'failed' || carryover === 'expired') && <p role="alert" className="mb-4 rounded-xl border border-cs-border p-4 text-sm text-cs-text">{carryover === 'expired' ? 'Your preview expired after 30 minutes.' : 'We couldn’t save your preview automatically.'} Import your files again below; your account is ready.</p>}<GetStarted onImported={() => { setImportSaved(true); reloadEvents(); reloadPrices(); reloadLoans(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /><div className="mt-4">{recordLinks}</div></>
   }
 
   if (isEmpty && readOnly) {
@@ -420,7 +425,8 @@ export default function Dashboard() {
           {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
             <dl className="space-y-1 text-xs text-white">
               {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
-                <dt>Outstanding loan principal</dt><dd className="font-semibold tabular-nums">{fmt$(outstandingPrincipal)}</dd>
+                <dt>Outstanding loan principal</dt>
+                <dd className="font-semibold tabular-nums"><Link to="/loans" className="underline underline-offset-2" aria-label={`View outstanding loans, ${fmt$(outstandingPrincipal)} principal`}>{fmt$(outstandingPrincipal)}</Link></dd>
               </div>}
               {cv.accrued_unbooked_interest > 0 && <div className="flex justify-between gap-3">
                 <dt>Accrued interest</dt><dd className="font-semibold tabular-nums">{fmt$(cv.accrued_unbooked_interest)}</dd>
@@ -429,7 +435,7 @@ export default function Dashboard() {
           )}
           {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
           <p className="font-semibold tabular-nums">
-            {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}
+            <Link to="/grants" className="underline underline-offset-2">{fmtNum(cv.total_shares)} vested shares</Link> · {cv.current_price === null ? 'Price not entered' : <Link to="/prices" className="underline underline-offset-2">{fmtPrice(cv.current_price)}/share</Link>}
             {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
           </p>
           {cv.next_event && (
@@ -673,7 +679,8 @@ export default function Dashboard() {
           rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}
           maxDate={maxDate} hasFuturePrices={hasFuturePrices} />}
       </section>}
-      {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand">
+      {recordLinks}
+      {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
         <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
         {config?.ai_connections && <Link to="/connect-ai" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Ask your assistant</Link>}
       </div>}

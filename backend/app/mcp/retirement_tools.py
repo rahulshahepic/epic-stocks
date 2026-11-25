@@ -5,7 +5,7 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
 
-RETIREMENT_RESOURCE_VERSION = 6
+RETIREMENT_RESOURCE_VERSION = 7
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
 RETIREMENT_RESOURCE_URIS = frozenset(
     f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
@@ -21,6 +21,7 @@ _EVENT_SCHEMA = {
             "childcare", "care", "renovation", "gift", "other",
         ]},
         "date": {"type": "string", "description": "YYYY-MM-DD"},
+        "priceBasisDate": {"type": "string", "description": "Optional YYYY-MM-DD price basis for expense amounts entered without a retirement date."},
         "amountM": {"type": "number", "description": "Purchase or one-time expense in millions of dollars"},
         "annualCostM": {"type": "number", "description": "Additional recurring annual cost in $M, not already in normal spending"},
         "endDate": {"type": "string", "description": "Absolute recurring-cost cutoff; cannot combine with durationYears"},

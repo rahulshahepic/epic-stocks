@@ -18,20 +18,38 @@ def test_partial_update_preserves_other_saved_fields(mcp, client):
         "retirementDate": "2032-01-02", "defaultSpend": 180,
         "epicExit": 7.0, "traditional": 0.6,
     }}).status_code == 200
-    answer = mcp.call("update_retirement_params", changes={"defaultSpend": 205})
+    patch = {"defaultSpend": 205}
+    preview = mcp.call("update_retirement_params", changes=patch)
+    assert preview["applied"] is preview["saved"] is False
+    assert preview["changes"] == patch
+    assert client.get("/api/retirement/params").json()["params"]["defaultSpend"] == 180
+    answer = mcp.call("update_retirement_params", changes=patch, confirm=preview["confirm"])
+    assert answer["applied"] is answer["saved"] is True
     assert answer["updated"] == ["defaultSpend"]
     assert client.get("/api/retirement/params").json()["params"] == {
         "retirementDate": "2032-01-02", "defaultSpend": 205,
         "epicExit": 7.0, "traditional": 0.6,
     }
 
+def test_retirement_confirmation_expires_after_web_save(mcp, client):
+    changes = {"defaultSpend": 205}
+    preview = mcp.call("update_retirement_params", changes=changes)
+    intervening = {"retirementDate": "2034-01-01", "defaultSpend": 180}
+    assert client.put("/api/retirement/params", json={"params": intervening}).status_code == 200
+    assert "preview again" in mcp.error(
+        "update_retirement_params", changes=changes, confirm=preview["confirm"])
+    assert client.get("/api/retirement/params").json()["params"] == intervening
+
 
 def test_writer_cannot_read_existing_params_through_update(client):
     register_user(client)
-    client.put("/api/retirement/params", json={"params": {"epicExit": 4.0}})
+    client.put("/api/retirement/params", json={"params": {"epicExit": 4.0, "defaultSpend": 173}})
     writer = Mcp(client, scope="comp:write")
     result = writer.call("update_retirement_params", changes={"defaultSpend": 180})
+    assert result["changes"] == {"defaultSpend": 180}
     assert "epicExit" not in str(result)
+    assert "173" not in str(result["changes"])
+    assert "position_before" not in result
     assert "get_retirement_params" not in {t["name"] for t in writer.list_tools()}
 
 
@@ -463,8 +481,8 @@ def test_moving_retirement_past_conditional_purchase_does_not_block_saves(mcp, c
     assert client.put("/api/retirement/params", json={"params": params}).status_code == 200
     moved = {**params, "retirementDate": "2036-01-01", "defaultSpend": 200}
     assert client.put("/api/retirement/params", json={"params": moved}).status_code == 200
-    assert mcp.call("update_retirement_params", changes={"defaultSpend": 210})["saved"] is True
-    assert mcp.call("update_retirement_params", changes={"retirementDate": "2037-01-01"})["saved"] is True
+    assert mcp.confirm_write("update_retirement_params", changes={"defaultSpend": 210})["saved"] is True
+    assert mcp.confirm_write("update_retirement_params", changes={"retirementDate": "2037-01-01"})["saved"] is True
     saved = client.get("/api/retirement/params").json()["params"]
     assert saved["defaultSpend"] == 210
     assert saved["plannedEvents"] == [event]
@@ -477,7 +495,7 @@ def test_moving_retirement_past_conditional_purchase_does_not_block_saves(mcp, c
 def test_purchase_failure_policy_round_trips_through_save(mcp, client, extra):
     event = {"id": "car-wait", "title": "Car", "kind": "vehicle", "date": "2037-01-01",
              "amountM": 0.2, "condition": {"minStartingWealthRatio": 1.4}, **extra}
-    mcp.call("update_retirement_params", changes={"plannedEvents": [event]})
+    mcp.confirm_write("update_retirement_params", changes={"plannedEvents": [event]})
     assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
 
 
@@ -528,7 +546,7 @@ def test_invalid_recurring_duration_is_rejected(duration):
 def test_saved_tuition_duration_round_trips_and_cannot_mix_with_absolute_end(mcp, client):
     event = {"id": "college", "title": "College", "kind": "education", "date": "2044-08-01",
              "amountM": 0, "annualCostM": 0.1, "durationYears": 4}
-    mcp.call("update_retirement_params", changes={"plannedEvents": [event]})
+    mcp.confirm_write("update_retirement_params", changes={"plannedEvents": [event]})
     assert client.get("/api/retirement/params").json()["params"]["plannedEvents"] == [event]
     with pytest.raises(ValueError):
         validate_changes({"plannedEvents": [{**event, "endDate": "2048-07-01"}]})
@@ -622,7 +640,7 @@ def test_card_reports_projection_capability(client, monkeypatch, scope, can_proj
 
 def test_manual_exit_write_persists_mode_and_preserves_accounts(mcp, client):
     client.put("/api/retirement/params", json={"params": {"epicExit": 5, "epicExitMode": "auto", "traditional": 1}})
-    answer = mcp.call("update_retirement_params", changes={"epicExit": 6})
+    answer = mcp.confirm_write("update_retirement_params", changes={"epicExit": 6})
     saved = client.get("/api/retirement/params").json()["params"]
     assert saved["epicExitMode"] == "manual"
     assert saved["traditional"] == 1

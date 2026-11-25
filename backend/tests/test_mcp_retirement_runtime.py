@@ -9,6 +9,7 @@ import pytest
 from app import retirement_simulation as sim
 from scaffold.models import User
 from tests.conftest import register_user, user_key
+from tests.test_mcp_tools import Mcp
 
 
 @pytest.fixture(scope="module")
@@ -56,3 +57,14 @@ console.log(JSON.stringify({pctFundingShortfall:r.pctRuin, pctExhausted:r.pctExh
         for key, value in web.items():
             assert mcp["result"][key] == value
         assert owner.retirement_params == saved
+
+
+def test_confirmed_mcp_changes_become_simulation_assumptions(client, monkeypatch, runtime):
+    register_user(client)
+    monkeypatch.setattr(sim, "RUNNER", runtime)
+    mcp = Mcp(client)
+    mcp.confirm_write("update_retirement_params", changes={"epicExit": 4, "defaultSpend": 205})
+    mcp.confirm_write("set_retirement_accounts", roth=0.3)
+    simulation = mcp.call("run_retirement_simulation", overrides={"paths": 100}, recalculate_exit=False)
+    assert simulation["assumptions"]["defaultSpend"] == 205
+    assert simulation["assumptions"]["roth"] == 0.3

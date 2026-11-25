@@ -59,13 +59,17 @@ test('what-if runs do not save, and saving is explicit', async ({page}) => {
   await card.getByLabel('Annual health insurance ($)').fill('27500')
   await card.getByRole('button',{name:'Run simulation'}).click()
   await expect(card.getByRole('status')).toContainText('Changes are not saved')
-  let calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:{name?:string;arguments?:{overrides?:{defaultSpend?:number;healthInsurance?:number}}}}[]}).pluginCalls)
+  const readCalls = () => page.evaluate(() => (window as unknown as { pluginCalls: { params: {
+    name?: string; arguments?: { overrides?: Record<string, unknown>; changes?: Record<string, unknown>; confirm?: string }
+  } }[] }).pluginCalls)
+  const calls = await readCalls()
   expect(calls.some(c=>c.params.name==='refresh_retirement_view'&&c.params.arguments?.overrides?.defaultSpend===220&&c.params.arguments?.overrides?.healthInsurance===27.5)).toBe(true)
   expect(calls.some(c=>c.params.name==='update_retirement_params')).toBe(false)
   await card.getByRole('button',{name:'Save these inputs'}).click()
   await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
-  calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:{name?:string;arguments?:{overrides?:{defaultSpend?:number}}}}[]}).pluginCalls)
-  expect(calls.some(c=>c.params.name==='update_retirement_params')).toBe(true)
+  const saves = (await readCalls()).filter(c => c.params.name === 'update_retirement_params')
+  const args = { account: 'me', changes: { defaultSpend: 220, healthInsurance: 27.5 } }
+  expect(saves.map(call => call.params.arguments)).toEqual([args, { ...args, confirm: 'retirement-preview' }])
 })
 
 test('date comparison renders two scenarios without saving', async ({page}) => {
@@ -289,7 +293,7 @@ test('saving a projected exit requires a completed projection for the selected d
     name?: string; arguments?: { changes?: Record<string, unknown> }
   } }[] }).pluginCalls)
   const saves = calls.filter(c => c.params.name === 'update_retirement_params')
-  expect(saves).toHaveLength(1)
+  expect(saves).toHaveLength(2)
   expect(saves[0].params.arguments?.changes).toMatchObject({ epicExit: 9 })
 })
 

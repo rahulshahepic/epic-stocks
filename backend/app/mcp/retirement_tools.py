@@ -3,9 +3,10 @@ from datetime import date
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
-from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS, MAX_PATHS
+from app.changes import RETIREMENT_PARAMS, apply_changes
+from app.retirement_simulation import run, MAX_SCENARIOS, MAX_PATHS
 
-RETIREMENT_RESOURCE_VERSION = 7
+RETIREMENT_RESOURCE_VERSION = 8
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
 RETIREMENT_RESOURCE_URIS = frozenset(
     f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
@@ -58,7 +59,7 @@ _EVENT_SCHEMA = {
 
 _PATCH = {
     "type": "object",
-    "description": "Named retirement calculator fields to override. Dollars are in $M for assets and $K/year for spending; no saved values change unless update_retirement_params is called.",
+    "description": "Named retirement calculator fields to override. Dollars are in $M for assets and $K/year for spending; saving requires a separate confirmed update_retirement_params call.",
     "additionalProperties": False,
     "properties": {
         **{k: {"type": "number"} for k in (
@@ -133,21 +134,36 @@ def _run(ctx: ToolContext, args: dict):
             "canProjectExit": EQUITY_READ in ctx.connector.scopes}
 
 
+RETIREMENT_CONFIRM_PROPERTY = {
+    "type": "string",
+    "description": "Omit to preview. After the user approves, send this token with the same inputs.",
+}
+
+
+def apply_retirement_patch(owner, db, patch, confirm, *, show_account_breakdown=False):
+    if confirm is not None and not isinstance(confirm, str):
+        raise ValueError("confirm is the token a preview returned")
+    result = apply_changes(
+        owner, db, [{"kind": RETIREMENT_PARAMS, "action": "update", "values": patch}],
+        confirm=confirm, retirement_only=True, show_account_breakdown=show_account_breakdown,
+    )
+    # The internal diff contains previous values. comp:write does not grant read access.
+    response = {"applied": result["applied"], "saved": result["applied"]}
+    if not result["applied"]:
+        response.update(confirm=result["confirm"], next_step=(
+            "Show the proposed values to the user. Once they approve, call this tool again "
+            "with the same inputs and this confirm token."
+        ))
+    return response
+
+
 def _update(ctx: ToolContext, args: dict):
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
-    patch = validate_changes(args.get("changes"))
-    ctx.db.refresh(owner, with_for_update=True)
-    held = owner.retirement_params
-    merged = {**(held if isinstance(held, dict) else {}), **patch}
-    if "epicExit" in patch and "epicExitMode" not in patch:
-        merged["epicExitMode"] = "manual"
-    validate_combined(merged)
-    from app.expense_funding import sync_funding_plans
-    sync_funding_plans(merged, held if isinstance(held, dict) else {})
-    owner.retirement_params = merged
-    ctx.db.commit()
-    # Do not return the saved blob: comp:write does not imply comp:read.
-    return {"updated": sorted(patch), "saved": True,
+    patch = args.get("changes")
+    result = apply_retirement_patch(owner, ctx.db, patch, args.get("confirm"))
+    if not result["applied"]:
+        return {**result, "changes": patch}
+    return {**result, "updated": sorted(patch),
             "next_step": "Run the retirement simulation to check the updated plan."}
 
 
@@ -207,9 +223,11 @@ register(Tool(
 ))
 register(Tool(
     name="update_retirement_params", title="Update saved retirement assumptions",
-    description="Save only named fields in the user's retirement calculator. Preserve all other saved settings. Use only when the user explicitly wants to save changes. Assets are $M, spending and insurance are $K/year. This writes immediately; do not use for exploratory what-if runs.",
-    input_schema=object_schema({"account": ACCOUNT_PROPERTY, "changes": _PATCH}, ["changes"]),
-    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=True, destructive=True,
+    description="Preview a patch to named retirement calculator fields by omitting confirm. Show the proposed values to the user and, once they approve, repeat the call with the same changes and the returned confirm token to save. Assets are $M, spending and insurance are $K/year. Use run_retirement_simulation for exploratory what-if runs.",
+    input_schema=object_schema({
+        "account": ACCOUNT_PROPERTY, "changes": _PATCH, "confirm": RETIREMENT_CONFIRM_PROPERTY,
+    }, ["changes"]),
+    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=False, destructive=True,
 ))
 register(Tool(
     name="show_retirement", title="Open retirement planner",

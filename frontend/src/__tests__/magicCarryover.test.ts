@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { api } from '../api.ts'
 import { platform } from '../platform/index.ts'
-import { discardTrialPreview, hasTrialPayload, saveTrialDraft, stashTrialPayload } from '../app/trialImport.ts'
+import { discardTrialPreview, hasTrialPayload, saveTrialDraft, stashTrialPayload, takeStashedTrialPayload } from '../app/trialImport.ts'
 import { suggestedRetirementDate } from '../app/retirementDate.ts'
 
 beforeEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); localStorage.clear() })
@@ -33,4 +33,13 @@ it('does not claim records were saved when only corrections were skipped', async
   await saveTrialDraft({grants: []})
   expect(apply).not.toHaveBeenCalled()
   expect(await platform.storage.get('trial_carryover_result')).toBe('review')
+})
+
+it('clears trial preview storage before attempting to save after sign-in', async () => {
+  await stashTrialPayload({grants: []})
+  await platform.storage.set('trial_preview', '{}')
+  expect(await takeStashedTrialPayload()).toEqual({grants: []})
+  expect(await platform.storage.get('trial_preview')).toBeNull()
+  expect(await platform.storage.get('trial_saved_at')).toBeNull()
+  expect(await takeStashedTrialPayload()).toBeNull()
 })

@@ -492,12 +492,17 @@ export default function Try() {
     if (!result) return
     setSaving(true)
     try {
-      await stashTrialPayload(result.draft)
-      await platform.storage.set('trial_preview', JSON.stringify(result))
       await measurementEvent('save_intent', result.measurementSequence)
       pingSaveIntent()
-      if (isLoggedIn()) { await saveTrialDraft(result.draft); navigate('/') }
-      else navigate('/login')
+      if (isLoggedIn()) {
+        await discardTrialPreview()
+        await saveTrialDraft(result.draft)
+        navigate('/')
+      } else {
+        await stashTrialPayload(result.draft)
+        await platform.storage.set('trial_preview', JSON.stringify(result))
+        navigate('/login')
+      }
     } catch (e) {
       setSaving(false)
       setError(e instanceof Error ? e.message : 'Could not save your preview. Your preview is still here; retry or import from your account.')

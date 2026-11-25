@@ -37,7 +37,19 @@ def save_my_retirement_params(
     if not isinstance(body.params, dict):
         raise HTTPException(status_code=422, detail="params must be an object")
     from app.retirement_simulation import MILLIONS, THOUSANDS, validate_changes
-    money = {k: v for k, v in body.params.items() if k in MILLIONS or k in THOUSANDS}
+    previous = user.retirement_params or {}
+    # A legacy value can be carried forward while unrelated inputs are saved.
+    # New and changed amounts must satisfy the current limits.
+    money = {
+        key: value
+        for key, value in body.params.items()
+        if key in MILLIONS | THOUSANDS
+        and (
+            key not in previous
+            or value != previous[key]
+            or isinstance(value, bool) != isinstance(previous[key], bool)
+        )
+    }
     if money:
         try:
             validate_changes(money)

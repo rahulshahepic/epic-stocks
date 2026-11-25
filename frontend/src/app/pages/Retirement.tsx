@@ -240,7 +240,7 @@ function NumInput({ label, value, onChange, step, min, max, suffix, hint, info }
   const scale = suffix === '$M' ? 1_000_000 : suffix === '$K/yr' ? 1000 : 1
   const money = scale !== 1
   const ceiling = scale === 1_000_000 ? financialTerms.limits.portfolio_millions * scale : financialTerms.limits.spending_thousands * scale
-  const asText = (n: number) => (Number.isFinite(n) ? String(Number((n * scale).toFixed(2))) : '0')
+  const asText = (n: number) => (Number.isFinite(n) ? String(Number((n * scale).toFixed(2))) : money ? '' : '0')
   const shown = focused || moneyError ? text : asText(value)
   const dollars = Number(shown).toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2})
   const invalidMoney = moneyError || (money && (!Number.isFinite(value) || value < 0 || value * scale > ceiling) ? 'This saved dollar amount is outside the supported range. Correct it before simulating.' : '')
@@ -718,7 +718,6 @@ function RetirementAccount() {
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
-    if (!moneyParamsValid(params)) return
     const request = ++saveRequestRef.current
     const controller = new AbortController()
     setSaveStatus('saving')
@@ -882,7 +881,12 @@ function RetirementAccount() {
 
       {saveStatus === 'error' && !vid && (
         <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
-          Retirement changes were NOT saved: {saveError}. Fix the invalid event or try again.
+          Retirement changes could not be saved: {saveError}. Check the inputs and try again.
+        </p>
+      )}
+      {paramsLoaded && !moneyParamsValid(params) && (
+        <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">
+          This saved plan has a blank or out-of-range dollar amount. Open the advanced assumptions if needed and correct the highlighted amount before running a simulation. Other edits can still save.
         </p>
       )}
 

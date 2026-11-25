@@ -73,6 +73,17 @@ it('accepts plain-dollar spending and preserves thousands in saved parameters', 
   expect(field).toHaveAttribute('aria-invalid', 'true')
 })
 
+it('warns about an invalid legacy amount while saving edits to other fields', async () => {
+  mockApi({savedParams: {epicExitMode: 'manual', epicExit: 1, defaultSpend: 100, minSpend: null}})
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  expect(await screen.findByText(/This saved plan has a blank or out-of-range dollar amount/)).toBeVisible()
+  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '130000'}})
+  await waitFor(() => {
+    const saved = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT').map(([, init]) => JSON.parse(String(init?.body)).params)
+    expect(saved.some(params => params.defaultSpend === 130 && params.minSpend === null)).toBe(true)
+  })
+})
+
 const TAX_SETTINGS = {
   federal_income_rate: 0.37,
   federal_lt_cg_rate: 0.20,

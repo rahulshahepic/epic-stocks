@@ -113,7 +113,7 @@ export async function takeStashedTrialPayload(): Promise<Record<string, unknown>
   if (!await hasTrialPayload()) return null
   const raw = await platform.storage.get(STORAGE_KEY)
   if (!raw) return null
-  await platform.storage.remove(STORAGE_KEY)
+  await discardTrialPreview()
   try {
     return JSON.parse(raw) as Record<string, unknown>
   } catch {

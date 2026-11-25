@@ -151,7 +151,7 @@ describe('Try — upload stage', () => {
 })
 
 describe('Try — preview', () => {
-  beforeEach(() => { sessionStorage.clear(); resetConfigCache() })
+  beforeEach(() => { sessionStorage.clear(); localStorage.removeItem('onboarding_counts_v1'); resetConfigCache() })
   afterEach(() => { vi.restoreAllMocks() })
 
   it('shows a dashboard, not a table dump, and never logs in to do it', async () => {
@@ -328,6 +328,7 @@ describe('Try — preview', () => {
   })
 
   it('counts the save press, carrying no payload with it', async () => {
+    localStorage.setItem('onboarding_counts_v1', 'on')
     const calls = mockFetch(CLEAN)
     renderTry()
     await upload()

@@ -356,4 +356,32 @@ __all__ = ["Actor", "NotFound", "RuleConflict", "set_report_status", "dismiss_re
            "set_rule_enabled", "add_rule", "delete_rule", "set_connections_enabled",
            "revoke_connection", "set_errors_resolved", "prune_connector_tables", "block_email",
            "unblock_email", "block_sending", "unblock_sending", "set_maintenance",
-           "set_flexible_payoff", "set_content_admin", "revoke_account_connections"]
+           "set_flexible_payoff", "set_content_admin", "revoke_account_connections",
+           "pause_onboarding", "cleanup_onboarding", "resume_onboarding"]
+
+
+def pause_onboarding(db: Session, actor: Actor):
+    from scaffold import onboarding
+    before = {'collection_paused': onboarding.paused(db)}
+    def change():
+        onboarding.set_paused(db, True)
+        return {'collection_paused': True}, {'collection_paused': True}
+    return _run(db, actor, 'pause_onboarding', 'setting', None, before, change)
+
+
+def cleanup_onboarding(db: Session, actor: Actor):
+    from scaffold import onboarding
+    def change():
+        result = onboarding.cleanup(db)
+        db.commit()
+        return result, result
+    return _run(db, actor, 'cleanup_onboarding', 'setting', None, None, change)
+
+
+def resume_onboarding(db: Session, actor: Actor):
+    from scaffold import onboarding
+    def change():
+        onboarding.set_paused(db, False)
+        return {'collection_paused': False}, {'collection_paused': False}
+    return _run(db, actor, 'resume_onboarding', 'setting', None,
+                {'collection_paused': onboarding.paused(db)}, change)

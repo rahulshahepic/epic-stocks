@@ -189,7 +189,7 @@ describe('EpicFileImport → one screen of changes', () => {
     await readFiles()
     expect(await screen.findByText('2026 Purchase grant')).toBeInTheDocument()
     expect(screen.getByText(/not on your statement/)).toBeInTheDocument()
-    expect(screen.getAllByRole('checkbox').every(c => (c as HTMLInputElement).checked)).toBe(true)
+    expect(screen.getAllByRole('checkbox').filter(c => !c.closest('label')?.textContent?.includes('Share optional onboarding counts')).every(c => (c as HTMLInputElement).checked)).toBe(true)
   })
 
   it('checks, then saves exactly the ticked changes with the preview token', async () => {

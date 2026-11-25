@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import EurekaFileGuide from '../components/EurekaFileGuide.tsx'
 import { Link, useNavigate } from 'react-router-dom'
-import { trialAnalyze, stashTrialPayload, pingSaveIntent, measurementAllowed, type TrialAnalyzeResponse } from '../trialImport.ts'
+import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
+import { resetMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
+import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
 import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
@@ -162,7 +164,6 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun, allowAssist
   setCsv: (f: File | null) => void; setPdf: (f: File | null) => void
   busy: boolean; error: string; onRun: () => void; allowAssistant?: boolean
 }) {
-  const [measure, setMeasure] = useState(measurementAllowed)
   return (
     <Card className="text-left">
       <Eyebrow className="mb-2">No account needed</Eyebrow>
@@ -197,14 +198,7 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun, allowAssist
         </button>
       </div>
 
-      <label className="mt-3 flex items-start gap-2 text-xs text-cs-text-2">
-        <input type="checkbox" checked={measure} disabled={navigator.doNotTrack === '1'} onChange={e => {
-          const next = e.target.checked
-          setMeasure(next)
-          try { localStorage.setItem('trial_measurement', next ? 'on' : 'off') } catch { setMeasure(false) }
-        }} />
-        Share anonymous daily usage counts (no identity or financial values). Do Not Track is respected.
-      </label>
+      <MeasurementChoice />
       {error && (
         <p role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400">
           {error}
@@ -433,6 +427,7 @@ export default function Try() {
   const [saving, setSaving] = useState(false)
   const [repricing, setRepricing] = useState(false)
   const [pricedAt, setPricedAt] = useState<number | null>(null)
+  useEffect(() => { if (stage === 'preview' && result) void measurementEvent('preview_viewed', result.measurementSequence) }, [stage, result])
 
   async function run(currentPrice?: number) {
     setStage('analyzing')
@@ -464,6 +459,7 @@ export default function Try() {
   }
 
   function startOver() {
+    void resetMeasurement()
     setCsv(null)
     setPdf(null)
     setResult(null)
@@ -477,6 +473,7 @@ export default function Try() {
     setSaving(true)
     try {
       await stashTrialPayload(result.draft)
+      await measurementEvent('save_intent', result.measurementSequence)
       pingSaveIntent()
       navigate('/login')
     } catch {

@@ -1,3 +1,4 @@
+import { measurementEvent } from '../onboarding.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
@@ -65,6 +66,7 @@ export default function Settings() {
     try {
       const pref = await api.setEmailPref(!emailEnabled)
       setEmailEnabled(pref.enabled)
+      if (pref.enabled) void measurementEvent('reminder_enabled')
     } catch { /* ignore */ } finally { setEmailLoading(false) }
   }
 

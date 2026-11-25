@@ -7,6 +7,7 @@
  */
 import { apiFetch } from '../api.ts'
 import type { Change } from '../api.ts'
+import { beginAnalysis, measurementAllowed } from '../scaffold/onboarding.ts'
 import { platform } from '../platform/index.ts'
 
 export interface Finding {
@@ -42,6 +43,7 @@ export interface ReconciliationEvidence {
 }
 
 export interface AnalyzeResponse {
+  measurementSequence?: number
   reconciliation?: ReconciliationEvidence[]
   draft: Record<string, unknown>
   /** True when the newest price in the files is from an earlier year. */
@@ -104,8 +106,12 @@ function form(files: EpicFiles, revisedJson?: string, currentPrice?: number): Fo
 
 async function post<T>(path: string, files: EpicFiles, revisedJson?: string,
   currentPrice?: number): Promise<T> {
-  return apiFetch<T>(path, { method: 'POST', body: form(files, revisedJson, currentPrice) },
-    'Request failed')
+  const attempt = path.endsWith('/analyze') ? await beginAnalysis('account') : null
+  const body = form(files, revisedJson, currentPrice)
+  body.append('measure_usage', String(measurementAllowed()))
+  if (attempt) { body.append('attempt_token', attempt.token); body.append('attempt_sequence', String(attempt.sequence)) }
+  const result = await apiFetch<T>(path, { method: 'POST', body }, 'Request failed')
+  return {...result, measurementSequence: attempt?.sequence}
 }
 
 export const epicImport = {

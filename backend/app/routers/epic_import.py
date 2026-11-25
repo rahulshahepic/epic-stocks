@@ -16,7 +16,7 @@ import re
 from datetime import date
 
 from app.epic_import.evidence import reconciliation_evidence
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -184,6 +184,7 @@ def _summary(draft: Draft) -> dict:
 
 
 class AnalyzeResponse(BaseModel):
+    files_parsed: bool = False
     draft: dict
     # True when the newest price these files carry is from an earlier year. The
     # documents only hold prices Epic has already announced, so between
@@ -203,8 +204,7 @@ class AnalyzeResponse(BaseModel):
     reconciliation: list[dict] = []
 
 
-@router.post("/analyze", response_model=AnalyzeResponse)
-def analyze(
+def _analyze(
     share_csv: UploadFile | None = File(default=None),
     statement_pdf: UploadFile | None = File(default=None),
     revised_draft: UploadFile | None = File(default=None),
@@ -301,6 +301,7 @@ def analyze(
                       and date.today() >= date(date.today().year, 3, 1))
 
     return AnalyzeResponse(
+        files_parsed=bool(rows or statement) and not any(f.severity == "error" for f in parse_findings),
         draft=draft.as_dict(),
         price_is_stale=price_is_stale,
         changes=draft_changes(draft, user.id, db),
@@ -520,3 +521,15 @@ def diff_markdown(
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="import-diff-{stamp}.md"'},
     )
+
+
+@router.post('/analyze', response_model=AnalyzeResponse)
+def analyze(request: Request, share_csv: UploadFile | None = File(default=None),
+            statement_pdf: UploadFile | None = File(default=None), revised_draft: UploadFile | None = File(default=None),
+            revised_json: str | None = Form(default=None), current_price: float | None = Form(default=None),
+            measure_usage: bool = Form(default=False), attempt_token: str | None = Form(default=None, max_length=48),
+            attempt_sequence: int = Form(default=1, ge=1, le=500),
+            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.onboarding_measurement import analyze as observe
+    return observe(db, request, attempt_token, attempt_sequence, measure_usage,
+                   lambda: _analyze(share_csv, statement_pdf, revised_draft, revised_json, current_price, user, db))

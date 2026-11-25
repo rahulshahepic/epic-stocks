@@ -33,6 +33,7 @@ function renderCallback(strict = false) {
 describe('AuthCallback', () => {
   beforeEach(() => {
     sessionStorage.clear()
+    localStorage.removeItem('onboarding_counts_v1')
     navigate.mockClear()
     vi.restoreAllMocks()
   })
@@ -165,6 +166,7 @@ describe('AuthCallback', () => {
   })
 
   it('counts the conversion once the trial data is actually saved', async () => {
+    localStorage.setItem('onboarding_counts_v1', 'on')
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
     vi.spyOn(api, 'draftChanges').mockResolvedValue({ changes: [ADD_GRANT], findings: [], blocked: false })
     vi.spyOn(api, 'previewChanges').mockResolvedValue({ ...RESULT, applied: false, confirm: 'tok' })

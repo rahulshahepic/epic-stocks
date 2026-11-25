@@ -901,3 +901,38 @@ for name, title, description, schema, required, handler, destructive in (
                                           "admin_send_approval_code", "admin_approve_request",
                                           "admin_send_test_notification"),
                   destructive=destructive))
+
+
+def _onboarding_report(ctx: ToolContext, args: dict) -> dict:
+    from scaffold.routers.admin import onboarding_funnel
+    return {**_identity(), 'source': 'onboarding_daily_stats', 'state': 'available',
+            **onboarding_funnel(days=_integer(args, 'days', 30, 1, 180), admin=ctx.user, db=ctx.db)}
+
+
+def _onboarding_action(action):
+    def handler(ctx: ToolContext, args: dict) -> dict:
+        if args.get('confirm') is not True:
+            return {**_identity(), 'applied': False, 'confirm_required': True,
+                    'effect': 'Pause collection and remove active attempt linkage; aggregate counts remain.'
+                    if action == 'pause' else 'Remove only expired attempt linkage and aggregates beyond retention.'}
+        change = admin_actions.pause_onboarding if action == 'pause' else admin_actions.cleanup_onboarding
+        return {**_identity(), 'applied': True, 'result': change(ctx.db, _actor(ctx))}
+    return handler
+
+
+register(Tool(name='admin_onboarding_funnel', title='Onboarding funnel and actions',
+    description='Read aggregate attempt cohorts, stage counts, rates with denominators, timing and error categories, collection/retention health and recommended admin actions. No attempt tokens, account identifiers or financial values. Source-checked within five minutes is accuracy evidence, not independently proven accuracy.',
+    input_schema=object_schema({'days': {'type': 'integer', 'minimum': 1, 'maximum': 180}}),
+    scope=ADMIN_READ, handler=_onboarding_report))
+for _name, _title, _action in (
+    ('admin_pause_onboarding', 'Pause optional onboarding measurement', 'pause'),
+    ('admin_cleanup_onboarding', 'Clean expired onboarding measurement state', 'cleanup'),
+):
+    register(Tool(name=_name, title=_title,
+        description='Call without confirm to read the effect, then confirm=true to apply. Pausing clears temporary linkage; cleanup removes expired rows only. Aggregate history within retention is preserved. Resume requires admin_request_resume_onboarding and human approval.',
+        input_schema=object_schema({'confirm': {'type': 'boolean', 'default': False}}),
+        scope=ADMIN_WRITE, handler=_onboarding_action(_action), destructive=True))
+register(Tool(name='admin_request_resume_onboarding', title='Request resumption of optional onboarding measurement',
+    description='File an approval request to resume optional onboarding collection. No change happens until approved with the admin’s one-time push code or in the browser. Never overrides individual opt-out/DNT.',
+    input_schema=object_schema({'reason': {'type': 'string', 'maxLength': 300}}),
+    scope=ADMIN_WRITE, handler=_request(admin_requests.RESUME_ONBOARDING)))

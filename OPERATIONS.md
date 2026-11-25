@@ -594,3 +594,28 @@ The optional GitHub environment variable `CHATGPT_UI_ORIGIN` is carried into the
 ## Public MCP setup discovery
 
 The exact public-document exception to the Cloudflare crawler challenge is versioned in `ops/cloudflare_mcp_discovery.json`; README → Public MCP discovery at Cloudflare documents scope and verification. It affects only GET/HEAD of the enumerated setup documents and credential-free connector packages on official hostnames. Keep OAuth and account authorization in the app, and do not exempt `/api/`, reset/seed mutations or arbitrary URL prefixes. The deployed app serves the setup documents before login; both staging and production retain separate MCP issuers and account stores.
+
+
+## Optional onboarding collection
+
+Use admin MCP `admin_onboarding_funnel` for UTC attempt cohorts and collection
+health. The report supplies recommended actions, capacity, expired linkage,
+last scheduled cleanup and the last fixed-code measurement write failure.
+Counts describe opted-in attempts, not unique employees or verified accuracy.
+No attempt keys, account bindings or financial values are exposed.
+
+`admin_pause_onboarding` previews by default; confirm to pause collection and
+erase all temporary attempt keys. Aggregate history remains. Use
+`admin_cleanup_onboarding` (preview then confirm) to remove expired keys and
+aggregate history past 180 days. The normal scheduler runs cleanup every
+invocation (normally 15 minutes); a cleanup failure does not stop reminders or
+other scheduled jobs. Expired keys are rejected even before physical cleanup.
+
+Resume with `admin_request_resume_onboarding`: it creates a request for the
+existing human approval flow; an assistant cannot approve it. A browser admin
+can also use the report's confirmation controls. Resuming never overrides a
+user's opt-out or DNT. Every admin action is journalled. If measurement write
+failures recur, investigate the fixed `onboarding_measurement_unavailable`
+server warning and database/schema health; do not collect request bodies or
+financial records for this diagnosis. The report's last-failure timestamp is
+historical evidence and remains visible after recovery.

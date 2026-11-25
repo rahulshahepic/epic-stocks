@@ -515,3 +515,27 @@ def test_stale_maintenance_and_content_admin_requests_fail(session, db_session, 
     client.post(f"/api/admin/users/{user.id}/content-admin")
     out = call("admin_approve_request", {"request_id": filed["request"]["id"], "code": inbox.code})
     assert out["request"]["status"] == "failed" and "already" in out["request"]["outcome"]
+
+
+def test_onboarding_report_pause_cleanup_and_resume_require_approval(session, db_session, inbox):
+    from scaffold import onboarding
+    from scaffold.models import OnboardingAttempt
+    client, call = session
+    token = onboarding.start(db_session, 'trial')
+    db_session.commit()
+    out = call('admin_onboarding_funnel', {'days': 30})
+    assert out['totals']['starts'] == 1
+    assert token not in json.dumps(out)
+    assert out['totals'] == client.get('/api/admin/onboarding-funnel').json()['totals']
+    assert not call('admin_pause_onboarding')['applied']
+    assert not onboarding.paused(db_session)
+    call('admin_pause_onboarding', {'confirm': True})
+    assert onboarding.paused(db_session)
+    assert db_session.query(OnboardingAttempt).count() == 0
+    request = call('admin_request_resume_onboarding', {'reason': 'Resume approved optional counts'})
+    assert onboarding.paused(db_session)
+    assert inbox.code not in json.dumps(request)
+    call('admin_approve_request', {'request_id': request['request']['id'], 'code': inbox.code})
+    assert not onboarding.paused(db_session)
+    call('admin_cleanup_onboarding', {'confirm': True})
+    assert call('admin_onboarding_funnel')['totals']['starts'] == 1

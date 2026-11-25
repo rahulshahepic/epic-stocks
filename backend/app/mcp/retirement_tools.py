@@ -3,7 +3,7 @@ from datetime import date
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
-from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
+from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS, MAX_PATHS
 
 RETIREMENT_RESOURCE_VERSION = 7
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
@@ -72,6 +72,9 @@ _PATCH = {
         **{k: {"type": "boolean"} for k in (
             "zeroHIPost65", "includeSpouse", "spouseHasEmployerHI", "advanced",
         )},
+        "paths": {"type": "integer", "minimum": 100, "maximum": MAX_PATHS,
+                  "description": "Simulation paths: 100–100000; lower counts are faster but less stable."},
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4_294_967_295},
         "scenario": {"type": "string", "enum": ["historical", "moderate", "cautious", "custom"]},
         "rebalance": {"type": "string", "enum": ["none", "tax-advantaged", "all"]},
         "retirementDate": {"type": "string", "description": "YYYY-MM-DD"},

@@ -17,7 +17,8 @@ handoff. Local tests do not establish production deployment or host rendering.
 | Submission follow-up | 216 tools/writes/retirement tests and149 smoke/reviewer/annotation tests passed (overlapping selections). The smoke now tests both real host callback URLs, MCP negotiation, tool visibility/annotations and persistence |
 | Staging | Reviewer auth merged3112916; its deploy is being verified. New deployed acceptance module pending #749 merge/deployment. No claim of deployed reviewer validation yet |
 | Production | Not deployed/approved. No production reviewer credentials provisioned; owner approval required |
-| ChatGPT/Claude rendering | No actual-host rendering observed. Website/local simulated-host tests do not establish it |
+| Live connected staging calls | The connected ChatGPT staging tool returned a verified established fictional context, equity summary and unsaved retirement simulation (100 paths, seed1729). An initial32-path call correctly failed validation; schema/range error now disclose the minimum. No record writes or resets were made. These structured tool calls do not establish visible host rendering/callbacks |
+| ChatGPT/Claude rendering | No actual-host UI rendering observed. Website/local simulated-host tests and live structured calls do not establish it |
 | Supplemental video | Actual fictional website demo recorded1280×800 via required screenshot runner; WebM in public/review. Not a ChatGPT/Claude capture |
 
 Production-safe checks were limited to unauthenticated documentation/discovery

@@ -73,7 +73,7 @@ def compute_all_sale_taxes(
     timeline's lots.
 
     Each sale_spec: {id, date, shares, price_per_share, loan_id,
-    lot_overrides, rates}. Processed in chronological order; each sale
+    lot_overrides, rates, optional lot_selection_method}. Processed in chronological order; each sale
     removes precisely the lots compute_sale_tax says it consumed
     (lots_consumed) before the next sale is evaluated, so lot availability
     never depends on which sale is asked about first.
@@ -89,7 +89,7 @@ def compute_all_sale_taxes(
     results: dict = {}
     for spec in sorted(sale_specs, key=lambda s: s["date"]):
         lot_order, gy, gt = resolve_sale_lot_order(
-            spec.get("loan_id"), loan_payoff_method, lot_selection_method,
+            spec.get("loan_id"), loan_payoff_method, spec.get("lot_selection_method", lot_selection_method),
             flexible_payoff_enabled, loan_grant_by_id,
         )
         prebuilt = None

@@ -1,3 +1,5 @@
+import type { ExpenseFundingPlan } from '../../api.ts'
+import ExpenseFunding from './ExpenseFunding.tsx'
 import { fmtFullDate } from '../format.ts'
 import { useId, useState } from 'react'
 import { localToday } from '../dateUtils.ts'
@@ -51,9 +53,14 @@ function purchaseRule(event: PlannedEvent): string {
 }
 
 export default function LifeEventsPlanner({
-  events, retirementDate, onChange, comparison, onRun, running, showRun = true,
+  events, retirementDate, onChange, comparison, onRun, running, showRun = true, funding,
 }: {
   showRun?: boolean
+  funding?: {
+    ready: boolean
+    plans: Record<string, ExpenseFundingPlan>
+    onPlan: (expenseId: string, plan?: ExpenseFundingPlan) => void
+  }
   events: PlannedEvent[]
   retirementDate?: string
   onChange: (events: PlannedEvent[]) => void
@@ -64,6 +71,7 @@ export default function LifeEventsPlanner({
   const sectionName = useId()
   const todayDate = localToday()
   const [draft, setDraft] = useState<PlannedEvent>(() => blank('home', todayDate))
+  const [openFundingId, setOpenFundingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -81,7 +89,7 @@ export default function LifeEventsPlanner({
     (Number(basisDate.slice(5, 7)) - Number(todayDate.slice(5, 7))) / 12
   const conversionRate = draft.inflationRate ?? 0.025
   const hypotheticalEpicTargetM = retirementDate
-    ? planCashFlows(events.filter(event => !event.condition), retirementDate, 1).preRetirementEpicNeedM : 0
+    ? planCashFlows(events.filter(event => !event.condition && !Object.hasOwn(funding?.plans ?? {}, event.id)), retirementDate, 1).preRetirementEpicNeedM : 0
   function set<K extends keyof PlannedEvent>(key: K, value: PlannedEvent[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
   }
@@ -168,6 +176,7 @@ export default function LifeEventsPlanner({
       setError('Enter a cost for repeating expenses.')
       return
     }
+    setOpenFundingId(event.id)
     onChange(editing ? events.map(e => e.id === editing ? event : e) : [...events, event])
     setEditing(null); setDraft(blank(draft.kind, todayDate)); setOpen(false); setError('')
   }
@@ -181,10 +190,15 @@ export default function LifeEventsPlanner({
       </div>
       {events.length > 0 && (
         <ul className="space-y-2">
-          {events.map(event => (
-            <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cs-border p-3">
+          {events.map(event => {
+            const plan = funding && Object.hasOwn(funding.plans, event.id) ? funding.plans[event.id] : undefined
+            const canReviewFunding = (!event.funding || ['mixed', 'epic'].includes(event.funding)) &&
+              !event.condition && event.date > todayDate &&
+              (!retirementDate || event.date.slice(0, 7) < retirementDate.slice(0, 7)) &&
+              (event.amountM > 0 || (event.annualCostM ?? 0) > 0)
+            return <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cs-border p-3">
               <div className="text-xs text-cs-text">
-                <strong>{event.title}</strong> · {event.date} · {event.amountM > 0 || !event.annualCostM ? dollar(event.amountM * 1_000_000) : `${dollar(event.annualCostM * 1_000_000)}/yr`} <span className="text-cs-muted">({event.priceBasisDate?.slice(0, 4) ?? retirementYear ?? todayYear} dollars)</span>
+                <strong>{event.title}</strong> · {fmtFullDate(event.date)} · {event.amountM > 0 || !event.annualCostM ? dollar(event.amountM * 1_000_000) : `${dollar(event.annualCostM * 1_000_000)}/yr`} <span className="text-cs-muted">({event.priceBasisDate?.slice(0, 4) ?? retirementYear ?? todayYear} dollars)</span>
                 {event.annualCostM && event.amountM > 0 ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
                 {retirementDate && <span className="block text-cs-text-2">
                   {event.date.slice(0, 7) < retirementDate.slice(0, 7) ? 'Starts before retirement' : 'Starts during retirement'}
@@ -193,14 +207,18 @@ export default function LifeEventsPlanner({
                 {event.loanYears ? <span className="text-cs-muted"> · financed over {event.loanYears} years</span> : null}
                 {event.condition && <span className="block text-cs-text-2">{purchaseRule(event)}</span>}
                 {event.lifetimeYears && <span className="block text-cs-text-2">Sell after {event.lifetimeYears} years · {event.depreciationProfile ? DEPRECIATION_PROFILES[event.depreciationProfile].label : `${((event.depreciationRate ?? 0) * 100).toFixed(1)}% annual nominal depreciation`}</span>}
-                {event.funding === 'epic' ? <span className="text-cs-muted"> · hypothetical Epic sale</span> : null}
+                {event.funding === 'epic' && !plan ? <span className="text-cs-muted"> · hypothetical Epic sale</span> : null}
               </div>
               <div className="flex gap-2">
                 <button type="button" className="text-xs underline text-cs-text-2" onClick={() => { setDraft(event); setReplaceOnSale(!!event.lifetimeYears && event.replacementEveryYears === event.lifetimeYears); setPriceBasis('retirement'); setEditing(event.id); setOpen(true) }}>Edit</button>
                 <button type="button" className="text-xs underline text-cs-text-2" onClick={() => onChange(events.filter(e => e.id !== event.id))}>Remove</button>
               </div>
+              {funding && editing !== event.id && (plan || canReviewFunding) &&
+                <ExpenseFunding key={JSON.stringify(event)} expenseId={event.id} title={event.title}
+                  ready={funding.ready} canReview={canReviewFunding} initiallyOpen={openFundingId === event.id}
+                  plan={plan} onPlan={funding.onPlan} />}
             </li>
-          ))}
+          })}
         </ul>
       )}
       {!open ? (
@@ -402,7 +420,7 @@ export default function LifeEventsPlanner({
                   </label>
                   {!!draft.replacementEveryYears && money('replacementCostM', 'Repeat cost (0 = same as first purchase)')}
                 </details>}
-                <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">Advanced: funding and cost overrides</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">Advanced cost overrides</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {recurringType && money('amountM', 'One-time setup cost (optional)')}
                   <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Specific recurring cost end date (optional)
                     <input type="date" value={draft.endDate ?? ''} onChange={e => setDraft(prev => ({ ...prev, endDate: e.target.value || undefined, durationYears: undefined }))} className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
@@ -412,17 +430,17 @@ export default function LifeEventsPlanner({
                       onChange={value => set('inflationRate', value ?? 0)}
                       className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                   </label>
-                  <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Funding source (hypothetical)
-                    <select value={draft.funding ?? 'mixed'} onChange={e => set('funding', e.target.value as PlannedEvent['funding'])}
-                      className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
-                      <option value="mixed">Mixed / decide later</option><option value="epic">Epic stock sale plan</option>
-                      <option value="brokerage">Brokerage</option><option value="cash">Cash</option>
-                    </select>
-                  </label>
                 </div></details>
               </div>
             </details>
           </div>
+          <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">How will you fund it?
+            <select value={draft.funding ?? 'mixed'} onChange={e => set('funding', e.target.value as PlannedEvent['funding'])}
+              className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
+              <option value="mixed">Decide later</option><option value="epic">Epic stock</option>
+              <option value="brokerage">Brokerage</option><option value="cash">Cash</option>
+            </select>
+          </label>
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button type="button" className="min-h-11 flex-1 rounded-lg bg-cs-text px-3 py-2 text-sm font-semibold text-cs-surface"
@@ -432,7 +450,7 @@ export default function LifeEventsPlanner({
           </div>
         </div>
       )}
-      <p className="text-[11px] leading-relaxed text-cs-muted">Planning only. No stock sales or real transactions are created.</p>
+      <p className="text-[11px] leading-relaxed text-cs-muted">Planned expenses and tentative sales are estimates.</p>
       {hypotheticalEpicTargetM > 0 && (
         <p className="rounded-lg border border-cs-border p-3 text-xs text-cs-text" role="note">
           <strong>Hypothetical Epic sale cash target: {dollar(hypotheticalEpicTargetM * 1_000_000)} net.</strong>

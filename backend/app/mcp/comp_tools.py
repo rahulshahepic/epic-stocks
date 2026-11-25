@@ -385,6 +385,7 @@ def _set_retirement_accounts(ctx: ToolContext, args: dict):
         _BUCKETS[name][0]: _millions(raw, name) for name, raw in given.items()
     }
 
+    ctx.db.refresh(owner, with_for_update=True)
     held = owner.retirement_params
     params = dict(held) if isinstance(held, dict) else {}
 

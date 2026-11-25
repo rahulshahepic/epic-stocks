@@ -343,7 +343,7 @@ Implementation: `backend/app/routers/interest_checkpoints.py` provides owner-sco
 
 #### Investment interest deduction toggle
 
-The **investment interest deduction** toggle lives directly on the dashboard. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
+On the dashboard, open **Your position → Earnings and borrowing costs** for the **investment interest deduction** toggle. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
 
 ---
 
@@ -666,7 +666,7 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 - "Total Cap Gains" relabels to **"Cap Gains (after int. ded.)"** and shows the reduced amount.
 - "Cash Received" relabels to **"Cash (incl. int. ded. savings)"** and includes estimated tax savings.
 - The Income vs. Cap Gains and Estimated Tax Liability charts update to reflect lower taxable gains.
-- An inline card shows the total deduction applied with a toggle to preview before committing.
+- The dashboard shows interest booked on statements alongside the estimated tax savings through the selected exit date. For past dates it shows estimated savings on recorded activity. The toggle previews the change for the same date before saving.
 
 **What changes on the Events timeline:**
 
@@ -892,7 +892,7 @@ Epic requires an 83(b) election with every purchase, so a grant bought at a pric
 
 ### Understanding the dashboard
 
-The dashboard leads with **estimated cash from leaving on the selected date**, from the same exit service used by the API and connector. It excludes proceeds from prior sales. If obligations exceed liquidation proceeds, it shows **additional cash needed to settle** rather than concealing the shortfall behind a zero. Historical dates show stock equity before exit taxes instead. The separate **Total Cash Through Exit** includes modeled prior sales and deduction savings; it is not a current account balance. Gross proceeds, principal, interest and tax remain in the exit breakdown. Earnings and borrowing details are expandable. **What changes if I stay one more year?** compares two canonical exit calculations, including leap-day handling, using only saved records and prices. It shows applicable prices and explicitly excludes future grants and salary; the difference is a projection, not promised compensation. Shared viewers use the same comparison service. All amounts depend on saved records, selected dates, applicable price estimates and tax/settlement settings.
+The dashboard’s **If you leave** section shows estimated cash from leaving on the selected date, from the same exit service used by the API and connector. It excludes proceeds from prior sales. If obligations exceed liquidation proceeds, it shows **additional cash needed to settle** rather than concealing the shortfall behind a zero. Historical dates show stock equity before exit taxes instead. The separate **Total Cash Through Exit** includes modeled prior sales and deduction savings; it is not a current account balance. Gross proceeds, principal, interest and tax remain in the exit breakdown. Earnings and borrowing details are expandable. **What changes if I stay one more year?** compares two canonical exit calculations, including leap-day handling, using only saved records and prices. It shows applicable prices and explicitly excludes future grants and salary; the difference is a projection, not promised compensation. Shared viewers use the same comparison service. All amounts depend on saved records, selected dates, applicable price estimates and tax/settlement settings.
 
 ### Importing from Eureka
 

@@ -152,13 +152,13 @@ function snapshotFor(asOf: string, sales = MOCK_SALES) {
       cash: {sales: [], totals: {proceeds: 10000, tax: 0, loanPayoff: 0, net: 10000}},
       income: {groups: [], total: 50000},
       capGains: {vestingGroups: [], vestingTotal: 0, priceTotal: 200000, total: 200000},
-      interest: {rows: [{id: 'interest:1', label: 'Server projected interest', amount: 1234}], total: 1234},
+      interest: {rows: [{id: 'interest:1', label: 'Server projected interest', amount: 1234}], total: 1234, booked: 800},
       tax: {taxLoans: 5000, vestingIncomeTax: 0, cgTaxFromSales: 0, deductionSavings: 0, total: 5000},
     },
   }
 }
 
-function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
+function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES, exitSavings = 0) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/dashboard')) {
@@ -172,7 +172,7 @@ function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
         date, liquidation_net_cash: sold ? 3000 : 0, liquidation_shortfall: sold ? 0 : 55000,
         net_cash: sold ? 3000 : 0, gross_vested: sold ? 0 : 17000, unvested_cost_proceeds: 3000,
         outstanding_principal: sold ? 0 : 75000, outstanding_accrued_interest: 0,
-        liquidation_tax: 0, prior_sales: [], prior_sales_net: 0, deduction_savings: 0,
+        liquidation_tax: 0, prior_sales: [], prior_sales_net: 0, deduction_savings: exitSavings,
         deduction_years: [], deduction_excluded_years: [],
       }), {status: 200})
     }
@@ -189,7 +189,7 @@ function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
       return new Response(JSON.stringify(MOCK_GRANTS), { status: 200 })
     }
     if (url.includes('/api/tax-settings')) {
-      return new Response(JSON.stringify(MOCK_TAX_SETTINGS), { status: 200 })
+      return new Response(JSON.stringify({ ...MOCK_TAX_SETTINGS, deduct_investment_interest: exitSavings > 0 }), { status: 200 })
     }
     // TipCarousel (rendered whenever !readOnly) fetches this on mount too — same
     // stray-404 race as tax-settings above if left unhandled.
@@ -220,6 +220,17 @@ function renderDashboard() {
 }
 
 describe('Dashboard', () => {
+  it('shows booked interest and exit savings when recorded tax savings are zero', async () => {
+    mockApi(MOCK_PRICES, [], 321)
+    renderDashboard()
+
+    await userEvent.click(await screen.findByText('Earnings and borrowing costs', {exact: true}))
+    expect(await screen.findByText('Estimated tax savings through exit')).toBeVisible()
+    expect(await screen.findByText('$321')).toBeInTheDocument()
+    expect(screen.getByText('Interest booked on statements $800')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Investment interest deduction' })).toBeChecked()
+  })
+
   it('shows loading initially', () => {
     mockApi()
     renderDashboard()

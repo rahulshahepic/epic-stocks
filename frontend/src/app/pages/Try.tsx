@@ -8,7 +8,7 @@ import type { PriceEntry } from '../../api.ts'
 import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
-import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
+import { ReportableError, ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
@@ -213,9 +213,9 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun, allowAssist
 
       <MeasurementChoice />
       {error && (
-        <p role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400">
-          {error}
-        </p>
+        <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
+          <ReportableError message={error} source="import" documents={[csv, pdf]} workflow="Read files in the pre-sign-in preview" />
+        </div>
       )}
 
       <p className="mt-3 text-[11px] leading-relaxed text-cs-muted">
@@ -440,6 +440,7 @@ export default function Try() {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [asOf, setAsOf] = useState(today)
   const [error, setError] = useState('')
+  const [failedWorkflow, setFailedWorkflow] = useState('')
   const [saving, setSaving] = useState(false)
   const [repricing, setRepricing] = useState(false)
   const [pricedAt, setPricedAt] = useState<number | null>(null)
@@ -473,12 +474,14 @@ export default function Try() {
   /** Re-read the same files with today's price folded in as a price point. */
   async function applyCurrentPrice(price: number) {
     setRepricing(true)
+    setError('')
     try {
       if (!csv && !pdf) throw new Error('Choose New files to change this saved preview’s price. Your existing preview is still available to save.')
       const r = await trialAnalyze(csv, pdf, price)
       setResult(r)
       setPricedAt(price)
     } catch (e) {
+      setFailedWorkflow(`Preview with current price override: ${price}`)
       setError(e instanceof Error ? e.message : 'Could not apply that price')
     } finally {
       setRepricing(false)
@@ -499,6 +502,7 @@ export default function Try() {
   async function saveAndSignUp() {
     if (!result) return
     setSaving(true)
+    setError('')
     try {
       await measurementEvent('save_intent', result.measurementSequence)
       pingSaveIntent()
@@ -513,6 +517,7 @@ export default function Try() {
       }
     } catch (e) {
       setSaving(false)
+      setFailedWorkflow('Save the pre-sign-in import preview')
       setError(e instanceof Error ? e.message : 'Could not save your preview. Your preview is still here; retry or import from your account.')
     }
   }
@@ -613,6 +618,11 @@ export default function Try() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
+        {error && (
+          <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/30">
+            <ReportableError message={error} source="import" documents={[csv, pdf]} workflow={failedWorkflow} />
+          </div>
+        )}
         {(!csv || !pdf) && (
           <Card>
             <p className="text-sm text-cs-text-2">
@@ -635,7 +645,8 @@ export default function Try() {
               your AI assistant to fix, and checks the answer the same way.
             </p>
             <p className="mt-2">
-              <ReportFindingsButton findings={result.findings} blocked={result.blocked} />
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} documents={[csv, pdf]}
+                workflow={pricedAt == null ? 'Read files in the pre-sign-in preview' : `Preview using current price override: ${pricedAt}`} />
             </p>
           </Card>
         )}

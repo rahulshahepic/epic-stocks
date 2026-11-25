@@ -267,6 +267,20 @@ def decrypt_user_key(encrypted: str) -> bytes:
     return _master_aesgcm().decrypt(data[:12], data[12:], None)
 
 
+def wrap_support_key(key: bytes, binding: bytes) -> str:
+    if not encryption_enabled():
+        raise RuntimeError("Support encryption is not configured")
+    nonce = os.urandom(12)
+    return base64.b64encode(nonce + _kek_aesgcm().encrypt(nonce, key, binding)).decode()
+
+
+def unwrap_support_key(wrapped: str, binding: bytes) -> bytes:
+    if not encryption_enabled():
+        raise RuntimeError("Support encryption is not configured")
+    data = base64.b64decode(wrapped, validate=True)
+    return _kek_aesgcm().decrypt(data[:12], data[12:], binding)
+
+
 def set_current_key(key: bytes | bytearray | None):
     if key is None:
         # Zero the existing key before clearing — defense-in-depth against

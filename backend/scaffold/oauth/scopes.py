@@ -21,10 +21,11 @@ IMPORT_PROPOSE = "import:propose"
 EQUITY_WRITE = "equity:write"
 ADMIN_READ = "admin:read"
 ADMIN_WRITE = "admin:write"
+ADMIN_REPORT_SENSITIVE = "admin:reports:sensitive"
 
 # Grantable today.
 SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
-ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ, ADMIN_WRITE)
+ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ, ADMIN_WRITE, ADMIN_REPORT_SENSITIVE)
 # What an admin connection gets when it names nothing: diagnostics only.
 # Writing is a separate tick on the admin consent page.
 ADMIN_DEFAULT_SCOPES: tuple[str, ...] = (ADMIN_READ,)
@@ -56,6 +57,7 @@ SCOPE_LABELS: dict[str, str] = {
     IMPORT_PROPOSE: "Prepare an import (no longer used)",
     EQUITY_WRITE: "Add, correct or remove your grants, prices, loans and sales — shown to you first, saved when you agree",
     ADMIN_READ: "Read site deployment status, system metrics and redacted application error records",
+    ADMIN_REPORT_SENSITIVE: "Read support reports with separately consented identity, financial diagnostics and original documents",
     ADMIN_WRITE: "Change site settings: triage reports, switch AI providers off, and file requests "
                  "to widen access that you approve in Admin",
 }
@@ -107,8 +109,10 @@ def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
         seen.append(scope)
     if not seen:
         raise ScopeError("No usable scope was requested")
-    if ADMIN_WRITE in seen and ADMIN_READ not in seen:
-        raise ScopeError("admin:write also requires admin:read")
+    if ADMIN_READ not in seen:
+        for extra in (ADMIN_WRITE, ADMIN_REPORT_SENSITIVE):
+            if extra in seen:
+                raise ScopeError(f"{extra} also requires admin:read")
     if EQUITY_WRITE in seen and EQUITY_READ not in seen:
         raise ScopeError("equity:write also requires equity:read to verify existing rows")
     return seen

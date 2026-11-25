@@ -37,12 +37,13 @@ UNBLOCK_SENDING = "unblock_invite_sending"
 END_MAINTENANCE = "end_maintenance"
 SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
 GRANT_CONTENT_ADMIN = "grant_content_admin"
+PURGE_REPORT_MATERIAL = "purge_report_material"
 ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
-           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING)
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, PURGE_REPORT_MATERIAL)
 TARGET_TYPES = {RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
                 UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
                 END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
-                GRANT_CONTENT_ADMIN: "user"}
+                GRANT_CONTENT_ADMIN: "user", PURGE_REPORT_MATERIAL: "report"}
 
 PENDING, APPROVED, REJECTED, EXPIRED, FAILED, CANCELLED = (
     "pending", "approved", "rejected", "expired", "failed", "cancelled")
@@ -130,6 +131,8 @@ CONSEQUENCES = {
 
 def describe(row: AdminActionRequest) -> str:
     payload = json.loads(row.payload)
+    if row.action == PURGE_REPORT_MATERIAL:
+        return f"Delete all sensitive material for report #{payload['report_id']}"
     if row.action == RESUME_ONBOARDING:
         return "Resume optional onboarding measurement"
     if row.action == ADD_RULE:
@@ -169,7 +172,7 @@ def _int_arg(args: dict, name: str, hint: str) -> int:
 
 
 def _target_id(payload: dict) -> int | None:
-    for key in ("rule_id", "block_id", "user_id"):
+    for key in ("rule_id", "block_id", "user_id", "report_id"):
         if key in payload:
             return payload[key]
     return None
@@ -178,6 +181,12 @@ def _target_id(payload: dict) -> int | None:
 def _validate(db: Session, action: str, args: dict) -> dict:
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock
 
+    if action == PURGE_REPORT_MATERIAL:
+        from scaffold.sensitive_reports import available_ids
+        report_id = _int_arg(args, "report_id", "from admin_user_reports")
+        if report_id not in available_ids(db, [report_id]):
+            raise ValueError("No sensitive material is available for this report")
+        return {"report_id": report_id}
     if action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused
         if not paused(db):
@@ -359,6 +368,11 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock, User
 
     payload = json.loads(row.payload)
+    if row.action == PURGE_REPORT_MATERIAL:
+        from scaffold.sensitive_reports import erase_material
+        report_id = payload["report_id"]
+        removed = erase_material(db, report_id)
+        return "Sensitive report material removed", {"present": removed}, {"present": False}
     if row.action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused, set_paused
         if not paused(db):

@@ -43,7 +43,7 @@ echo "==> Starting backend on :8000..."
 DATABASE_URL="sqlite:///$TMPDB" \
   OIDC_PROVIDERS='[{"name":"google","label":"Google","client_id":"demo.apps.googleusercontent.com","client_secret":"demo-secret","discovery_url":"https://accounts.google.com/.well-known/openid-configuration"}]' \
   ADMIN_EMAIL="demo@example.com;admin@e2e.test" \
-  E2E_TEST=1 JWT_SECRET="screenshots-secret" \
+  E2E_TEST=1 JWT_SECRET="screenshots-secret" KEY_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
   setsid "$PY" -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend \
   > /tmp/screenshots-backend.log 2>&1 &
 BACKEND_PID=$!

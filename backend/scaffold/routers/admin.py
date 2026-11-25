@@ -4,7 +4,7 @@ import os
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
@@ -15,6 +15,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, SystemSettings, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.client_ip import UNKNOWN
+from scaffold import sensitive_reports
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
 
@@ -406,6 +407,7 @@ class UserReportOut(BaseModel):
     app_version: str | None
     client_log: str | None
     status: str
+    has_sensitive_material: bool = False
     # Traceback of the server exception this report points at, when it carries a
     # ref that still matches a row in error_logs.
     error_traceback: str | None = None
@@ -421,11 +423,13 @@ def admin_reports(
     status: str | None = None,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
+    offset: int = 0,
 ):
     q = db.query(UserReport)
     if status:
         q = q.filter(UserReport.status == status)
-    entries = q.order_by(UserReport.timestamp.desc()).limit(limit).all()
+    entries = q.order_by(UserReport.timestamp.desc(), UserReport.id.desc()).offset(max(0, offset)).limit(max(1, min(limit, 50))).all()
+    sensitive = sensitive_reports.available_ids(db, [entry.id for entry in entries])
 
     refs = {e.error_ref for e in entries if e.error_ref}
     tracebacks: dict[str, str] = {}
@@ -449,6 +453,7 @@ def admin_reports(
         app_version=e.app_version,
         client_log=e.client_log,
         status=e.status,
+        has_sensitive_material=e.id in sensitive,
         error_traceback=tracebacks.get(e.error_ref) if e.error_ref else None,
     ) for e in entries]
 
@@ -477,6 +482,48 @@ def delete_report(report_id: int, admin: User = Depends(get_admin_user), db: Ses
         raise HTTPException(status_code=404, detail="Report not found")
     db.delete(entry)
     db.commit()
+
+
+_PRIVATE_REPORT_HEADERS = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def _private_report_call(action):
+    try:
+        return action()
+    except sensitive_reports.Missing as exc:
+        raise HTTPException(404, str(exc), headers=_PRIVATE_REPORT_HEADERS) from None
+    except sensitive_reports.Unavailable as exc:
+        raise HTTPException(409, str(exc), headers=_PRIVATE_REPORT_HEADERS) from None
+
+
+@router.get("/reports/{report_id}/sensitive")
+def inspect_sensitive_report(report_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    result = _private_report_call(lambda: sensitive_reports.inspect(db, _browser(admin), report_id))
+    return JSONResponse(result, headers=_PRIVATE_REPORT_HEADERS)
+
+
+@router.get("/reports/{report_id}/sensitive/documents/{document_id}")
+def retrieve_report_document(
+    report_id: int, document_id: int, as_text: bool = False,
+    admin: User = Depends(get_admin_user), db: Session = Depends(get_db),
+):
+    from urllib.parse import quote
+
+    metadata, content = _private_report_call(
+        lambda: sensitive_reports.document(db, _browser(admin), report_id, document_id, as_text=as_text),
+    )
+    if as_text:
+        return JSONResponse({"text": content[:120_000], "truncated": len(content) > 120_000},
+                            headers=_PRIVATE_REPORT_HEADERS)
+    headers = {**_PRIVATE_REPORT_HEADERS,
+               "Content-Disposition": f"attachment; filename*=UTF-8''{quote(metadata['name'], safe='')}"}
+    return Response(content, media_type="application/octet-stream", headers=headers)
+
+
+@router.delete("/reports/{report_id}/sensitive", status_code=204)
+def purge_sensitive_report(report_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    _private_report_call(lambda: sensitive_reports.purge(db, _browser(admin), report_id))
+    return Response(status_code=204, headers=_PRIVATE_REPORT_HEADERS)
 
 
 class SystemMetricPoint(BaseModel):

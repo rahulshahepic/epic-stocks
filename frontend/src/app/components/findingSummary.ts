@@ -8,6 +8,7 @@ import type { Finding } from '../epicImport.ts'
 export function summariseFindings(findings: Finding[], blocked = false): string {
   const counts = new Map<string, number>()
   for (const f of findings) {
+    if (!/^[A-Z][0-9]{1,2}$/.test(f.code) || !['error', 'warning', 'info'].includes(f.severity)) continue
     const key = `${f.code}(${f.severity})`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }

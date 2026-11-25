@@ -51,6 +51,9 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
       uploadHeading.current?.focus()
     }
   }, [stage, replacing])
+  const [reportInputs, setReportInputs] = useState<{ documents: (File | null | undefined)[]; workflow: string }>({
+    documents: [], workflow: 'Read Epic stock files',
+  })
   const [repair, setRepair] = useState<{ json?: string; file?: File | null }>({})
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
@@ -75,6 +78,11 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   async function run(revisedJson?: string, revisedDraft?: File | null) {
     setStage('analyzing')
     setError('')
+    setReportInputs({
+      documents: [csv, pdf, revisedDraft],
+      workflow: ['Read Epic stock files', pricedAt == null ? '' : `Current price override: ${pricedAt}`,
+        revisedJson ? `Pasted revised draft: ${revisedJson.slice(0, 12_000)}` : ''].filter(Boolean).join('\n'),
+    })
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson,
         pricedAt ?? undefined))
@@ -91,6 +99,12 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   /** Re-read the same files with today's price folded in as a price point. */
   async function applyCurrentPrice(price: number) {
     setRepricing(true)
+    setError('')
+    setReportInputs({
+      documents: [csv, pdf, repair.file],
+      workflow: [`Read Epic stock files with current price override: ${price}`,
+        repair.json ? `Pasted revised draft: ${repair.json.slice(0, 12_000)}` : ''].filter(Boolean).join('\n'),
+    })
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft: repair.file }, repair.json, price))
       setPricedAt(price)
@@ -180,6 +194,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
           <ReportableError
             message={error}
             source="import"
+            {...reportInputs}
             className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400"
           />
         </div>
@@ -223,7 +238,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
             <>
               {repricing && <p role="status" className="text-sm text-cs-text-2">Updating the review with your price…</p>}
               <div hidden={repricing}>
-                <ChangeList changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} disabled={repricing} />
+                <ChangeList changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} disabled={repricing} reportInputs={reportInputs} />
               </div>
             </>
           )}
@@ -237,7 +252,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
 
           {(result.blocked || counts.errors > 0 || counts.warnings > 0) && (
             <p className="mt-2">
-              <ReportFindingsButton findings={result.findings} blocked={result.blocked} />
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} {...reportInputs} />
             </p>
           )}
 

@@ -11,6 +11,7 @@ function mount() {
     running={false} />)
   fireEvent.click(screen.getByRole('button', { name: /Add planned expense/ }))
   fireEvent.change(screen.getByLabelText('Prices entered in'), { target: { value: 'retirement' } })
+  fireEvent.change(screen.getByLabelText('Purchase / start date'), { target: { value: '2032-01-01' } })
   return onChange
 }
 

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import financialTerms from '../../../../backend/app/financial_terms.json'
 import { InlineTerm } from '../components/EquityTerms.tsx'
@@ -489,7 +489,15 @@ function RetirementAccount() {
     error?: string
   } | null>(null)
   const [runError, setRunError] = useState('')
-  const [planStage, setPlanStage] = useState<'before' | 'retirement'>('retirement')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const showExpenses = searchParams.get('view') === 'expenses'
+  const expenseRetirementDate = dateChosen.current && retirementDate ? retirementDate : undefined
+  function setPlanningView(expenses: boolean) {
+    const next = new URLSearchParams(searchParams)
+    if (expenses) next.set('view', 'expenses')
+    else next.delete('view')
+    setSearchParams(next)
+  }
   const resultHeading = useRef<HTMLDivElement>(null)
   const assumptionsHeading = useRef<HTMLHeadingElement>(null)
   const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
@@ -511,6 +519,10 @@ function RetirementAccount() {
     completedRun.exitMode !== exitMode ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
+  const expenseSavePending = useRef(false)
+  const expensesEdited = useRef(false)
+  const saveQueue = useRef(Promise.resolve())
+  const [saveRetry, setSaveRetry] = useState(0)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState('')
   const saveRequestRef = useRef(0)
@@ -541,6 +553,7 @@ function RetirementAccount() {
     paramsLoadedRef.current = false
     setParamsLoaded(false)
     setParamsError(false)
+    expensesEdited.current = false
     setCompletedRun(null)
     setLifeEventComparison(null)
     setHasRun(false)
@@ -730,38 +743,45 @@ function RetirementAccount() {
     }
   }, [vid])
 
-  // Debounced auto-save: persist the full param set whenever it (or
-  // retirementDate / spouseDOB) changes. Owner only; viewer never writes.
-  // Skips until the initial load completes so we don't save defaults over a
-  // user's already-saved plan during the post-load merge.
+  // Save form typing after a pause. The expense editor submits discrete edits,
+  // so queue them immediately and let the write finish after navigation.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
     const request = ++saveRequestRef.current
+    const immediate = expenseSavePending.current
+    expenseSavePending.current = false
     const controller = new AbortController()
+    let active = true
     setSaveStatus('saving')
     setSaveError('')
-    const t = setTimeout(() => {
+    const save = () => {
       const savedParams: Record<string, unknown> = { ...params }
-      // An unresolved automatic exit must not block saving spending and other
-      // assumptions, or persist an old date's amount as the new projection.
+      // Do not persist an outdated exit projection as the new date's amount.
       if (exitMode === 'auto' && !legacyExitHeld && (exitPreviewLoading || exitError)) delete savedParams.epicExit
-      api.saveRetirementParams({
+      const payload = {
         ...savedParams,
-        retirementDate,
+        ...(dateChosen.current && retirementDate ? { retirementDate } : {}),
         ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
-      }, controller.signal)
-        .then(() => {
-          if (!controller.signal.aborted && request === saveRequestRef.current) setSaveStatus('saved')
-        })
-        .catch((err: unknown) => {
-          if (controller.signal.aborted || request !== saveRequestRef.current) return
-          setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
-          setSaveStatus('error')
-        })
-    }, 500)
-    return () => { clearTimeout(t); controller.abort() }
-  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld])
+      }
+      saveQueue.current = saveQueue.current.then(() => {
+        if (!controller.signal.aborted) return api.saveRetirementParams(payload, controller.signal)
+      }).then(() => {
+        if (active && request === saveRequestRef.current) setSaveStatus('saved')
+      }).catch((err: unknown) => {
+        if (!active || request !== saveRequestRef.current) return
+        setSaveError(err instanceof Error ? err.message : 'Unable to save planning inputs')
+        setSaveStatus('error')
+      })
+    }
+    const timer = immediate ? undefined : setTimeout(save, 500)
+    if (immediate) save()
+    return () => {
+      active = false
+      clearTimeout(timer)
+      if (!immediate) controller.abort()
+    }
+  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld, saveRetry])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
   const taxableTotal = params.epicExit + params.taxableAdditional
@@ -921,7 +941,7 @@ function RetirementAccount() {
     requestAnimationFrame(() => (edit ? assumptionsHeading : resultHeading).current?.focus())
   }
 
-  const showingResults = !!result && result.preRetirementFundingGapM <= 1e-9 && !editInputs && planStage === 'retirement'
+  const showingResults = !!result && result.preRetirementFundingGapM <= 1e-9 && !editInputs && !showExpenses
   const comparison = !resultsStale && dateComparison?.base === completedRun ? dateComparison : null
   const comparisonExitNote = completedRun?.exitMode === 'manual' ? 'Epic cash stays fixed.'
     : completedRun?.legacyExitHeld ? 'The first date uses your saved Epic cash. The later date uses a new projection.'
@@ -929,13 +949,13 @@ function RetirementAccount() {
 
 
   useEffect(() => {
-    if (autoRan.current || !paramsLoaded || !ownerDOB || running || allocOver || totalPortfolio <= 0 || ageAtRetirement >= params.endAge || exitError || exitPreviewLoading || (exitMode === 'auto' && !legacyExitHeld && (emptyEquity || missingPrice))) return
+    if (showExpenses || autoRan.current || !paramsLoaded || !ownerDOB || running || allocOver || totalPortfolio <= 0 || ageAtRetirement >= params.endAge || exitError || exitPreviewLoading || (exitMode === 'auto' && !legacyExitHeld && (emptyEquity || missingPrice))) return
     const timer = setTimeout(() => {
       if (inputsRef.current?.contains(document.activeElement) && document.activeElement?.matches('input,select,textarea')) return
       autoRan.current = true; run()
     }, 300)
     return () => clearTimeout(timer)
-  }, [run, paramsLoaded, ownerDOB, running, allocOver, totalPortfolio, ageAtRetirement, params.endAge, exitError, exitPreviewLoading, exitMode, legacyExitHeld, emptyEquity, missingPrice])
+  }, [run, showExpenses, paramsLoaded, ownerDOB, running, allocOver, totalPortfolio, ageAtRetirement, params.endAge, exitError, exitPreviewLoading, exitMode, legacyExitHeld, emptyEquity, missingPrice])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -955,14 +975,13 @@ function RetirementAccount() {
             <IconCompass className="h-5 w-5" />
           </IconTile>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cs-text-2">Long-range observatory</p>
-            <h1 className="font-serif text-2xl font-semibold text-cs-text">Retirement Simulator</h1>
+            <h1 className="font-serif text-2xl font-semibold text-cs-text">Planning</h1>
           </div>
         </div>
-        <span className="text-[11px] text-cs-muted">
+        {(!showExpenses || expensesEdited.current || vid) && <span className="text-[11px] text-cs-muted">
           {vid
             ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
-            : exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
+            : !showExpenses && exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
               ? (saveStatus === 'saved' ? 'Inputs saved — exit projection pending' : saveStatus === 'error' ? 'Save failed' : 'Saving inputs — exit projection pending')
               : saveStatus === 'saving'
                 ? 'Saving…'
@@ -971,21 +990,33 @@ function RetirementAccount() {
                   : saveStatus === 'error'
                     ? 'Save failed'
                     : 'Inputs save automatically'}
-        </span>
+        </span>}
       </div>
 
       {saveStatus === 'error' && !vid && (
         <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
-          Retirement changes could not be saved: {saveError}. Check the inputs and try again.
+          Plan changes could not be saved. {saveError}{' '}
+          <button type="button" className="font-semibold underline" onClick={() => setSaveRetry(n => n + 1)}>Try saving again</button>
         </p>
       )}
-      {paramsLoaded && !moneyParamsValid(params) && (
+      <div role="group" aria-label="Planning">
+        <div className="flex gap-2">
+          {[{ label: 'Planned Expenses', expenses: true }, { label: 'Retirement', expenses: false }].map(({ label, expenses }) => (
+            <button key={label} type="button" aria-pressed={showExpenses === expenses}
+              onClick={() => setPlanningView(expenses)}
+              className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text aria-pressed:border-cs-brand aria-pressed:bg-cs-brand-subtle aria-pressed:text-cs-brand dark:aria-pressed:text-rose-300">
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!showExpenses && paramsLoaded && !moneyParamsValid(params) && (
         <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">
           This saved plan has a blank or out-of-range dollar amount. Open the advanced assumptions if needed and correct the highlighted amount before running a simulation. Other edits can still save.
         </p>
       )}
 
-      {!showingResults && planStage === 'retirement' && (
+      {!showingResults && !showExpenses && (
         <div className="rounded-xl border border-cs-border bg-cs-raised ">
           <button
             type="button"
@@ -1026,34 +1057,34 @@ function RetirementAccount() {
         </div>
       )}
 
-      {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
-      {!showingResults && planStage === 'retirement' && <div className="flex flex-wrap items-center gap-3">
+      {!showExpenses && runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
+      {!showingResults && !showExpenses && <div className="flex flex-wrap items-center gap-3">
         {result && <button type="button" onClick={() => changeAssumptionsView(!editInputs)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">{editInputs ? 'Back to results' : 'Edit plan assumptions'}</button>}
         <button type="button" aria-pressed={advancedView} onClick={() => { setEditInputs(true); setAdvancedView(v => !v) }} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-medium text-cs-text">{advancedView ? 'Show basic view' : 'Show advanced assumptions'}</button>
       </div>}
-      <div className="flex gap-2" role="group" aria-label="Planning phase">
-        <button type="button" aria-pressed={planStage === 'before'} onClick={() => setPlanStage('before')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Before retirement</button>
-        <button type="button" aria-pressed={planStage === 'retirement'} onClick={() => setPlanStage('retirement')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Retirement</button>
-      </div>
-      {planStage === 'before' && <div className="space-y-4">
-        <label className="flex flex-col gap-1 text-xs text-cs-text-2">Target retirement date
-          <input type="date" value={retirementDate} onChange={e => { dateChosen.current = true; setLegacyExitDate(null); setRetirementDate(e.target.value) }} className="rounded border border-cs-border-strong bg-cs-surface p-2 text-cs-text" />
-        </label>
-        <BeforeRetirement events={params.plannedEvents ?? []} retirementDate={retirementDate} />
-        <LifeEventsPlanner phase="before"
-          events={params.plannedEvents ?? []}
-          retirementDate={retirementDate}
-          onChange={events => {
-            update('plannedEvents', events)
-            setLifeEventComparison(null)
-          }}
-          comparison={null}
-          onRun={() => { setPlanStage('retirement'); run() }}
-          running={running}
-        />
-
+      {showExpenses && <div className="space-y-4">
+        {paramsError ? <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">
+          Couldn&rsquo;t load your planned expenses.{' '}
+          <button type="button" className="font-semibold underline" onClick={() => setParamsReloadNonce(n => n + 1)}>Try again</button>
+        </p> : !paramsLoaded ? <p role="status" className="text-sm text-cs-muted">Loading your planned expenses…</p> : <>
+          <LifeEventsPlanner
+            events={params.plannedEvents ?? []}
+            retirementDate={expenseRetirementDate}
+            onChange={events => {
+              expensesEdited.current = true
+              expenseSavePending.current = true
+              update('plannedEvents', events)
+              setLifeEventComparison(null)
+            }}
+            comparison={null}
+            onRun={() => { setPlanningView(false); run() }}
+            running={running}
+            showRun={!!expenseRetirementDate}
+          />
+          {expenseRetirementDate && !!params.plannedEvents?.length && <BeforeRetirement events={params.plannedEvents} retirementDate={expenseRetirementDate} />}
+        </>}
       </div>}
-      <div hidden={planStage !== 'retirement'} className="space-y-4">
+      <div hidden={showExpenses} className="space-y-4">
         {running && <p role="status" className="text-sm text-cs-text">Exploring possible retirements… You can keep using the page while we calculate.</p>}
         <div ref={inputsRef} hidden={!!result && !editInputs} className="space-y-4">
 
@@ -1724,20 +1755,6 @@ function RetirementAccount() {
             </p>
           )}
 
-          <div hidden={!advancedView}>
-            <LifeEventsPlanner phase="retirement" showRun={false}
-              events={params.plannedEvents ?? []}
-              retirementDate={retirementDate}
-              onChange={events => {
-                update('plannedEvents', events)
-                setLifeEventComparison(null)
-              }}
-              comparison={null}
-              onRun={run}
-              running={running}
-            />
-
-          </div>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -2006,9 +2023,9 @@ function RetirementAccount() {
         )}
 
       </div>
-      <footer className="pt-4 text-center text-[10px] text-cs-muted">
+      {!showExpenses && <footer className="pt-4 text-center text-[10px] text-cs-muted">
         Simulation calculations run in your browser; your inputs are saved to your account. All amounts use purchasing power in the retirement year. Cash is held constant after inflation. This is a planning tool, not financial advice.
-      </footer>
+      </footer>}
     </div>
   )
 }

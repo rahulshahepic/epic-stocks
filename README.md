@@ -1912,7 +1912,12 @@ Implementation: `app/annual_summary.py`, the existing event/notification routers
 
 ### Retirement planner views and exit assumptions
 
-The planner starts in **basic view**. Use **Show advanced assumptions** for allocation, account types, spending floor, Social Security, spouse and conditional purchases. Both views use one saved plan and the same simulation engine; hiding account details never combines account balances or clears their basis. The basic view summarizes the accounts still included in the calculation. Pre-retirement expenses stay in the **Before retirement** flow and reduce retirement starting wealth.
+The planner starts in **basic view**. Use **Show advanced assumptions** for allocation, account types, spending floor, Social Security, spouse and conditional purchases. Both views use one saved plan and the same simulation engine; hiding account details never combines account balances or clears their basis. The basic view summarizes the accounts still included in the calculation. Open **Planning → Planned Expenses** to schedule cars, college or other costs
+without picking a retirement date. Amounts entered without a retirement date
+keep their original price basis when saved. The **Retirement** view uses the
+same expenses, applying costs before the retirement month to starting assets
+and later costs to the simulation. **Compare one year later** reuses your plan.
+[Mobile Planned Expenses](screenshots/planning-expenses-light-mobile.png).
 
 **Automatic Epic exit projection** recalculates for the selected retirement date using saved prices and future estimates. The simulator does not add another share-growth assumption. If the projection fails or no data is available, simulation pauses and offers Retry or an explicit manual amount; it never silently runs with the old date's value. A manual override stays manual when the date changes. For a legacy plan without mode metadata, the saved amount is kept for its original date and clearly identified. The first date change recalculates automatically, matching previous behavior. Choose manual to pin it, or Refresh to project immediately. Saving pauses visibly if an automatic projection fails. New saves include `epicExitMode` (`auto` or `manual`); changing views preserves it. Shared viewers can explore without saving the owner's plan.
 
@@ -2095,8 +2100,10 @@ to its tab-local preview. After sign-in, addition-only carryover reports saved,
 already-matching, review-needed or failed status. Existing rows are preserved;
 corrections require the normal reviewed import. Preview carryover expires after
 30 minutes. Choosing Connect AI, Import, Retirement or Comp before sign-in returns
-to that page. Mobile navigation names Retirement and Grants directly, and More
-groups related pages under Your records, Planning and Account. Successful record
+to that page. Dashboard, Planning and Settings are the three main destinations on phones and desktop.
+Open Stock Records from the Dashboard to browse Events, Grants, Sales, Loans,
+Prices or Import / Export. The Dashboard also links directly to the holdings,
+price, loan or upcoming event behind a figure. Settings links to account tools. Successful record
 edits show a result with links to the updated position and retirement.
 
 Release walkthroughs: [position](screenshots/magic-position-light-mobile.png),

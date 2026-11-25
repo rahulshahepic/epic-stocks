@@ -12,6 +12,20 @@ const base = { ...DEFAULT_PARAMS, epicExit: 8, taxableAdditional: 1,
   paths: 200, seed: 1729, simulationStartDate: '2032-01-01' }
 
 describe('hypothetical life-event cash flows', () => {
+  it('carries a standalone tuition expense across retirement and applies its price basis once', () => {
+    const tuition: PlannedEvent = {
+      id: 'tuition', title: 'Tuition', kind: 'education', date: '2030-01-01',
+      amountM: 0, annualCostM: 0.03, durationYears: 4, priceBasisDate: '2028-01-01',
+    }
+    const plan = planCashFlows([tuition], '2032-01-01', 120, '2029-01-01')
+    const retirementYearCost = 0.03 * 1.025 ** 4
+    expect(plan.preRetirementNetM).toBeCloseTo(2 * retirementYearCost)
+    expect(plan.monthlyNeedM[1]).toBeCloseTo(retirementYearCost / 12)
+    expect(plan.monthlyNeedM[24]).toBeCloseTo(retirementYearCost / 12)
+    expect(plan.monthlyNeedM[25]).toBe(0)
+    expect(tuition.annualCostM).toBe(0.03)
+  })
+
   it('models house down payment, existing-home proceeds, mortgage and carrying costs', () => {
     const p = planCashFlows([home], '2032-01-01', 360)
     // $300K down minus $300K existing-home sale proceeds, then mortgage + carrying.

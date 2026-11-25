@@ -210,7 +210,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    expect(screen.getByRole('heading', { name: /retirement simulator/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Planning' })).toBeInTheDocument()
     expect(screen.getByText(/total portfolio:/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Simulate.*retirements.*years/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Retirement date/i)).toBeInTheDocument()
@@ -698,17 +698,38 @@ describe('Retirement saved-params load failure', () => {
   })
 })
 
-it('puts core inputs before expense entry and keeps working-life funding in its own view', async () => {
+it('shows both working-life and retirement expenses in one list', async () => {
   mockApi({ savedParams: { retirementDate: '2032-01-01', epicExit: 5, paths: 10,
-    plannedEvents: [{ id: 'pre', title: 'Before retirement car', kind: 'vehicle', date: '2030-01-01', amountM: 0.1 }] } })
+    plannedEvents: [
+      { id: 'pre', title: 'First car', kind: 'vehicle', date: '2030-01-01', amountM: 0.1 },
+      { id: 'post', title: 'Later car', kind: 'vehicle', date: '2035-01-01', amountM: 0.05 },
+    ] } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await waitFor(() => expect(screen.getByLabelText(/^Retirement date/)).toHaveValue('2032-01-01'))
-  await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
-  expect(screen.getByText('Who & when').compareDocumentPosition(screen.getByRole('heading', { name: 'Life events & major purchases' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(screen.queryByText('Before retirement car')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: /^Before retirement$/ }))
+  expect(screen.queryByText('First car')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Planned Expenses' }))
   expect(screen.getByRole('region', { name: 'Before retirement funding schedule' })).toHaveTextContent('$100,000')
-  expect(screen.getAllByText('Before retirement car').length).toBeGreaterThan(0)
+  const expenses = screen.getByRole('region', { name: 'Planned expenses' })
+  expect(expenses).toHaveTextContent('First car')
+  expect(expenses).toHaveTextContent('Later car')
+  expect(expenses).toHaveTextContent('Starts before retirement')
+  expect(expenses).toHaveTextContent('Starts during retirement')
+})
+
+it('saves an expense without choosing a retirement date', async () => {
+  mockApi({ savedParams: {} })
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  expect(screen.queryByRole('textbox', { name: /^Retirement date/ })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Purchase / start date'), { target: { value: '2029-02-01' } })
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)).params).find(params => params.plannedEvents?.length)
+    expect(saved?.plannedEvents[0]).toMatchObject({ date: '2029-02-01', amountM: 0.033, priceBasisDate: expect.any(String) })
+    expect(saved).not.toHaveProperty('retirementDate')
+  })
 })
 
 it('keeps account balances and basis when hiding the breakdown or switching views', async () => {

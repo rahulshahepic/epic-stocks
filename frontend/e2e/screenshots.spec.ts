@@ -172,7 +172,7 @@ test.describe('Screenshots', () => {
       await outcomes.getByText('Calculation details', { exact: true }).click()
       await outcomes.getByLabel('Details for Sports car', { exact: true }).click()
       await outcomes.screenshot({ path: `${OUT}/retirement-purchase-details-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
-      await page.getByRole('button', { name: 'Before retirement', exact: true }).click()
+      await page.getByRole('button', { name: 'Planned Expenses', exact: true }).click()
       await expect(page.getByRole('region', { name: 'Before retirement funding schedule' })).toContainText('$100,000')
       await shoot(page, `before-retirement-${theme}-mobile`, { fullPage: true })
     })
@@ -185,7 +185,7 @@ test.describe('Screenshots', () => {
       await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `car-editor-${theme}@screenshots.example.test`, name: 'Car Editor Demo' } })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
-      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
+      await page.getByRole('button', { name: 'Planned Expenses', exact: true }).click()
       await page.getByRole('button', { name: '+ Add planned expense', exact: true }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
       await page.getByLabel(/Purchase price/).fill('50000')
@@ -193,8 +193,8 @@ test.describe('Screenshots', () => {
       await page.getByLabel('Depreciation schedule').selectOption('strong')
       await page.getByLabel('Replace when sold', { exact: true }).check()
       await expect(page.getByLabel(/Repeat every N years/)).toHaveCount(0)
-      const editor = page.getByRole('region', { name: 'Life events and major purchases' })
-      const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]').withTags(['wcag2a', 'wcag2aa']).analyze()
+      const editor = page.getByRole('region', { name: 'Planned expenses' })
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Planned expenses"]').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await editor.screenshot({ path: `${OUT}/car-purchase-editor-${theme}-mobile.png`, style: '[aria-label="Car plan summary"]{position:static!important}.sticky:not([aria-label="Car plan summary"]),[aria-label="Mobile navigation"]{visibility:hidden!important}' })
@@ -1044,6 +1044,7 @@ test.describe('Screenshots', () => {
       await page.waitForLoadState('networkidle')
       await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByLabel('Retirement date').fill('2032-01-02')
+      await page.getByRole('button', { name: 'Planned Expenses', exact: true }).click()
       await page.getByRole('button', { name: /Add planned expense/ }).click()
       await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('vehicle')
       await page.getByLabel(/Purchase price \(/).fill('250000')
@@ -1051,7 +1052,8 @@ test.describe('Screenshots', () => {
       await page.getByLabel('Sell car after N years (optional)').fill('15')
       await page.getByLabel('Depreciation schedule').selectOption('collector')
       await page.getByLabel(/Annual ownership costs/).fill('15000')
-      await page.getByRole('region', { name: 'Life events and major purchases', exact: true }).screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '[aria-label="Car plan summary"]{position:static!important}.sticky:not([aria-label="Car plan summary"]),[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByRole('region', { name: 'Planned expenses', exact: true }).screenshot({ path: `${OUT}/life-events-ownership-light-${label}.png`, style: '[aria-label="Car plan summary"]{position:static!important}.sticky:not([aria-label="Car plan summary"]),[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByLabel('Purchase / start date').fill('2032-01-02')
       await page.getByLabel('Optional purchase').check()
       await page.locator('summary').filter({ hasText: /^Purchase rule/ }).click()
       await expect(page.locator('summary').filter({ hasText: /^Ownership and costs/ }).locator('..')).not.toHaveAttribute('open', '')
@@ -1059,28 +1061,28 @@ test.describe('Screenshots', () => {
       await page.getByLabel(/Minimum portfolio as %/).pressSequentially('140')
       await expect(page.getByLabel(/Minimum portfolio as %/)).toHaveValue('140')
       await page.getByLabel('If conditions are not met').selectOption('defer')
-      await page.getByRole('heading', { name: 'Life events & major purchases' }).click()
+      await page.getByRole('heading', { name: 'Planned Expenses' }).click()
       await expect(page.getByLabel(/Purchase price/)).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
-      const audit = await new AxeBuilder({ page }).include('[aria-label="Life events and major purchases"]')
+      const audit = await new AxeBuilder({ page }).include('[aria-label="Planned expenses"]')
         .withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       // The sticky site header and fixed mobile navigation are outside this
       // component. Hide only that chrome for a focused component screenshot;
       // otherwise they cover the planner when Playwright scrolls to it.
       await page.evaluate(() => {
-        const planner = [...document.querySelectorAll('[aria-label="Life events and major purchases"]')].find(el => el.getClientRects().length > 0)
+        const planner = [...document.querySelectorAll('[aria-label="Planned expenses"]')].find(el => el.getClientRects().length > 0)
         for (const element of document.querySelectorAll<HTMLElement>('body *')) {
           if (planner?.contains(element)) continue
           const position = getComputedStyle(element).position
           if (position === 'fixed' || position === 'sticky') element.style.visibility = 'hidden'
         }
       })
-      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
+      await page.getByRole('region', { name: 'Planned expenses', exact: true })
         .screenshot({ path: `${OUT}/life-events-planner-light-${label}.png`, style: '[aria-label="Car plan summary"]{position:static!important}' })
       await page.getByRole('button', { name: 'Add event', exact: true }).click()
       await expect(page.getByText(/Otherwise, check again monthly/)).toBeVisible()
-      await page.getByRole('region', { name: 'Life events and major purchases', exact: true })
+      await page.getByRole('region', { name: 'Planned expenses', exact: true })
         .screenshot({ path: `${OUT}/life-events-review-light-${label}.png` })
     })
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
@@ -28,7 +28,6 @@ export default function Layout() {
   const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
   const navItems = me?.is_admin && !viewing ? [...withContent, { to: '/admin', label: 'Admin' }] : withContent
   const sharedAccounts = me?.shared_accounts ?? []
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!me || !viewing) return
@@ -40,12 +39,17 @@ export default function Layout() {
   const mainRef = useRef<HTMLElement>(null)
   useEffect(() => { mainRef.current?.focus() }, [location.pathname])
 
-  const mobilePrimaryItems = navItems.filter(item => ['/', '/events', '/retirement', '/grants'].includes(item.to))
-  const recordsRoutes = ['/grants', '/loans', '/sales', '/prices', '/import']
+  const primaryItems = navItems.filter(item => ['/', '/planning', '/settings'].includes(item.to))
+  const recordsRoutes = ['/events', '/grants', '/sales', '/loans', '/prices', '/import']
   const workshopRoutes = ['/settings', '/connect-ai', '/content', '/admin', '/import-diagnostics']
-  const isRecords = recordsRoutes.some(route => location.pathname.startsWith(route))
-  const isWorkshop = workshopRoutes.some(route => location.pathname.startsWith(route))
-  const isObservatory = location.pathname.startsWith('/retirement') || location.pathname.startsWith('/comp-calculator')
+  const isRecords = recordsRoutes.includes(location.pathname)
+  const isWorkshop = workshopRoutes.includes(location.pathname)
+  const isObservatory = ['/planning', '/retirement', '/comp-calculator'].includes(location.pathname)
+  const accountLinks = [
+    ...(config?.ai_connections && !viewing ? [{ to: '/connect-ai', label: 'Connect AI' }] : []),
+    ...navItems.filter(item => ['/content', '/admin'].includes(item.to)),
+  ]
+  const isPrimaryActive = (to: string) => to === location.pathname || (to === '/planning' && isObservatory)
   const campusWing = isRecords
     ? { id: 'records', label: 'The records wing', motto: 'Verba volant, scripta manent', translation: 'Spoken words fly; written words remain' }
     : isWorkshop
@@ -75,7 +79,7 @@ export default function Layout() {
             </div>
           </div>
           <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 overflow-x-auto px-6 pb-2.5 lg:px-8 md:flex">
-            {navItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</NavLink>)}
+            {primaryItems.map(({ to, label }) => <Link key={to} to={to} aria-current={isPrimaryActive(to) ? 'page' : undefined} className={`campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isPrimaryActive(to) ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</Link>)}
           </nav>
         </header>
       </div>
@@ -86,18 +90,31 @@ export default function Layout() {
           {campusWing && <div className="campus-wing-marker max-w-4xl"><span>{campusWing.label}</span><span lang="la" title={campusWing.translation}>{campusWing.motto}</span></div>}
           {!config ? <p role="status">Loading application…</p> : staging && !['/admin', '/content', '/connect-ai'].some(path => location.pathname.startsWith(path)) && !me?.staging_account?.initialized
             ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)
-            : <>{!viewing && <TaskOutcome />}<Outlet /></>}
-
+            : <>
+              {!viewing && <TaskOutcome />}
+              {isRecords && <nav aria-label="Stock records" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-cs-border pb-2">
+                {navItems.filter(item => recordsRoutes.includes(item.to)).map(({ to, label }) => (
+                  <NavLink key={to} to={to} className={({ isActive }) => `inline-flex min-h-11 items-center rounded-lg px-3 text-sm ${isActive ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}>
+                    {to === '/import' ? 'Import / Export' : label}
+                  </NavLink>
+                ))}
+              </nav>}
+              <Outlet />
+            </>}
+          {location.pathname === '/settings' && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
+            {accountLinks.map(({ to, label }) => <Link key={to} to={to} className="inline-flex min-h-11 items-center rounded-lg border border-cs-border px-3">{label}</Link>)}
+          </nav>}
         </div>
       </main>
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">
-        {mobileMenuOpen && <div id="mobile-more-menu" className="absolute bottom-full left-3 right-3 mb-2 max-h-[70vh] overflow-y-auto rounded-2xl border border-cs-border bg-cs-surface p-3 shadow-pop">
-          {[{ title: 'Your records', routes: recordsRoutes }, { title: 'Planning', routes: ['/retirement', '/comp-calculator'] }, { title: 'Account', routes: workshopRoutes }].map(group => <section key={group.title} className="mb-2">
-            <h2 className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-cs-muted">{group.title}</h2>
-            <div className="grid grid-cols-3 gap-1">{navItems.filter(item => group.routes.includes(item.to)).map(({to, label}) => <NavLink key={to} to={to} onClick={() => setMobileMenuOpen(false)} className={({isActive}) => `flex min-h-11 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}><CampusNavIcon route={to} />{label}</NavLink>)}</div>
-          </section>)}
-        </div>}
-        <div className="mx-auto grid max-w-lg grid-cols-5 px-2 py-1.5">{mobilePrimaryItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} aria-label={label} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-[11px] font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><CampusNavIcon route={to} className="h-4 w-4" />{label}</NavLink>)}<button type="button" aria-label="More" aria-expanded={mobileMenuOpen} aria-controls="mobile-more-menu" onClick={() => setMobileMenuOpen(open => !open)} className={`flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${mobileMenuOpen ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><span aria-hidden="true" className="text-base leading-4">•••</span>More</button></div>
+        <div className="mx-auto grid max-w-lg grid-cols-3 px-2 py-1.5">
+          {primaryItems.map(({ to, label }) => (
+            <Link key={to} to={to} aria-current={isPrimaryActive(to) ? 'page' : undefined}
+              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${isPrimaryActive(to) ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}>
+              <CampusNavIcon route={to} />{label}
+            </Link>
+          ))}
+        </div>
       </nav>
       <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
     </div>

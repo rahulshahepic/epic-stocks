@@ -550,6 +550,7 @@ describe('Retirement page', () => {
     expect(screen.queryByText(/Through age 90/)).not.toBeInTheDocument()
     expect(screen.getByText(/Through age 95.*2030 dollars/)).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit plan assumptions' }))
     const rerun = screen.getByRole('button', { name: 'Re-run simulation' })
     await waitFor(() => expect(rerun).toBeEnabled())
     fireEvent.click(rerun)
@@ -614,7 +615,8 @@ describe('Retirement saved-params load failure', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Simulate.*retirements/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /Simulate.*retirements/i })).toBeDisabled()
+      expect(screen.getByText(/Add your stock or savings to see a result/)).toBeVisible()
     })
   })
 })
@@ -701,7 +703,7 @@ it('saves an empty-account plan with zero exit and preserves spending on reload'
   mockApi({ emptyGrants: true, netCash: null, savedParams: null })
   const first = render(<MemoryRouter><Retirement /></MemoryRouter>)
   expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
-  expect(screen.getByRole('button', {name: /Simulate.*retirements/})).toBeEnabled()
+  expect(screen.getByRole('button', {name: /Simulate.*retirements/})).toBeDisabled()
   fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '77'}})
   let saved: Record<string, unknown> | undefined
   await waitFor(() => {

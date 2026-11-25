@@ -1,4 +1,5 @@
 import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
+import StockFiles from './StockFiles.tsx'
 import { claimMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
 import { useEffect, useMemo, useState } from 'react'
 import ImportEvidence from './ImportEvidence.tsx'
@@ -116,26 +117,33 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
       </span>
 
       <div className="mt-3 space-y-3">
-        <div>
-          <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
-            Data for Stock Workbook (.csv or .xlsx)
-          </label>
-          <input
-            id="epic-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
-            onChange={e => { setCsv(e.target.files?.[0] ?? null); setResult(null); setStage('idle') }}
-            className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-          />
-        </div>
-        <div>
-          <label htmlFor="epic-pdf" className="text-xs font-medium text-cs-text-2">
-            Stock Loan Statement (.pdf)
-          </label>
-          <input
-            id="epic-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
-            onChange={e => { setPdf(e.target.files?.[0] ?? null); setResult(null); setStage('idle') }}
-            className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-          />
-        </div>
+        <StockFiles csv={csv} pdf={pdf} disabled={busy} onFiles={({workbook, statement}) => {
+          if (workbook) setCsv(workbook)
+          if (statement) setPdf(statement)
+          setResult(null); setStage('idle'); setPricedAt(null); setAnswers({})
+        }} />
+        <details><summary className="cursor-pointer py-2 text-xs text-cs-text-2">Choose or replace files separately</summary>
+          <div>
+            <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
+              Data for Stock Workbook (.csv or .xlsx)
+            </label>
+            <input
+              id="epic-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
+              onChange={e => { setCsv(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
+              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+            />
+          </div>
+          <div>
+            <label htmlFor="epic-pdf" className="text-xs font-medium text-cs-text-2">
+              Stock Loan Statement (.pdf)
+            </label>
+            <input
+              id="epic-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
+              onChange={e => { setPdf(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
+              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+            />
+          </div>
+        </details>
         <button
           type="button" onClick={() => run()} disabled={(!csv && !pdf) || busy}
           className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
@@ -158,6 +166,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
       {stage === 'result' && result && (
         <div className="mt-4 border-t border-cs-border pt-3">
           <ImportEvidence evidence={result.reconciliation ?? []} />
+          {typeof result.draft.statement_date === 'string' && <p className="mt-2 text-xs text-cs-text-2">Statement dated {result.draft.statement_date}. Changes below compare these files with your saved records.</p>}
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <Stat label="Grants" value={String(result.summary.grants)} />
             <Stat label="Loans" value={String(result.summary.loans)} />

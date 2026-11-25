@@ -81,6 +81,17 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
         todays.append({"event_type": PRICE_REMINDER, "date": today,
                        "_reminder_price_ids": [p.id for p in overdue],
                        **price_metadata(overdue[-1], today)})
+    current = [p for p in price_rows if p.effective_date.year == today.year]
+    expected = next((p.expected_announcement_date for p in reversed(current) if p.expected_announcement_date), date(today.year, 3, 1))
+    if (grants and today >= expected and user.price_reminder_year != today.year
+            and not any(not price_metadata(p, today)['price_is_estimate'] for p in current)):
+        reminder = next((e for e in todays if e['event_type'] == PRICE_REMINDER), None)
+        if reminder is None:
+            reminder = {'event_type': PRICE_REMINDER, 'date': today,
+                        'price_effective_date': date(today.year, 1, 1).isoformat(),
+                        'expected_announcement_date': expected.isoformat()}
+            todays.append(reminder)
+        reminder['_price_reminder_year'] = today.year
 
     sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == target_date).all()
     for s in sales:
@@ -107,7 +118,7 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     if set(counts) == {PRICE_REMINDER}:
         payload: dict = {"title": "Update your share price", "body": " ".join(details)}
         if target_date is not None:
-            payload["data"] = {"url": "/prices"}
+            payload["data"] = {"url": "/prices#announced-price"}
         return payload
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
@@ -275,6 +286,8 @@ def send_daily_notifications(today: date | None = None, *, extra_events=None):
                         user.annual_summary_year = event["_annual_summary_year"]
                     if "_statement_reminder_year" in event:
                         user.statement_reminder_year = event["_statement_reminder_year"]
+                    if "_price_reminder_year" in event:
+                        user.price_reminder_year = event["_price_reminder_year"]
                 delivered_announcements.update(pid for e in events
                                                for pid in e.get("_reminder_price_ids", ()))
             user.last_notified_at = datetime.now(timezone.utc)

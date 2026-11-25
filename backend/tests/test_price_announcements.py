@@ -93,7 +93,7 @@ def test_no_notification_on_applicable_date_reminder_after_expected_announcement
     payload = build_notification_payload(events, date(2020, 3, 1))
     assert payload["title"] == "Update your share price"
     assert "effective 2020-01-01" in payload["body"] and "2020-03-01" in payload["body"]
-    assert payload["data"]["url"] == "/prices"
+    assert payload["data"]["url"] == "/prices#announced-price"
     from unittest.mock import patch
     with patch("scaffold.email_sender.app_url", return_value="https://example.test"):
         subject, text, html, _ = build_event_email(events)

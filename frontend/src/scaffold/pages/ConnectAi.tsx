@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '../../api.ts'
+import StarterQuestions from '../../app/components/StarterQuestions.tsx'
 import { Navigate } from 'react-router-dom'
 import { useConfig } from '../hooks/useConfig.ts'
 import { Card } from '../components/ui/Card.tsx'
@@ -44,6 +46,13 @@ export default function ConnectAi() {
   const serverUrl = mcpServerUrl()
   const staging = window.location.hostname === 'staging.epic-stocks.com' || !!config?.staging_demo
   const guide = ASSISTANT_GUIDES.find(g => g.id === selected) ?? ASSISTANT_GUIDES[0]
+  const [questions, setQuestions] = useState<string[]>([])
+  useEffect(() => {
+    if (!config?.ai_connections) return
+    let active = true
+    api.getDashboard().then(d => { if (active) setQuestions(d.starter_questions ?? []) }).catch(() => {})
+    return () => { active = false }
+  }, [config?.ai_connections])
 
   if (config && !config.ai_connections) return <Navigate to="/settings" replace />
 
@@ -67,6 +76,7 @@ export default function ConnectAi() {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold text-cs-text">Connect your AI</h1>
+      <StarterQuestions questions={questions} />
       {staging && <Card as="section" pad="md">
         <h2 className="text-sm font-semibold text-cs-text">Staging test connector</h2>
         <p className="mt-2 text-xs text-cs-text-2">Connect as Epic Stocks Staging Test. These downloads use staging OAuth. Ask your assistant to verify the account context and set up a fictional test account before reading or editing. Each connection has its own saved test data, separate from your dashboard and production account.</p>

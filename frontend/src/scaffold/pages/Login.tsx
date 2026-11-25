@@ -16,6 +16,8 @@ import gardenMobile480 from '../../assets/campus-garden-mobile-480.webp'
 import gardenMobile960 from '../../assets/campus-garden-mobile-960.webp'
 import gardenWide800 from '../../assets/campus-garden-wide-800.webp'
 import gardenWide1600 from '../../assets/campus-garden-wide-1600.webp'
+import { hasTrialPayload } from '../../app/trialImport.ts'
+import { platform } from '../../platform/index.ts'
 
 const FEATURES = [
   { icon: <IconTrendUp />, tone: 'brand' as const, title: 'Built around Epic grants', body: 'Purchase, catch-up, free, and bonus grants, plus stock loans and payoffs.' },
@@ -33,12 +35,17 @@ export default function Login() {
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const next = safeNext(new URLSearchParams(window.location.search).get('next'))
+  const rawIntent = new URLSearchParams(window.location.search).get('intent')
+  const intent = ['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(rawIntent ?? '') ? rawIntent : null
+  const [trialWaiting, setTrialWaiting] = useState(false)
+  const [trialExpired, setTrialExpired] = useState(false)
+  useEffect(() => { let active = true; void (async () => { const value = await hasTrialPayload(); const expired = await platform.storage.get('trial_preview_expired'); if (active) { setTrialWaiting(value); setTrialExpired(!!expired) } })(); return () => { active = false } }, [])
 
   useEffect(() => {
-    if (isAuthenticated) { if (next) window.location.assign(next); else navigate('/', { replace: true }); return }
-    void stashNext(next)
+    if (isAuthenticated) { const destination = next ?? intent; if (destination) window.location.assign(destination); else navigate('/', { replace: true }); return }
+    void stashNext(next ?? intent)
     api.getProviders().then(setProviders).catch(() => setProviders([]))
-  }, [isAuthenticated, navigate, next])
+  }, [isAuthenticated, navigate, next, intent])
   useEffect(() => { const handlePageShow = (e: PageTransitionEvent) => { if (e.persisted) setLoading(null) }; window.addEventListener('pageshow', handlePageShow); return () => window.removeEventListener('pageshow', handlePageShow) }, [])
   const features = config?.ai_connections ? [...FEATURES.slice(0, 2), AI_FEATURE, ...FEATURES.slice(2)] : FEATURES
 
@@ -46,6 +53,17 @@ export default function Login() {
     setLoading(providerName); setError(null)
     try { await startLogin(providerName) } catch (e) { setLoading(null); setError(e instanceof Error ? e.message : 'Sign-in failed. Please try again.') }
   }
+
+  if (trialWaiting || trialExpired || intent) return <main className="mx-auto min-h-screen max-w-md space-y-5 px-4 py-10 text-cs-text">
+    <Eyebrow>Epic Stocks · your next step</Eyebrow>
+    {trialExpired && <p role="status" className="rounded-xl border border-cs-border p-4 text-sm">Your preview expired after 30 minutes. Choose your files again to make a fresh preview, or sign in and import them from your account.</p>}
+    <h1 className="font-serif text-3xl font-semibold">{trialWaiting ? 'Sign in to save your numbers' : intent === '/connect-ai' ? 'Sign in to connect your assistant' : 'Sign in to continue'}</h1>
+    <p className="text-sm text-cs-text-2">{trialWaiting ? 'Your preview is waiting on this device. New records will be added to your account; existing records stay as they are.' : 'We’ll bring you straight back to the task you chose.'}</p>
+    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+    <div className="space-y-3">{providers.map(p => <button key={p.name} disabled={loading !== null} onClick={() => void handleSignIn(p.name)} className="min-h-11 w-full rounded-xl bg-cs-brand px-4 py-3 font-semibold text-white disabled:opacity-50">{loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}</button>)}{!providers.length && <p>No sign-in providers configured.</p>}</div>
+    {trialWaiting ? <Link to="/try" className="inline-block min-h-11 py-2 text-sm text-cs-brand underline">Back to my preview</Link> : <Link to="/login" onClick={() => window.location.assign('/login')} className="text-sm text-cs-brand underline">Back to the front gate</Link>}
+    <DisclaimerNotice />
+  </main>
 
   return (
     <div className="min-h-screen overflow-hidden bg-cs-base px-4 py-8 sm:px-6 lg:px-10 lg:py-12">

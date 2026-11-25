@@ -2003,3 +2003,55 @@ the event timeline initially jumps to today while retaining its history.
 Import walkthrough screenshots: [review](screenshots/import-review-light-mobile.png),
 [saved dashboard](screenshots/import-saved-light-mobile.png), and
 [dark dashboard](screenshots/import-saved-dark-mobile.png).
+
+### A position you can act on
+
+Choose or drop your stock workbook and optional loan statement together, in
+either order. The importer names the files it received and groups the proposed
+additions, corrections and removals under **What changed**. Checking the changes
+shows the before-and-after position; saving remains an explicit confirmation.
+**Where do I find these?** describes the document titles to search for in Eureka.
+Eureka menus vary; this is a document finder guide, not a verified screenshot of
+Epic's current internal interface. The remaining verified navigation and image
+evidence is tracked in #664 and #714.
+
+After import, **In plain words** describes held shares, recorded loans and the
+estimated cash from leaving. It uses the dashboard and exit services, including
+partial-data and tentative-price notices. The same `summary_sentences` and
+amount-free `starter_questions` are returned by MCP `get_dashboard`; they never
+require compensation permission or expose retirement settings through equity
+reads. Copyable starter questions also appear on Connect your AI. Secondary
+dashboard charts and cumulative exit details expand on request. The garden path
+and campus artwork remain part of the dashboard.
+
+The yearly **Record announced price** flow is available on Prices and inline on
+the dashboard outside company-managed Epic mode. It checks a blank, user-entered
+price against the current position before an explicit save, confirms the record
+applicable from January 1, and preserves a known actual announcement date. Its
+before/after comparison holds the account records constant; it is not presented
+as a year's investment return. Existing notification preferences control annual
+price reminders, including accounts without future estimates. A reminder says
+the announcement is expected, never that Epic has announced a price. The new
+nullable `users.price_reminder_year` marker is written only after delivery;
+normal Alembic deployment applies the migration.
+
+Retirement chooses a suggested date at least five years away (or age 55 if later)
+only when no date was saved. Saved dates and manual exit values remain choices.
+A funded plan with a birthday runs its first simulation in a worker and opens
+on results; **Edit plan assumptions** returns to the inputs. Empty portfolios
+invite stock or savings entry. The basic spending summary describes the same
+effective capped floor the simulator uses, without changing the saved floor.
+
+A trial preview waiting for signup gets a focused sign-in screen and a back link
+to its tab-local preview. After sign-in, addition-only carryover reports saved,
+already-matching, review-needed or failed status. Existing rows are preserved;
+corrections require the normal reviewed import. Preview carryover expires after
+30 minutes. Choosing Connect AI, Import, Retirement or Comp before sign-in returns
+to that page. Mobile navigation names Retirement and Grants directly, and More
+groups related pages under Your records, Planning and Account. Successful record
+edits show a result with links to the updated position and retirement.
+
+Release walkthroughs: [position](screenshots/magic-position-light-mobile.png),
+[retirement results](screenshots/magic-retirement-dark-mobile.png),
+[announced price](screenshots/magic-price-light-mobile.png), and
+[focused signup](screenshots/magic-signup-light-mobile.png).

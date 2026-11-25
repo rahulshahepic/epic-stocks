@@ -200,10 +200,16 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const resp = await apiFetchRaw(path, init)
   await throwForStatus(resp, fallbackLabel, path, init?.method)
-
-  if (resp.status === 204) return undefined as T
-
-  return resp.json()
+  const result = resp.status === 204 ? undefined : await resp.json()
+  if (typeof window !== 'undefined' && ['POST', 'PUT', 'DELETE'].includes(init?.method ?? 'GET')) {
+    const record = path.match(/^\/api\/(grants|loans|sales|loan-payments|prices)(?:\/\d+)?(?:\/with-payoff|\/execute-payoff)?(?:\?.*)?$/)
+    const flow = path.match(/^\/api\/flows\/(new-purchase|add-bonus|annual-price)$/)
+    if (record || flow) {
+      const title = path.includes('execute-payoff') ? 'Loan payoff recorded.' : `${record?.[1] === 'loan-payments' ? 'Loan payment' : record?.[1] === 'grants' || flow?.[1] === 'add-bonus' ? 'Grant' : flow?.[1] === 'new-purchase' ? 'Purchase and loan' : record?.[1] === 'loans' ? 'Loan' : record?.[1] === 'sales' ? 'Sale' : 'Share price'} ${init?.method === 'DELETE' ? 'removed' : 'saved'}.`
+      window.dispatchEvent(new CustomEvent('equity-task-saved', { detail: title }))
+    }
+  }
+  return result as T
 }
 
 /** Error-checked request returning the body as a Blob, for file downloads. */
@@ -230,6 +236,8 @@ export interface PushStatus {
 }
 
 export interface DashboardData {
+  summary_sentences?: string[]
+  starter_questions?: string[]
   price_is_estimate?: boolean
   expected_announcement_date?: string | null
   announced_date?: string | null

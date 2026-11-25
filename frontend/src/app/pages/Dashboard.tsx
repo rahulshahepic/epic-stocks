@@ -1,4 +1,7 @@
 import ExitDateComparison from '../components/ExitDateComparison.tsx'
+import StarterQuestions from '../components/StarterQuestions.tsx'
+import AnnouncedPrice from '../components/AnnouncedPrice.tsx'
+import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import ReminderOffer from '../components/ReminderOffer.tsx'
 import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
 import EquityTerms from '../components/EquityTerms.tsx'
@@ -57,7 +60,7 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
       </p>
       {!readOnly && (
         <Link
-          to="/prices"
+          to="/prices#announced-price"
           className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover"
         >
           Add a price
@@ -78,11 +81,23 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
 }
 
 export default function Dashboard() {
+  const config = useConfig()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
   const today = useToday()
   const [importSaved, setImportSaved] = useState(false)
+  const [carryover, setCarryover] = useState('')
+  useEffect(() => {
+    if (vid) return
+    let active = true
+    void platform.storage.get('trial_carryover_result').then(value => {
+      if (!active || !value) return
+      setCarryover(value); if (value === 'saved' || value === 'partial') setImportSaved(true)
+      void platform.storage.remove('trial_carryover_result')
+    })
+    return () => { active = false }
+  }, [vid])
 
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
@@ -321,7 +336,7 @@ export default function Dashboard() {
   const isEmpty = events?.length === 0
 
   if (isEmpty && !readOnly) {
-    return <GetStarted onImported={() => { setImportSaved(true); reloadEvents(); reloadPrices(); reloadLoans(); reloadDash(); reloadCharts(); reloadTaxSettings() }} />
+    return <>{(carryover === 'failed' || carryover === 'expired') && <p role="alert" className="mb-4 rounded-xl border border-cs-border p-4 text-sm text-cs-text">{carryover === 'expired' ? 'Your preview expired after 30 minutes.' : 'We couldn’t save your preview automatically.'} Import your files again below; your account is ready.</p>}<GetStarted onImported={() => { setImportSaved(true); reloadEvents(); reloadPrices(); reloadLoans(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></>
   }
 
   if (isEmpty && readOnly) {
@@ -343,12 +358,18 @@ export default function Dashboard() {
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
       {importSaved && <p role="status" className="text-sm text-cs-text">Your import is saved. Here’s your position.</p>}
+      {carryover === 'partial' && <p role="status" className="text-sm text-cs-text">New records from your preview were saved. Existing records were preserved; re-import to review any corrections.</p>}
+      {carryover === 'review' && <p role="status" className="text-sm text-cs-text">Your existing records were preserved. Your preview contains corrections that were not saved automatically. <Link to="/import" className="underline">Review those changes in Import</Link>.</p>}
+      {carryover === 'matched' && <p role="status" className="text-sm text-cs-text">Your preview already matches your saved records. Here’s your position.</p>}
+      {carryover === 'expired' && <p role="status" className="text-sm text-cs-text">Your preview expired after 30 minutes. <Link to="/import" className="underline">Import the files again</Link> to review and save them.</p>}
+      {carryover === 'failed' && <p role="alert" className="text-sm text-cs-text">We couldn’t save your preview automatically. <Link to="/import" className="underline">Import your files again</Link> to review and save it.</p>}
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
           {!readOnly && <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>}
         </div>
       )}
+      {!readOnly && !config?.epic_mode && <details className="rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Enter an announced price here</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
       {cv && grantHoldings && (
         <HeroCard
           className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
@@ -393,18 +414,29 @@ export default function Dashboard() {
                 {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
               </p>
               {cv.next_event && (
-                <p className="border-t border-white/35 pt-3">
+                <Link to={`/events?date=${cv.next_event.date}`} aria-label="Open next event" className="block w-full border-t border-white/35 pt-3 text-left">
                   <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
                   <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
+                  <span className="text-xs"> · {cv.next_event.event_type}</span>
                   {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && (
                     <span className="text-xs"> · estimated price change</span>
                   )}
-                </p>
+                </Link>
               )}
             </div>
           </div>
         </HeroCard>
       )}
+
+      {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-2xl border border-cs-border bg-cs-surface p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-cs-text">In plain words</summary>
+        <ul className="mt-3 space-y-2 text-sm leading-relaxed text-cs-text-2">{snapshot.summary_sentences.map(s => <li key={s}>{s}</li>)}</ul>
+      </details> : null}
+      {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand">
+        <a href="#exit-details" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Explore leaving</a>
+        <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
+        {config?.ai_connections && <Link to="/connect-ai" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Ask your assistant</Link>}
+      </div>}
 
       {/* Date selector for card values */}
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
@@ -465,45 +497,44 @@ export default function Dashboard() {
       </div>}
 
       {snapshot && hasPrice && showExitPreview && (
-        <div aria-live="polite" aria-atomic="true" className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">
-            If you exited on this date
-          </p>
-          {exitPreview === 'loading' ? (
-            <p className="text-xs text-cs-muted">Calculating…</p>
-          ) : exitPreview && exitPreview.date === cardDate ? (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <button
-                  onClick={() => setExitBreakdownOpen(o => !o)}
-                  aria-expanded={exitBreakdownOpen}
-                  className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
-                >
-                  <div className="flex items-center justify-between">
-                    <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
-                      <IconTrendUp className="h-4 w-4" />
-                    </IconTile>
-                    <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </span>
-                  </div>
-                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Cash from exit plus earlier activity</p>
-                  <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
-                  <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
-                </button>
-                <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
-                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" subtitle="Principal + accrued interest" />
-                <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
-              </div>
-              {exitBreakdownOpen && <>
-                <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>
-                <ExitBreakdownCard s={exitPreview} />
-              </>}
-              <ExitDateComparison date={cardDate} invitationId={vid} />
-            </>
-          ) : (
-            <p className="text-xs text-cs-muted">Exit estimate unavailable for this date</p>
-          )}
+        <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 space-y-2">
+          <details><summary className="cursor-pointer rounded-xl border border-cs-border bg-cs-surface p-4 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</summary>
+            {exitPreview === 'loading' ? (
+              <p className="text-xs text-cs-muted">Calculating…</p>
+            ) : exitPreview && exitPreview.date === cardDate ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <button
+                    onClick={() => setExitBreakdownOpen(o => !o)}
+                    aria-expanded={exitBreakdownOpen}
+                    className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
+                        <IconTrendUp className="h-4 w-4" />
+                      </IconTile>
+                      <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </span>
+                    </div>
+                    <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Cash from exit plus earlier activity</p>
+                    <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
+                    <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
+                  </button>
+                  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
+                  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" subtitle="Principal + accrued interest" />
+                  <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
+                </div>
+                {exitBreakdownOpen && <>
+                  <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>
+                  <ExitBreakdownCard s={exitPreview} />
+                </>}
+              </>
+            ) : (
+              <p className="text-xs text-cs-muted">Exit estimate unavailable for this date</p>
+            )}
+          </details>
+          <ExitDateComparison date={cardDate} invitationId={vid} />
         </div>
       )}
 
@@ -513,7 +544,7 @@ export default function Dashboard() {
         <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
 
         <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
-          totalValue={totalValue} openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+          totalValue={totalValue} hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
 
         {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0) && <details className="space-y-3">
           <summary className="cursor-pointer py-2 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
@@ -528,6 +559,7 @@ export default function Dashboard() {
 
 
       {!readOnly && snapshot && hasPastRecords && <AnnualStockSummary />}
+      {!readOnly && config?.ai_connections && snapshot && <details className="rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-text">Explore with your assistant</summary><div className="mt-3"><StarterQuestions questions={snapshot.starter_questions} /></div></details>}
 
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction

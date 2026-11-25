@@ -55,6 +55,7 @@ export default function Demo() {
   const [simulation, setSimulation] = useState<DemoSimulation | null>(null)
   const [simulating, setSimulating] = useState(false)
   const worker = useRef<Worker | null>(null)
+  const content = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const abort = new AbortController()
@@ -162,29 +163,25 @@ export default function Demo() {
           Use my own files →
         </Link>
       </header>
-      <Card className="space-y-3 p-5 sm:p-7">
+      <Card className="space-y-2 p-4 sm:p-5">
         <Eyebrow>Interactive demo · fictional data</Eyebrow>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Take a look around
         </h1>
-        <p className="max-w-2xl text-sm leading-relaxed text-cs-text-2">
-          Explore an employee’s stock, loans and retirement using invented
-          numbers. No sign-in or uploads. Changes last only while this page is
-          open.
-        </p>
-        <p className="text-xs leading-relaxed text-cs-muted">
+        <p className="max-w-2xl text-sm leading-relaxed text-cs-text-2">Your position, a sale, or retirement. Try a change and see what happens. No sign-in or uploads.</p>
+        <details className="text-xs text-cs-muted"><summary className="cursor-pointer py-1">About these fictional profiles</summary><p>
           These profiles do not represent Epic’s actual prices or compensation.
-          The demo uses the same calculation services as an account.
-        </p>
+          The demo uses the same calculation services as an account. Changes last only while this page is open.
+        </p></details>
       </Card>
       <section
         aria-label="Fictional employee profile"
-        className="grid gap-3 sm:grid-cols-3"
+        className="grid grid-cols-3 gap-2"
       >
         {profiles.map(([key, label, tenure]) => (
           <button
             key={key}
-            className={`${button} text-left ${profile === key ? 'border-cs-brand bg-cs-brand-subtle' : 'bg-cs-surface'}`}
+            className={`${button} !px-2 text-left !text-xs sm:!text-sm ${profile === key ? 'border-cs-brand bg-cs-brand-subtle' : 'bg-cs-surface'}`}
             aria-pressed={profile === key}
             onClick={() => {
               invalidate()
@@ -195,7 +192,7 @@ export default function Demo() {
             }}
           >
             <span className="block">{label}</span>
-            <span className="mt-1 block text-xs font-normal text-cs-text-2">
+            <span className="mt-1 hidden text-xs font-normal text-cs-text-2 sm:block">
               {tenure} of fictional grants
             </span>
           </button>
@@ -234,13 +231,14 @@ export default function Demo() {
               key={t}
               aria-pressed={tab === t}
               className={`${button} ${tab === t ? 'bg-cs-brand-subtle border-cs-brand' : ''}`}
-              onClick={() => { if ((tab === 'Retirement') !== (t === 'Retirement')) invalidate(); setTab(t) }}
+              onClick={() => { if ((tab === 'Retirement') !== (t === 'Retirement')) invalidate(); setTab(t); requestAnimationFrame(() => content.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })) }}
             >
               {t}
             </button>
           )
         )}
       </nav>
+      <div ref={content} className="scroll-mt-4" />
       {loading && (
         <p role="status" className="text-sm text-cs-text-2">
           Loading fictional profile…

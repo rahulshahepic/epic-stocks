@@ -716,20 +716,64 @@ it('shows both working-life and retirement expenses in one list', async () => {
   expect(expenses).toHaveTextContent('Starts during retirement')
 })
 
-it('saves an expense without choosing a retirement date', async () => {
+it('saves the displayed retirement date when someone edits a retirement plan without changing its date', async () => {
+  mockApi({ savedParams: { epicExitMode: 'manual', epicExit: 1, defaultSpend: 60 } })
+  render(<MemoryRouter initialEntries={['/planning']}><Retirement /></MemoryRouter>)
+  const spending = await screen.findByDisplayValue('60000')
+  const date = (screen.getByLabelText(/^Retirement date/) as HTMLInputElement).value
+  fireEvent.change(spending, { target: { value: '70000' } })
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)).params).find(params => params.defaultSpend === 70)
+    expect(saved).toMatchObject({ retirementDate: date })
+  })
+})
+
+it('saves only the new expense when there is no retirement date', async () => {
   mockApi({ savedParams: {} })
   render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
-  expect(screen.queryByRole('textbox', { name: /^Retirement date/ })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Purchase / start date'), { target: { value: '2029-02-01' } })
+  const date = screen.getByLabelText('Purchase / start date')
+  expect(screen.getByLabelText(/^Retirement date/)).not.toBeVisible()
+  fireEvent.change(date, { target: { value: '2029-02-01' } })
   fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
   fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
   await waitFor(() => {
-    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
-    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)).params).find(params => params.plannedEvents?.length)
-    expect(saved?.plannedEvents[0]).toMatchObject({ date: '2029-02-01', amountM: 0.033, priceBasisDate: expect.any(String) })
-    expect(saved).not.toHaveProperty('retirementDate')
+    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')
+    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)))[0]
+    expect(saved).toEqual({ plannedEvents: [expect.objectContaining({ date: '2029-02-01', amountM: 0.033, priceBasisDate: expect.any(String) })] })
   })
+  expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/retirement/params' && init?.method === 'PUT')).toBe(false)
+})
+
+it('waits for an expense save when reopening Planning during the write', async () => {
+  mockApi({ savedParams: {} })
+  const fetchOtherEndpoints = vi.mocked(fetch).getMockImplementation()!
+  let saved = {}
+  let writeStarted = false
+  let releaseWrite = () => {}
+  const canFinish = new Promise<void>(resolve => { releaseWrite = resolve })
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (input !== '/api/retirement/params') return fetchOtherEndpoints(input, init)
+    if (init?.method === 'PATCH') {
+      writeStarted = true
+      await canFinish
+      saved = JSON.parse(String(init.body))
+    }
+    return new Response(JSON.stringify({ params: saved }))
+  })
+  const page = <MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>
+  const first = render(page)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Weekend cabin' } })
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  await waitFor(() => expect(writeStarted).toBe(true))
+  first.unmount()
+  render(page)
+  expect(screen.getByText('Loading your planned expenses…')).toBeVisible()
+  releaseWrite()
+  expect(await screen.findByText('Weekend cabin')).toBeVisible()
 })
 
 it('keeps account balances and basis when hiding the breakdown or switching views', async () => {

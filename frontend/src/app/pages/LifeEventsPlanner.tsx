@@ -120,14 +120,14 @@ export default function LifeEventsPlanner({
     }
     if (events.length >= 20 && !editing) { setError('Maximum 20 planned events.'); return }
     const event = { ...convertMoney(draft, priceFactor), id: editing ?? 'event-' + Date.now().toString(36) }
-    if (priceBasis === 'today') event.priceBasisDate = retirementDate ? undefined : todayDate
+    if (priceBasis === 'today' || (!retirementDate && !event.priceBasisDate)) event.priceBasisDate = retirementDate ? undefined : todayDate
     event.replacementEveryYears = Math.min(50, Math.max(0, Math.floor(event.replacementEveryYears ?? 0)))
     if (event.kind === 'home' || event.kind === 'vehicle') {
       event.loanYears = Math.min(50, Math.max(0, Math.floor(event.loanYears ?? 0)))
       if (!event.loanYears || (event.downPaymentPct ?? 1) >= 1 || !event.amountM) {
         delete event.loanYears
         delete event.loanRate
-        if (!event.lifetimeYears) delete event.inflationRate
+        if (!event.lifetimeYears && !event.priceBasisDate) delete event.inflationRate
         event.downPaymentPct = 1
       } else if (event.loanRate == null) {
         setError('Enter the loan interest rate, including 0% for interest-free financing.'); return
@@ -212,7 +212,7 @@ export default function LifeEventsPlanner({
         <div className="space-y-3 rounded-lg border border-cs-border-strong p-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Type
-              <select value={draft.kind} onChange={e => { setDraft(blank(e.target.value as PlannedEventKind, draft.date)); setReplaceOnSale(false) }}
+              <select value={draft.kind} onChange={e => { setDraft(blank(e.target.value as PlannedEventKind, draft.date)); setReplaceOnSale(false); if (draft.priceBasisDate) setPriceBasis('today') }}
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
                 {KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
@@ -285,7 +285,7 @@ export default function LifeEventsPlanner({
                       onChange={e => set('condition', { ...draft.condition, requireFullSpending: e.target.checked })} />
                     Only if regular spending is not being cut
                   </label>
-                  <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear} $; optional)
+                  <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear ? `${retirementYear} $` : 'retirement-year $'}; optional)
                     <input type="number" min="0" max="1000000000" step="10000" value={draft.condition.minPortfolioM == null ? '' : fromM(draft.condition.minPortfolioM)}
                       onChange={e => set('condition', { ...draft.condition, minPortfolioM: e.target.value === '' ? undefined : Number(e.target.value) / 1_000_000 })}
                       className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />

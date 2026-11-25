@@ -121,7 +121,9 @@ def validate_planned_events(events):
             raise ValueError(f"{label} has an unsupported funding source")
         when = _date(event["date"], f"{label}.date", historical=True)
         if "priceBasisDate" in event:
-            _date(event["priceBasisDate"], f"{label}.priceBasisDate", historical=True)
+            basis = _date(event["priceBasisDate"], f"{label}.priceBasisDate", historical=True)
+            if basis.isoformat() != event["priceBasisDate"]:
+                raise ValueError(f"{label}.priceBasisDate must be a YYYY-MM-DD date")
         if "conditionFailure" in event:
             if event["conditionFailure"] not in ("skip", "defer") or "condition" not in event:
                 raise ValueError(f"{label}.conditionFailure requires a condition and must be skip or defer")

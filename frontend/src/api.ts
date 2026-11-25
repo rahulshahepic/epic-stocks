@@ -1,3 +1,4 @@
+import type { PlannedEvent } from './app/pages/Retirement.math.ts'
 import type { DashboardSnapshot, DashboardChartsData } from './app/pages/Dashboard.types.ts'
 import { apiUrl } from './config.ts'
 import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
@@ -540,6 +541,8 @@ export const api = {
   updateProfile: (body: { date_of_birth?: string | null }, signal?: AbortSignal) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body), ...(signal ? { signal } : {}) }),
   getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
   saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }, signal),
+  savePlannedExpenses: (plannedEvents: PlannedEvent[]) =>
+    apiFetch<{ params: Record<string, unknown> }>('/api/retirement/params', { method: 'PATCH', body: JSON.stringify({ plannedEvents }) }),
   getCompEntries: () => apiFetch<{ entries: unknown }>('/api/retirement/comp-entries'),
   saveCompEntries: (entries: unknown, signal?: AbortSignal) => put<{ entries: unknown }>('/api/retirement/comp-entries', { entries }, signal),
   getDashboardPrefs: () => apiFetch<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs'),

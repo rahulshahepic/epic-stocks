@@ -15,6 +15,33 @@ function mount() {
   return onChange
 }
 
+it('keeps a price basis when changing an expense created without a retirement date', () => {
+  const onChange = vi.fn()
+  render(<LifeEventsPlanner
+    events={[{ id: 'car', title: 'Car', kind: 'vehicle', date: '2030-01-01', amountM: 0.03, priceBasisDate: '2026-01-01' }]}
+    onChange={onChange} comparison={null} onRun={vi.fn()} running={false}
+  />)
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'travel' } })
+  fireEvent.change(screen.getByLabelText(/One-time cost/), { target: { value: '2000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Update event' }))
+  expect(onChange).toHaveBeenCalledWith([expect.objectContaining({
+    kind: 'travel', amountM: 0.002, priceBasisDate: expect.any(String),
+  })])
+})
+
+it('preserves custom inflation for a standalone cash purchase', () => {
+  const onChange = vi.fn()
+  render(<LifeEventsPlanner events={[]} onChange={onChange} comparison={null} onRun={vi.fn()} running={false} />)
+  fireEvent.click(screen.getByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.change(screen.getByLabelText('Assumed inflation (%)'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(onChange).toHaveBeenCalledWith([expect.objectContaining({
+    amountM: 0.033, inflationRate: 0, priceBasisDate: expect.any(String),
+  })])
+})
+
 describe('life event editor saves backend-compatible shapes', () => {
   it('converts a current sticker price into retirement-year purchasing power', () => {
     const onChange = mount()

@@ -429,6 +429,9 @@ function ageFromDOB(dob: string | null | undefined, asOf: string = localToday())
   return years
 }
 
+// A submitted expense can still be saving after the user leaves Planning.
+let retirementSaveQueue = Promise.resolve()
+
 export default function Retirement() {
   const { viewing } = useViewing()
   return <RetirementAccount key={viewing?.invitationId ?? 'me'} />
@@ -441,6 +444,7 @@ function RetirementAccount() {
   const me = useMe()
   const [retirementDate, setRetirementDate] = useState<string>(() => suggestedRetirementDate(today))
   const dateChosen = useRef(false)
+  const [retirementEdited, setRetirementEdited] = useState(false)
   const autoRan = useRef(false)
   const workerRef = useRef<Worker | null>(null)
   const comparisonWorker = useRef<Worker | null>(null)
@@ -491,7 +495,7 @@ function RetirementAccount() {
   const [runError, setRunError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const showExpenses = searchParams.get('view') === 'expenses'
-  const expenseRetirementDate = dateChosen.current && retirementDate ? retirementDate : undefined
+  const expenseRetirementDate = (dateChosen.current || retirementEdited) && retirementDate ? retirementDate : undefined
   function setPlanningView(expenses: boolean) {
     const next = new URLSearchParams(searchParams)
     if (expenses) next.set('view', 'expenses')
@@ -521,7 +525,6 @@ function RetirementAccount() {
   )
   const expenseSavePending = useRef(false)
   const expensesEdited = useRef(false)
-  const saveQueue = useRef(Promise.resolve())
   const [saveRetry, setSaveRetry] = useState(0)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState('')
@@ -560,11 +563,12 @@ function RetirementAccount() {
     setRunning(false)
     autoRan.current = false
     dateChosen.current = false
+    setRetirementEdited(false)
     setEditInputs(true)
     workerRef.current?.terminate()
     workerRef.current = null
     if (runTimer.current) clearTimeout(runTimer.current)
-    const fetcher = vid ? api.getSharedRetirementParams(vid) : api.getRetirementParams()
+    const fetcher = vid ? api.getSharedRetirementParams(vid) : retirementSaveQueue.then(() => api.getRetirementParams())
     fetcher
       .then(({ params: saved }) => {
         if (saved && typeof saved === 'object') {
@@ -721,6 +725,7 @@ function RetirementAccount() {
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     editVersion.current++
+    if (key !== 'plannedEvents') setRetirementEdited(true)
     setParams(prev => ({ ...prev, [key]: value }))
   }, [])
 
@@ -747,9 +752,10 @@ function RetirementAccount() {
   // so queue them immediately and let the write finish after navigation.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
-    const request = ++saveRequestRef.current
     const immediate = expenseSavePending.current
     expenseSavePending.current = false
+    if (!immediate && !expenseRetirementDate && !retirementEdited) return
+    const request = ++saveRequestRef.current
     const controller = new AbortController()
     let active = true
     setSaveStatus('saving')
@@ -760,12 +766,15 @@ function RetirementAccount() {
       if (exitMode === 'auto' && !legacyExitHeld && (exitPreviewLoading || exitError)) delete savedParams.epicExit
       const payload = {
         ...savedParams,
-        ...(dateChosen.current && retirementDate ? { retirementDate } : {}),
+        ...(expenseRetirementDate ? { retirementDate: expenseRetirementDate } : {}),
         ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
       }
-      saveQueue.current = saveQueue.current.then(() => {
-        if (!controller.signal.aborted) return api.saveRetirementParams(payload, controller.signal)
+      retirementSaveQueue = retirementSaveQueue.then(() => {
+        if (controller.signal.aborted) return
+        return immediate && !expenseRetirementDate
+          ? api.savePlannedExpenses(params.plannedEvents ?? [])
+          : api.saveRetirementParams(payload, controller.signal)
       }).then(() => {
         if (active && request === saveRequestRef.current) setSaveStatus('saved')
       }).catch((err: unknown) => {
@@ -781,7 +790,7 @@ function RetirementAccount() {
       clearTimeout(timer)
       if (!immediate) controller.abort()
     }
-  }, [params, retirementDate, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld, saveRetry])
+  }, [params, expenseRetirementDate, retirementEdited, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld, saveRetry])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
   const taxableTotal = params.epicExit + params.taxableAdditional
@@ -807,7 +816,7 @@ function RetirementAccount() {
     comparisonWorker.current?.terminate()
   }, [])
 
-  const run = useCallback(() => {
+  const run = useCallback((userInitiated = true) => {
     autoRan.current = true
     if (!moneyParamsValid(params) || inputsRef.current?.querySelector('[data-money-pending="true"]')) {
       setRunError('Check the highlighted dollar amounts before simulating.')
@@ -821,6 +830,7 @@ function RetirementAccount() {
       setRunError('Resolve the exit projection or choose a manual amount before simulating.')
       return
     }
+    if (userInitiated) setRetirementEdited(true)
     comparisonRequest.current?.abort()
     comparisonWorker.current?.terminate()
     setDateComparison(null)
@@ -952,7 +962,7 @@ function RetirementAccount() {
     if (showExpenses || autoRan.current || !paramsLoaded || !ownerDOB || running || allocOver || totalPortfolio <= 0 || ageAtRetirement >= params.endAge || exitError || exitPreviewLoading || (exitMode === 'auto' && !legacyExitHeld && (emptyEquity || missingPrice))) return
     const timer = setTimeout(() => {
       if (inputsRef.current?.contains(document.activeElement) && document.activeElement?.matches('input,select,textarea')) return
-      autoRan.current = true; run()
+      autoRan.current = true; run(false)
     }, 300)
     return () => clearTimeout(timer)
   }, [run, showExpenses, paramsLoaded, ownerDOB, running, allocOver, totalPortfolio, ageAtRetirement, params.endAge, exitError, exitPreviewLoading, exitMode, legacyExitHeld, emptyEquity, missingPrice])
@@ -968,7 +978,10 @@ function RetirementAccount() {
   }, [fanData])
 
   return (
-    <div className="campus-observatory space-y-5" onChangeCapture={() => { editVersion.current++ }} onClickCapture={() => { editVersion.current++ }}>
+    <div className="campus-observatory space-y-5" onChangeCapture={() => {
+      editVersion.current++
+      if (!showExpenses) setRetirementEdited(true)
+    }} onClickCapture={() => { editVersion.current++ }}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <IconTile tone="brand" className="h-9 w-9 rounded-xl">
@@ -996,7 +1009,10 @@ function RetirementAccount() {
       {saveStatus === 'error' && !vid && (
         <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
           Plan changes could not be saved. {saveError}{' '}
-          <button type="button" className="font-semibold underline" onClick={() => setSaveRetry(n => n + 1)}>Try saving again</button>
+          <button type="button" className="font-semibold underline" onClick={() => {
+            if (!expenseRetirementDate && expensesEdited.current) expenseSavePending.current = true
+            setSaveRetry(n => n + 1)
+          }}>Try saving again</button>
         </p>
       )}
       <div role="group" aria-label="Planning">
@@ -1758,7 +1774,7 @@ function RetirementAccount() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={run}
+              onClick={() => run()}
               disabled={running || allocOver || !paramsLoaded || totalPortfolio <= 0 || (exitMode === 'auto' && (exitPreviewLoading || !!exitError))}
               className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-700 dark:hover:bg-rose-800"
             >

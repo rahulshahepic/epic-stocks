@@ -49,7 +49,10 @@ export default function Layout() {
     ...(config?.ai_connections && !viewing ? [{ to: '/connect-ai', label: 'Connect AI' }] : []),
     ...navItems.filter(item => ['/content', '/admin'].includes(item.to)),
   ]
-  const isPrimaryActive = (to: string) => to === location.pathname || (to === '/planning' && isObservatory)
+  const primaryLocation = (to: string) => {
+    if (to === location.pathname) return 'page'
+    if ((to === '/' && isRecords) || (to === '/planning' && isObservatory)) return 'location'
+  }
   const campusWing = isRecords
     ? { id: 'records', label: 'The records wing', motto: 'Verba volant, scripta manent', translation: 'Spoken words fly; written words remain' }
     : isWorkshop
@@ -79,7 +82,7 @@ export default function Layout() {
             </div>
           </div>
           <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 overflow-x-auto px-6 pb-2.5 lg:px-8 md:flex">
-            {primaryItems.map(({ to, label }) => <Link key={to} to={to} aria-current={isPrimaryActive(to) ? 'page' : undefined} className={`campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isPrimaryActive(to) ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</Link>)}
+            {primaryItems.map(({ to, label }) => <Link key={to} to={to} aria-current={primaryLocation(to)} className={`campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${primaryLocation(to) ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</Link>)}
           </nav>
         </header>
       </div>
@@ -109,8 +112,8 @@ export default function Layout() {
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-3 px-2 py-1.5">
           {primaryItems.map(({ to, label }) => (
-            <Link key={to} to={to} aria-current={isPrimaryActive(to) ? 'page' : undefined}
-              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${isPrimaryActive(to) ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}>
+            <Link key={to} to={to} aria-current={primaryLocation(to)}
+              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${primaryLocation(to) ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}>
               <CampusNavIcon route={to} />{label}
             </Link>
           ))}

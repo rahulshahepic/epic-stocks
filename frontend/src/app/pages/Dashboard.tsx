@@ -425,7 +425,8 @@ export default function Dashboard() {
           {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
             <dl className="space-y-1 text-xs text-white">
               {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
-                <dt><Link to="/loans" className="underline underline-offset-2">Outstanding loan principal</Link></dt><dd className="font-semibold tabular-nums">{fmt$(outstandingPrincipal)}</dd>
+                <dt>Outstanding loan principal</dt>
+                <dd className="font-semibold tabular-nums"><Link to="/loans" className="underline underline-offset-2" aria-label={`View outstanding loans, ${fmt$(outstandingPrincipal)} principal`}>{fmt$(outstandingPrincipal)}</Link></dd>
               </div>}
               {cv.accrued_unbooked_interest > 0 && <div className="flex justify-between gap-3">
                 <dt>Accrued interest</dt><dd className="font-semibold tabular-nums">{fmt$(cv.accrued_unbooked_interest)}</dd>

@@ -1,6 +1,7 @@
 {
   "limits": {"portfolio_millions": 1000, "spending_thousands": 10000},
   "terms": {
+    "borrowed_principal": {"title":"Recorded loan principal","definition":"Principal recorded on the loans counted for this date, before subtracting repayments.","meaning":"Repayments do not reduce this borrowing total. Open the active-loan breakdown for remaining balances."},
     "debt_settlement": {"title":"Loan settlement","definition":"The modeled amount needed to settle the listed loan obligations, including the charges shown in the breakdown.","meaning":"This can include principal, accrued interest and projected tax loans; it is broader than principal alone."},
     "sales_cash": {"title":"Cash from recorded sales","definition":"Net proceeds from recorded sales through the selected date, after the modeled deductions.","meaning":"This is historical sale cash, separate from the estimate for selling the shares still held."},
     "stock_value": {"title":"Stock valuation","definition":"The value of vested shares at the applicable share price, plus purchased unvested shares at their cost where indicated.","meaning":"Loans and estimated exit tax still need to be considered before treating this as spendable cash."},

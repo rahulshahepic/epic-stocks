@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 const STEPS = [
   {title: 'Your shares', target: '[data-equity-card="vesting"]', text: 'Vested shares are earned. Unvested shares depend on future vesting; the card separates them.'},
-  {title: 'Your loans', target: '[data-equity-card="loan"]', text: 'Borrowed principal and accrued interest are separate obligations. Expand the card explanation for what each figure includes.'},
+  {title: 'Your loans', target: '[data-equity-card="borrowed_principal"], [data-equity-card="loan"]', text: 'The principal card shows recorded borrowing before repayments. Open its loan breakdown for remaining balances; interest is separate.'},
   {title: 'Estimated tax', target: '[data-equity-card="divest_tax"], [data-equity-card="tax"]', text: 'These estimates use your saved rates and tax lots. They are already included where the app shows cash after tax.'},
   {title: 'Cash if you leave', target: '#exit-details > details', text: 'The exit breakdown follows share value through loan repayment and tax to estimated cash. Expand the cash card to inspect the deductions.'},
   {title: 'What next?', target: '', text: 'Check the records behind your position, then explore retirement. You can open any dotted explanation whenever a term is unfamiliar.'},

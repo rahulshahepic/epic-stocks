@@ -116,3 +116,44 @@ def test_the_connector_previews_then_applies_with_the_token(client):
     assert "preview" in chat.error("apply_changes", changes=_new_grant_with_loan(), confirm="wrong")
     chat.call("apply_changes", changes=_new_grant_with_loan(), confirm=preview["confirm"])
     assert len(chat.call("list_grants")["grants"]) == 1
+
+
+def test_retirement_change_previews_field_diff_and_preserves_other_fields(client):
+    from app.changes import apply_changes
+    from database import SessionLocal
+    from scaffold.models import User
+    from tests.conftest import user_key
+
+    register_user(client)
+    saved = {"defaultSpend": 180, "epicExit": 4}
+    assert client.put("/api/retirement/params", json={"params": saved}).status_code == 200
+    changes = [{"kind": "retirement_params", "action": "update", "values": {"defaultSpend": 205}}]
+    with SessionLocal() as db:
+        owner = db.query(User).one()
+        with user_key(owner):
+            preview = apply_changes(owner, db, changes, retirement_only=True)
+            assert preview["changes"][0]["changes"] == {"defaultSpend": {"from": 180, "to": 205}}
+            assert owner.retirement_params == saved
+            assert apply_changes(owner, db, changes, confirm=preview["confirm"], retirement_only=True)["applied"]
+    assert client.get("/api/retirement/params").json()["params"] == {**saved, "defaultSpend": 205}
+
+
+def test_generic_change_endpoints_refuse_retirement_changes(client):
+    register_user(client)
+    changes = [{"kind": "retirement_params", "action": "update", "values": {"defaultSpend": 205}}]
+    mcp = Mcp(client)
+    preview = mcp.call("update_retirement_params", changes=changes[0]["values"])
+    for path in ("preview", "apply"):
+        response = client.post(f"/api/changes/{path}", json={"changes": changes, "confirm": preview["confirm"]})
+        assert response.status_code == 422
+    assert "kind must be one of" in mcp.error("apply_changes", changes=changes, confirm=preview["confirm"])
+    assert client.get("/api/retirement/params").json()["params"] is None
+
+
+@pytest.mark.parametrize("extra", [{"action": "create"}, {"action": "delete"}, {"id": 1}, {"version": 1}])
+def test_retirement_change_has_update_only_blob_semantics(extra):
+    from app.changes import ChangeError, apply_changes
+
+    change = {"kind": "retirement_params", "action": "update", "values": {"defaultSpend": 205}, **extra}
+    with pytest.raises(ChangeError, match="update without a row"):
+        apply_changes(None, None, [change], retirement_only=True)

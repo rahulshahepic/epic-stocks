@@ -69,7 +69,7 @@ def test_setup_encrypted_persistent_and_idempotent(staging, db_session, scenario
         values = db_session.execute(text(f'SELECT {column} FROM {table} WHERE user_id=:uid'), {'uid': row.synthetic_id}).scalars().all()
         assert values and all(v.startswith('$ENC$') for v in values)
     staging.call('add_compensation', entries=[{'type': 'bonus', 'date': '2026-11-23', 'amount': 12345}])
-    staging.call('set_retirement_accounts', traditional_401k=.25)
+    staging.confirm_write('set_retirement_accounts', traditional_401k=.25)
     staging.call('setup_test_account', scenario=scenario)
     assert '12345' in json.dumps(staging.call('get_compensation'))
     assert actual_snapshot(db_session) == before
@@ -275,7 +275,7 @@ def test_all_financial_tool_families_use_fixture(staging, db_session):
     token = staging.call('apply_changes', changes=sale)['confirm']
     sid = staging.call('apply_changes', changes=sale, confirm=token)['changes'][0]['id']
     assert staging.call('get_tax_breakdown', sale_id=sid)['account_context']['synthetic']
-    staging.call('update_retirement_params', changes={'defaultSpend': 75})
+    staging.confirm_write('update_retirement_params', changes={'defaultSpend': 75})
     checkpoint = staging.call('list_interest_checkpoints')['checkpoints'][0]
     change = [{'kind': 'interest_checkpoint', 'action': 'update', 'id': checkpoint['id'],
                'version': checkpoint['version'], 'values': {'accrued_interest': 750}}]
@@ -342,11 +342,12 @@ def test_expiry_and_reprovision_invalidate_import_even_when_ids_are_reused(stagi
 def test_notice_aware_widget_resource_versions_invalidate_cached_templates(staging):
     tools = {tool['name']: tool for tool in staging.list_tools()}
     assert tools['show_equity']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/portfolio-v5.html'
-    assert tools['show_retirement']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/retirement-v7.html'
+    assert tools['show_retirement']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/retirement-v8.html'
     # Previously advertised URIs remain readable while hosts refresh metadata.
     for uri in ('ui://epic-stocks/portfolio-v3.html', 'ui://epic-stocks/retirement-v4.html',
                 'ui://epic-stocks/portfolio-v4.html', 'ui://epic-stocks/retirement-v5.html',
-                'ui://epic-stocks/portfolio-v5.html', 'ui://epic-stocks/retirement-v6.html', 'ui://epic-stocks/retirement-v7.html'):
+                'ui://epic-stocks/portfolio-v5.html', 'ui://epic-stocks/retirement-v6.html', 'ui://epic-stocks/retirement-v7.html',
+                'ui://epic-stocks/retirement-v8.html'):
         resource = staging.rpc('resources/read', {'uri': uri})['result']['contents'][0]
         assert resource['uri'] == uri
         assert 'FICTIONAL TEST ACCOUNT' in resource['text']

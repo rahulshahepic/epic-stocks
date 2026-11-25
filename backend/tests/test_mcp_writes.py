@@ -95,7 +95,7 @@ def test_a_writer_cannot_read_the_history_through_a_write(client):
 
     # Same for the retirement blob: only the field that was set comes back.
     reader.call("set_retirement_accounts", traditional_401k=0.9)
-    assert writer.call("set_retirement_accounts", roth=0.3)["set"] == {"roth": 0.3}
+    assert writer.confirm_write("set_retirement_accounts", roth=0.3)["set"] == {"roth": 0.3}
 
 
 # ── salary and bonus history ────────────────────────────────────────────────
@@ -203,13 +203,24 @@ def test_removing_everything_leaves_an_empty_history(mcp, client):
 # ── retirement balances ─────────────────────────────────────────────────────
 
 def test_setting_balances_lands_where_the_app_reads_them(mcp, client):
-    mcp.call("set_retirement_accounts", traditional_401k=0.85, roth=0.3,
-             taxable_brokerage=1.2, brokerage_basis=0.7)
+    balances = dict(traditional_401k=0.85, roth=0.3, taxable_brokerage=1.2, brokerage_basis=0.7)
+    preview = mcp.call("set_retirement_accounts", **balances)
+    assert preview["applied"] is False
+    assert preview["changes"] == balances
+    assert params(client) == {}
+    assert mcp.call("set_retirement_accounts", **balances, confirm=preview["confirm"])["applied"] is True
     stored = params(client)
     assert stored["traditional"] == 0.85
     assert stored["roth"] == 0.3
     assert stored["taxableAdditional"] == 1.2
     assert stored["additionalBasis"] == 0.7
+
+
+def test_balance_confirmation_expires_after_retirement_update(mcp, client):
+    preview = mcp.call("set_retirement_accounts", roth=0.3)
+    mcp.confirm_write("update_retirement_params", changes={"defaultSpend": 180})
+    assert "preview again" in mcp.error("set_retirement_accounts", roth=0.3, confirm=preview["confirm"])
+    assert params(client) == {"defaultSpend": 180}
 
 
 def test_only_the_named_fields_change(mcp, client):
@@ -219,7 +230,7 @@ def test_only_the_named_fields_change(mcp, client):
         "currentAge": 52, "endAge": 95, "defaultSpend": 180, "roth": 0.1,
         "glidePoints": [{"yearsAfter": 10, "stockPct": 0.5}],
     }})
-    mcp.call("set_retirement_accounts", roth=0.4)
+    mcp.confirm_write("set_retirement_accounts", roth=0.4)
     stored = params(client)
     assert stored["roth"] == 0.4
     assert stored["currentAge"] == 52
@@ -232,12 +243,12 @@ def test_splitting_the_buckets_opens_the_breakdown(mcp, client):
     """The simple view shows one 'additional portfolio' box and folds 401(k)
     and Roth into it. Storing them while it is closed hides the figure from the
     person who asked for it."""
-    mcp.call("set_retirement_accounts", traditional_401k=0.85)
+    mcp.confirm_write("set_retirement_accounts", traditional_401k=0.85)
     assert params(client)["advanced"] is True
 
 
 def test_a_brokerage_total_alone_does_not_force_the_breakdown(mcp, client):
-    mcp.call("set_retirement_accounts", taxable_brokerage=1.0)
+    mcp.confirm_write("set_retirement_accounts", taxable_brokerage=1.0)
     assert not params(client).get("advanced")
 
 
@@ -257,7 +268,7 @@ def test_a_basis_above_the_balance_is_refused(mcp):
 
 
 def test_a_basis_is_checked_against_a_balance_already_stored(mcp):
-    mcp.call("set_retirement_accounts", taxable_brokerage=1.0)
+    mcp.confirm_write("set_retirement_accounts", taxable_brokerage=1.0)
     assert "basis" in mcp.error("set_retirement_accounts", brokerage_basis=2.0).lower()
 
 

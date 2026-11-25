@@ -125,7 +125,12 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
       if(msg.method==='tools/call'){
         if(msg.params.name==='compare_retirement_scenarios'){if(comparisonFailure){reply({isError:true,content:[{type:'text',text:comparisonFailure}]});return}const args=msg.params.arguments as {scenarios:{name:string;overrides:{retirementDate:string;epicExit?:number};recalculate_exit:boolean}[]};reply({structuredContent:{scenarios:args.scenarios.map((s,index)=>({...initial,...s,retirementDate:s.overrides.retirementDate,exitSource:s.recalculate_exit?'projected_exit':'saved_exit',assumptions:{...initial.assumptions,...s.overrides,epicExit:s.recalculate_exit?6+index*.35:s.overrides.epicExit??6},result:index===0?initial.result:{...initial.result,pctFundingShortfall:.019,pctExhausted:.008,startingTotalM:8.05,medianFinalM:13.2}}))}})}
         else if(msg.params.name==='plan_life_events'){const args=msg.params.arguments as {events:unknown[];overrides?:Record<string,unknown>};reply({structuredContent:{baseline:initial,withEvents:{...initial,inputOverrides:{...args.overrides,plannedEvents:args.events},assumptions:{...initial.assumptions,...args.overrides,plannedEvents:args.events},result:{...initial.result,pctFundingShortfall:.04,medianFinalM:11.8,p10FinalM:2.1}},hypotheticalEpicSales:[],saved:false}})}
-        else if(msg.params.name==='update_retirement_params')reply({structuredContent:{updated:['defaultSpend'],saved:true}})
+        else if(msg.params.name==='update_retirement_params'){
+          const args=msg.params.arguments as {confirm?:string}
+          reply({structuredContent:args.confirm==='retirement-preview'
+            ? {applied:true,saved:true}
+            : {applied:false,saved:false,confirm:'retirement-preview'}})
+        }
         else {if(refreshResponses?.[refreshIndex]){reply({structuredContent:refreshResponses[refreshIndex++]});return}const args=msg.params.arguments as {overrides?:Record<string,unknown>;recalculate_exit?:boolean},source=refreshed??initial,overrides=args.overrides??{};reply({structuredContent:{...source,retirementDate:overrides.retirementDate??source.retirementDate,exitSource:args.recalculate_exit?'projected_exit':'saved_exit',inputOverrides:overrides,assumptions:{...source.assumptions,...overrides,...(args.recalculate_exit?{epicExit:9}:{})}}})}
       }
       if(msg.method==='ui/request-display-mode')reply({mode:msg.params.mode})

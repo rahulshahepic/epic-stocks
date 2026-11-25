@@ -1,13 +1,12 @@
-"""One way to change an account's equity: a list of row edits, previewed, then
-applied all-or-nothing.
+"""Preview and apply account edits all-or-nothing.
 
 The web import, the AI connector and anything else that writes several rows
-go through here. Every edit runs through the same router function the app's
-own forms call, so validation is never re-implemented; this module only adds
-the transaction around them, the preview, and a confirmation token that ties
-an apply to the exact preview the person saw.
+go through here. Row edits use the same router functions as the app's forms.
+Retirement updates use the simulator's named-field validation. Both share the
+transaction and confirmation token that bind the apply to the preview.
 """
 import hashlib
+import hmac
 import json
 from datetime import date
 
@@ -18,11 +17,12 @@ from pydantic import ValidationError
 from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, User, LoanInterestCheckpoint
 
 KINDS = ("grant", "loan", "price", "sale", "loan_payment", "interest_checkpoint")
+RETIREMENT_PARAMS = "retirement_params"
 ACTIONS = ("create", "update", "delete")
 MAX_CHANGES = 200
 # Deletes leave children first; creates and edits build parents first.
 _DELETE_ORDER = ("sale", "interest_checkpoint", "loan_payment", "loan", "grant", "price")
-_WRITE_ORDER = ("price", "grant", "loan", "loan_payment", "sale", "interest_checkpoint")
+_WRITE_ORDER = ("price", "grant", "loan", "loan_payment", "sale", "interest_checkpoint", RETIREMENT_PARAMS)
 _MODELS = {"grant": Grant, "loan": Loan, "price": Price, "sale": Sale, "loan_payment": LoanPayment, "interest_checkpoint": LoanInterestCheckpoint}
 _SUMMARY = ("vested_shares", "held_vested_shares", "shares_at_end_of_schedule",
             "total_stock_value", "outstanding_loan_balance", "net_equity", "current_price", "accrued_unbooked_interest", "interest_reconciliation")
@@ -67,7 +67,7 @@ def _handlers():
     }
 
 
-def _normalize(changes) -> list[dict]:
+def _normalize(changes, kinds) -> list[dict]:
     if not isinstance(changes, list) or not changes:
         raise ChangeError("Send a non-empty list of changes")
     if len(changes) > MAX_CHANGES:
@@ -77,10 +77,13 @@ def _normalize(changes) -> list[dict]:
         if not isinstance(c, dict):
             raise ChangeError("Each change is an object", i)
         kind, action = c.get("kind"), c.get("action")
-        if kind not in KINDS or action not in ACTIONS:
-            raise ChangeError(f"kind must be one of {', '.join(KINDS)} and action one of {', '.join(ACTIONS)}", i)
+        if kind not in kinds or action not in ACTIONS:
+            raise ChangeError(f"kind must be one of {', '.join(kinds)} and action one of {', '.join(ACTIONS)}", i)
         row_id, version, values = c.get("id"), c.get("version"), c.get("values") or {}
-        if action != "create" and (type(row_id) is not int or row_id < 1 or type(version) is not int):
+        if kind == RETIREMENT_PARAMS:
+            if action != "update" or row_id is not None or version is not None:
+                raise ChangeError("Retirement settings take an update without a row id or version", i)
+        elif action != "create" and (type(row_id) is not int or row_id < 1 or type(version) is not int):
             raise ChangeError("An update or delete names the row's id and current version", i)
         if action == "create" and row_id is not None:
             raise ChangeError("A new row has no id", i)
@@ -138,10 +141,13 @@ def _fingerprint(user, db) -> str:
     for kind, model in _MODELS.items():
         for rid, ver in db.query(model.id, model.version).filter(model.user_id == user.id):
             rows.append((kind, rid, ver))
-    return hashlib.sha256(json.dumps(sorted(rows)).encode()).hexdigest()
+    retirement_hash = hashlib.sha256(json.dumps(user.retirement_params, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([sorted(rows), retirement_hash]).encode()).hexdigest()
 
 
 def confirmation(user, db, changes) -> str:
+    from scaffold.auth import JWT_SECRET
+
     generation = user.session_version
     if user.is_synthetic:
         from scaffold.models import MCPTestAccount, ReviewerAccount
@@ -153,7 +159,9 @@ def confirmation(user, db, changes) -> str:
         generation = fixture
     body = json.dumps({"changes": changes, "user": user.id, "generation": generation,
                        "account": _fingerprint(user, db)}, sort_keys=True, default=str)
-    return hashlib.sha256(body.encode()).hexdigest()[:24]
+    # Write-only connectors can see the token. Key it so they cannot test
+    # guesses about the stored financial inputs offline.
+    return hmac.new(JWT_SECRET.encode(), b"account-changes:" + body.encode(), hashlib.sha256).hexdigest()[:24]
 
 
 def _position(user, db) -> dict:
@@ -163,8 +171,27 @@ def _position(user, db) -> dict:
 
 
 def _run(c, owner, db, handlers):
-    create_model, update_model, create, update, delete = handlers[c["kind"]]
     kind, values = c["kind"], dict(c["values"])
+    if kind == RETIREMENT_PARAMS:
+        from app.expense_funding import sync_funding_plans
+        from app.retirement_simulation import validate_changes, validate_combined
+
+        patch = validate_changes(values)
+        previous = owner.retirement_params if isinstance(owner.retirement_params, dict) else {}
+        merged = {**previous, **patch}
+        if "epicExit" in patch and "epicExitMode" not in patch:
+            merged["epicExitMode"] = "manual"
+        if c.get("show_account_breakdown") and any(merged.get(k) for k in ("traditional", "roth", "additionalBasis")):
+            merged["advanced"] = True
+        validate_combined(merged)
+        sync_funding_plans(merged, previous)
+        owner.retirement_params = merged
+        db.flush()
+        diff = {k: {"from": previous.get(k), "to": merged.get(k)}
+                for k in patch if previous.get(k) != merged.get(k)}
+        return {"kind": kind, "action": "update", "label": "Retirement settings", "changes": diff}
+
+    create_model, update_model, create, update, delete = handlers[kind]
     if kind in {"loan_payment", "interest_checkpoint"} and "loan_id" not in values and values.get("loan_number"):
         matches = db.query(Loan).filter(Loan.user_id == owner.id).all()
         hit = [l for l in matches if l.loan_number == values["loan_number"]]
@@ -206,28 +233,36 @@ def _run(c, owner, db, handlers):
     return {"kind": kind, "action": "update", "id": row.id, "label": label, "changes": diff}
 
 
-def apply_changes(owner: User, db, changes, *, confirm: str | None = None) -> dict:
+def apply_changes(owner: User, db, changes, *, confirm: str | None = None,
+                  retirement_only: bool = False, show_account_breakdown: bool = False) -> dict:
     """Preview (no `confirm`) or apply (`confirm` from that preview) a change set.
 
     Either way every edit runs for real inside one transaction; a preview rolls
     it back, an apply commits it. One failing edit fails them all.
+    Only the dedicated compensation MCP tools opt into retirement changes.
     """
     from app import event_cache
     from scaffold.epic_mode import is_epic_mode
 
-    if is_epic_mode():
+    if not retirement_only and is_epic_mode():
         raise ChangeError("Equity is managed externally on this deployment")
-    ordered = _normalize(changes)
-    canonical = [{k: c[k] for k in ("kind", "action", "id", "version", "values")} for c in
+    ordered = _normalize(changes, (RETIREMENT_PARAMS,) if retirement_only else KINDS)
+    if retirement_only:
+        if len(ordered) != 1:
+            raise ChangeError("Send one retirement settings update")
+        ordered[0]["show_account_breakdown"] = show_account_breakdown
+    canonical = [{k: v for k, v in c.items() if k not in ("index", "note")} for c in
                  sorted(ordered, key=lambda c: c["index"])]
-    db.query(User).filter(User.id == owner.id).with_for_update().first()
-    token = confirmation(owner, db, canonical)
-    if confirm is not None and confirm != token:
-        raise ChangeError("The account or the changes differ from the preview; preview again and confirm that")
-    handlers = _handlers()
     session = _Uncommitted(db)
     try:
-        before = _position(owner, db)
+        # Reload under the lock: auth may have loaded this User before another
+        # request committed a retirement write.
+        db.refresh(owner, with_for_update=True)
+        token = confirmation(owner, db, canonical)
+        if confirm is not None and not hmac.compare_digest(confirm.encode(), token.encode()):
+            raise ChangeError("The account or the changes differ from the preview; preview again and confirm that")
+        position = {} if retirement_only else {"position_before": _position(owner, db)}
+        handlers = {} if retirement_only else _handlers()
         results = [None] * len(ordered)
         for c in ordered:
             try:
@@ -243,14 +278,15 @@ def apply_changes(owner: User, db, changes, *, confirm: str | None = None) -> di
                     for e in exc.errors()), c["index"]) from None
             except ValueError as exc:
                 raise ChangeError(str(exc), c["index"]) from None
-        after = _position(owner, db)
+        if not retirement_only:
+            position["position_after"] = _position(owner, db)
     except Exception:
         db.rollback()
         raise
     if confirm is None:
         db.rollback()
-        return {"applied": False, "changes": results, "position_before": before,
-                "position_after": after, "confirm": token}
+        return {"applied": False, "changes": results, **position, "confirm": token}
     db.commit()
-    event_cache.schedule_recompute(owner.id)
-    return {"applied": True, "changes": results, "position_before": before, "position_after": after}
+    if not retirement_only:
+        event_cache.schedule_recompute(owner.id)
+    return {"applied": True, "changes": results, **position}

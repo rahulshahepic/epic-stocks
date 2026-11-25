@@ -69,7 +69,7 @@ def validate():
     assert (claude / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
     assert (claude / 'skills/get-started/SKILL.md').read_bytes() == (package / 'skills/get-started/SKILL.md').read_bytes()
     print('Package structure, listing limits, review cases and shared URLs validated.')
-    print('Publication gates remain: terms URL, verified identity/contact, actual-host testing/video/carousel and approved production deployment.')
+    print('Publication gates remain: terms URL, verified identity/contact, actual-host testing/video/carousel and authenticated portal validation.')
 
 
 def write_zip(name, files):

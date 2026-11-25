@@ -1,41 +1,37 @@
 # Epic Stocks submission control center
 
-**Prepared 2026-11-25 · publication blocked on the gates below.**
-No application has been submitted, legal terms accepted, charges incurred or
-production deployment approved. Reviewer implementation is not yet claimed
-validated in production.
+**Updated 2026-11-25 · release live; directory submission not yet ready.**
+Neither application has been submitted. The production deploy is complete;
+do not approve or trigger another deploy for this release.
 
 | Platform | Start here | Submission portal |
 |---|---|---|
 | ChatGPT | [Instructions](chatgpt/README.md) · [paste answers](chatgpt/form-answers.md) · [checklist](chatgpt/checklist.md) · [reviewer guide](chatgpt/reviewer-guide.md) | [OpenAI Plugins](https://platform.openai.com/plugins) |
 | Claude | [Instructions](claude/README.md) · [paste answers](claude/form-answers.md) · [checklist](claude/checklist.md) · [reviewer guide](claude/reviewer-guide.md) | [Claude directory](https://claude.ai/directory/manage) |
 
-[Download generated archives from Actions](https://github.com/rahulshahepic/epic-stocks/actions/workflows/submission-packages.yml) ·
+[Download the deployed release’s packages](https://github.com/rahulshahepic/epic-stocks/actions/runs/45673166635/artifacts/15050911428) (expires December 25, 2026) · [current archive builds](https://github.com/rahulshahepic/epic-stocks/actions/workflows/submission-packages.yml) ·
 [Listing assets](shared/assets.md) · [Secure reviewer setup](shared/reviewer-setup.md) ·
 [Compliance audit](shared/audit.md) · [Official sources/requirements](shared/requirements.md) ·
 [Testing and deployment](shared/evidence/README.md) · [Walkthrough script](shared/demonstration.md) · [Website demo video](../frontend/public/review/epic-stocks-website-demo.webm).
 
 ## Release status
 
-- [Reviewer security #747](https://github.com/rahulshahepic/epic-stocks/pull/747)
-  merged as `3112916`; its [staging deployment passed](https://github.com/rahulshahepic/epic-stocks/actions/runs/45667332221).
-- [Submission/acceptance #749](https://github.com/rahulshahepic/epic-stocks/pull/749)
-  contains these packages, public policy/support and the deployed acceptance gate.
-  Its live PR records exact-head independent reviews and required CI.
-- [Staging → main #750](https://github.com/rahulshahepic/epic-stocks/pull/750)
-  is the release promotion. Follow its latest head/checks, not an older green run.
-- [Staging Deploy runs](https://github.com/rahulshahepic/epic-stocks/actions/workflows/deploy.yml?query=branch%3Astaging)
-  contain the final HTTPS reviewer acceptance result; **that step must pass**.
-- [Production Deploy / approval](https://github.com/rahulshahepic/epic-stocks/actions/workflows/deploy.yml?query=branch%3Amain)
-  is owner-gated. No production release or reviewer workflow is claimed validated
-  by these materials. The agent must leave the final run waiting for you.
+- [Staging acceptance](https://github.com/rahulshahepic/epic-stocks/actions/runs/45671945719)
+  passed on `024f72b`: two isolated fictional reviewers, both OAuth callbacks,
+  confirmed writes, admin refusal, revocation and cleanup.
+- [Release promotion #750](https://github.com/rahulshahepic/epic-stocks/pull/750)
+  merged as `451b6ca86ebff717c3e5ae56fbf8f69a54e1c02f`.
+  The [production deploy](https://github.com/rahulshahepic/epic-stocks/actions/runs/45673166459)
+  completed successfully. This is not evidence of actual ChatGPT/Claude rendering.
+- Production health, reviewer sign-in, scriptless privacy, support and public
+  discovery were checked without sign-in. Unauthenticated MCP initialization
+  requests return OAuth discovery information with 401. See
+  [production public probes](shared/evidence/production-public-probes.json).
+  Narrow Cloudflare exceptions are live (ruleset 14; challenge 6, BIC 3);
+  do not replay the historical ops recipe or broadly exempt protected APIs.
 
 ## Before either submission
 
-- [ ] Open the final production Deploy run above, check the intended release,
-  and approve its environment gate yourself.
-- [ ] Verify privacy and reviewer-login accessibility for automated clients;
-  review/apply the narrow Cloudflare rule changes through the release process.
 - [ ] Provision separate production OpenAI and Anthropic established reviewers;
   add empty/additional accounts only when independent workflows need them.
   Store generated credentials privately; do not reset active review datasets.
@@ -48,6 +44,7 @@ validated in production.
 ## ChatGPT owner checklist
 
 - [ ] Complete verified developer identity and publishing role configuration.
+  Use a Global data-residency project for MCP app review.
 - [ ] Adopt/publish [service terms](shared/terms-draft.md) at a stable HTTPS URL;
   candidate metadata uses proposed `/terms`, which is not yet a working terms page.
 - [ ] Record/publish an actual ChatGPT walkthrough video and supply its URL.
@@ -64,6 +61,7 @@ validated in production.
   Supply the dedicated reviewer securely when requested.
 - [ ] Connect GitHub, submit [plugin folder](claude/plugin/) tracking **main**,
   validate the exact commit, and pair with the connector in the same organization.
+  The repo must be public before the plugin listing goes live.
 - [ ] Personally review the test/launch claims and seven policy acknowledgments.
 
 ## Downloads and regeneration

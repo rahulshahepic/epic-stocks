@@ -1,9 +1,18 @@
 {
-  "description": "Proposed exact-path directory reviewer/documentation exclusions. Do not apply until reviewed; preserve unrelated WAF protections.",
+  "description": "Historical pre-change payloads for already-applied directory reviewer/documentation exclusions. DO NOT REPLAY. Re-fetch live configuration for any separately authorized change.",
   "verified_at": "2026-11-25",
   "zone_id": "309000937a50ad3b8500dbcc931739d5",
   "ruleset_id": "5674486203694b9689992cad67dfd752",
   "observed_ruleset_version": "12",
+  "production_result": {
+    "status": "applied",
+    "observed_ruleset_version": "14",
+    "rule_versions": {
+      "237a4ec36df446b3aec8f1f8e4b1b011": "6",
+      "edfc4c22af8843d3a90a74f8cbdf8c28": "3"
+    },
+    "note": "Verified by a read-only inspection on 2026-11-25. Keep authenticated financial API protections. The original expected versions below describe the pre-change state."
+  },
   "changes": [
     {
       "rule_id": "237a4ec36df446b3aec8f1f8e4b1b011",
@@ -67,7 +76,7 @@
       }
     }
   ],
-  "staging_note": "staging_changes was applied after independent review at original versions4/1. It is historical evidence, not an executable current plan. Production/all-host changes remain unapplied; re-fetch versions and review before release.",
+  "staging_note": "staging_changes was applied after independent review at original versions4/1. It is historical evidence, not an executable current plan. Production/all-host changes were subsequently applied; see production_result. The stored changes and staging_changes are historical, not a replay recipe.",
   "staging_applied": {
     "date": "2026-11-25",
     "ruleset_version": "12",

@@ -32,7 +32,7 @@ from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
 from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, retirement_tools, test_account_tools  # noqa: F401
 from .ui_tools import RESOURCE_URIS, resource_contents, resource_descriptor
-from .retirement_tools import RETIREMENT_RESOURCE_URIS
+from .retirement_tools import RETIREMENT_COMPARE_RESOURCE_URI, RETIREMENT_RESOURCE_URIS
 from .retirement_ui import retirement_resource_contents, retirement_resource_descriptor
 from scaffold.synthetic_accounts import is_staging, requires_synthetic, tool_account
 from .tools import REGISTRY, ToolContext, as_result, visible_to
@@ -263,7 +263,8 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
         if "equity:read" in connector.scopes:
             resources.append(resource_descriptor())
         if "comp:read" in connector.scopes:
-            resources.append(retirement_resource_descriptor())
+            resources.extend((retirement_resource_descriptor(),
+                              retirement_resource_descriptor(RETIREMENT_COMPARE_RESOURCE_URI)))
         return _result(request_id, {"resources": resources})
 
     if method == "resources/templates/list":

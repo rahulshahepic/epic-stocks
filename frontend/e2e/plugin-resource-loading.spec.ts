@@ -2,7 +2,7 @@ const REVIEW_TEST_BACKEND = process.env.VITE_BACKEND_ORIGIN ?? 'http://localhost
 import { createHash } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs } from './helpers'
-import { retirementHost } from './plugin-host'
+import { comparisonSnapshot, retirementHost } from './plugin-host'
 
 const API = process.env.E2E_API_URL ?? `${REVIEW_TEST_BACKEND}`
 
@@ -42,18 +42,22 @@ async function connect(page: Page) {
   return { Authorization: `Bearer ${tokens.access_token}` }
 }
 
-test('cached retirement metadata loads through authenticated MCP resource reads', async ({ page }) => {
+async function retirementRpc(page: Page) {
   const headers = await connect(page)
   let id = 0
-  const rpc = async (method: string, params = {}) => {
+  return async (method: string, params = {}) => {
     const response = await page.request.post(`${API}/mcp`, {
       headers, data: { jsonrpc: '2.0', id: ++id, method, params },
     })
-    expect(response.status()).toBe(200)
+    expect(response.ok()).toBeTruthy()
     const body = await response.json()
     expect(body.error).toBeUndefined()
     return body.result
   }
+}
+
+test('cached retirement metadata loads through authenticated MCP resource reads', async ({ page }) => {
+  const rpc = await retirementRpc(page)
   const { tools } = await rpc('tools/list')
   const currentUri = tools.find((tool: { name: string }) => tool.name === 'show_retirement')._meta.ui.resourceUri
   // A client can keep its old descriptor after the server advertises a new one.
@@ -66,4 +70,37 @@ test('cached retirement metadata loads through authenticated MCP resource reads'
     await card.getByRole('button', { name: 'Compare dates', exact: true }).click()
     await expect(card.getByLabel('Project Epic exit separately for each date')).toBeChecked()
   }
+})
+
+test('a host opens the scoped comparison resource with side-by-side metrics', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  const rpc = await retirementRpc(page)
+  const { tools } = await rpc('tools/list')
+  const compare = tools.find((tool: { name: string }) => tool.name === 'compare_retirement_scenarios')
+  expect(compare.outputSchema.properties.scenarios.maxItems).toBe(3)
+  const uri = compare._meta.ui.resourceUri
+  const { contents } = await rpc('resources/read', { uri })
+  expect(contents[0].uri).toBe(uri)
+  const card = await retirementHost(page, 'dark', {
+    resourceHtml: contents[0].text, initial: {
+      ...comparisonSnapshot,
+      account_context: { synthetic: true, scenario: 'established employee', fixture_version: 1 },
+    }, readyText: 'Retirement comparison',
+  })
+  const overview = card.getByRole('table', { name: 'Retirement scenario metrics' })
+  await expect(overview.getByRole('columnheader', { name: 'Work one more year' })).toBeVisible()
+  await expect(overview.getByRole('row', { name: /Retirement date/ })).toContainText('2033-01-02')
+  await expect(overview.getByRole('row', { name: /Epic payout/ })).toContainText('After tax and loans')
+  await expect(overview.getByRole('row', { name: /Epic payout/ })).toContainText('Fixed input')
+  await expect(overview.getByRole('row', { name: /Starting assets/ })).toContainText('$8.70M')
+  await expect(overview.getByRole('row', { name: /Any funding shortfall/ })).toContainText('1.8%')
+  await expect(overview.getByRole('row', { name: /Portfolio exhaustion/ })).toContainText('Unavailable')
+  await expect(card.getByText(/Fictional test account/)).toBeVisible()
+  await expect(card.getByText(/pre-retirement funding gap of/)).toContainText('$0.45M')
+  const distribution = card.getByRole('table', { name: 'Ending wealth by percentile' })
+  await expect(distribution).toBeHidden()
+  await card.getByText('All ending wealth percentiles').click()
+  await expect(distribution.getByRole('row', { name: /^95%/ })).toContainText('$46.00M')
+  const frame = page.frames()[1]
+  expect(await frame.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })

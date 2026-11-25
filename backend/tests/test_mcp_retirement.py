@@ -1,4 +1,6 @@
 """Retirement simulation MCP permissions, parity, bounds and MCP Apps card."""
+import json
+
 import pytest
 
 from tests.conftest import register_user, user_key
@@ -104,18 +106,76 @@ def test_simulation_and_card_use_same_service(mcp, monkeypatch):
     ]
 
 
-def test_compare_runs_scenarios_without_saving(mcp, client, monkeypatch):
+def _assert_comparison_schema(schema, value):
+    """Check the JSON Schema keywords used by the comparison tool."""
+    kind = schema["type"]
+    types = {"object": (dict,), "array": (list,), "string": (str,),
+             "boolean": (bool,), "number": (int, float), "null": (type(None),)}
+    allowed = kind if isinstance(kind, list) else [kind]
+    assert any(type(value) in types[name] for name in allowed)
+    if kind == "object":
+        properties = schema.get("properties", {})
+        assert set(schema.get("required", ())) <= value.keys()
+        if not schema.get("additionalProperties", True):
+            assert value.keys() <= properties.keys()
+        for field in value.keys() & properties.keys():
+            _assert_comparison_schema(properties[field], value[field])
+    if kind == "array":
+        assert schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", len(value))
+        for item in value:
+            _assert_comparison_schema(schema["items"], item)
+
+
+@pytest.mark.parametrize("count", [2, 3])
+def test_compare_returns_card_data_and_unchanged_text_without_saving(mcp, client, monkeypatch, count):
     from app.mcp import retirement_tools
+
+    run_result = {
+        "exitSource": "projected_exit",
+        "inputOverrides": {},
+        "assumptions": {"epicExit": 3.5, "defaultSpend": 120},
+        "result": {
+            "modelFeasible": True, "modelWarning": None, "preRetirementFundingGapM": 0,
+            "startingTotalM": 4.5, "pctFundingShortfall": 0.06,
+            "pctLiquidityShortfall": 0.02, "pctExhausted": 0.01,
+            "finalPercentiles": [{"q": 0.5, "value": 5.2}],
+        },
+        "saved": False,
+    }
+
     def fake_run(owner, **kwargs):
-        return {"result": {"pctExhausted": 0.01}, "saved": False,
-                "retirementDate": kwargs["overrides"]["retirementDate"]}
+        return {"retirementDate": kwargs["overrides"]["retirementDate"], **run_result}
+
     monkeypatch.setattr(retirement_tools, "run", fake_run)
     before = client.get("/api/retirement/params").json()["params"]
-    result = mcp.call("compare_retirement_scenarios", scenarios=[
-        {"name": "October", "overrides": {"retirementDate": "2031-10-01"}},
-        {"name": "January", "overrides": {"retirementDate": "2032-01-02"}},
-    ])
-    assert [s["retirementDate"] for s in result["scenarios"]] == ["2031-10-01", "2032-01-02"]
+    scenarios = [
+        {"name": name, "overrides": {"retirementDate": day}}
+        for name, day in [("October", "2031-10-01"), ("January", "2032-01-02"), ("May", "2032-05-01")][:count]
+    ]
+    tools = {tool["name"]: tool for tool in mcp.list_tools()}
+    compare = tools["compare_retirement_scenarios"]
+    assert compare["_meta"]["ui"] == {
+        "resourceUri": "ui://epic-stocks/retirement-compare-v1.html", "visibility": ["model", "app"],
+    }
+    assert compare["_meta"]["openai/ui"] == tools["show_retirement"]["_meta"]["openai/ui"]
+    assert compare["_meta"]["openai/toolInvocation/invoking"]
+    assert compare["_meta"]["openai/toolInvocation/invoked"]
+    assert "outputSchema" not in tools["run_retirement_simulation"]
+    assert "_meta" not in tools["run_retirement_simulation"]
+
+    result = mcp.raw_call("compare_retirement_scenarios", scenarios=scenarios)
+    expected = {
+        "scenarios": [
+            {"name": item["name"], "retirementDate": item["overrides"]["retirementDate"],
+             **run_result, "canProjectExit": True}
+            for item in scenarios
+        ],
+        "saved": False,
+        "note": "All scenarios use the same random seed by default. Epic exit projections use the date-specific price assumptions and are not guarantees.",
+    }
+    assert result["content"] == [{"type": "text", "text": json.dumps(expected, ensure_ascii=False)}]
+    assert result["structuredContent"] == expected
+    _assert_comparison_schema(compare["outputSchema"], result["structuredContent"])
     assert client.get("/api/retirement/params").json()["params"] == before
 
 
@@ -138,6 +198,22 @@ def test_card_resource_scoped_and_static(mcp, client):
     reader = Mcp(client, scope="equity:read")
     assert RETIREMENT_RESOURCE_URI not in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
     assert "error" in reader.rpc("resources/read", {"uri": RETIREMENT_RESOURCE_URI})
+
+
+def test_comparison_resource_uses_comp_read_scope(client):
+    register_user(client)
+    uri = "ui://epic-stocks/retirement-compare-v1.html"
+    reader = Mcp(client, scope="comp:read")
+    assert uri in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
+    resource = reader.rpc("resources/read", {"uri": uri})["result"]["contents"][0]
+    assert resource["uri"] == uri
+    assert resource["mimeType"] == "text/html;profile=mcp-app"
+    assert resource["_meta"]["ui"]["csp"] == {"connectDomains": [], "resourceDomains": []}
+    assert "Retirement comparison" in resource["text"]
+    assert "access_token" not in resource["text"]
+    equity_only = Mcp(client, scope="equity:read")
+    assert uri not in {r["uri"] for r in equity_only.rpc("resources/list")["result"]["resources"]}
+    assert "error" in equity_only.rpc("resources/read", {"uri": uri})
 
 
 def test_prepare_uses_saved_inputs_without_mutating_them(client, db_session):

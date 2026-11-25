@@ -10,6 +10,7 @@ from app import retirement_simulation as sim
 from scaffold.models import User
 from tests.conftest import register_user, user_key
 from tests.test_mcp_tools import Mcp
+from tests.test_mcp_retirement import _assert_comparison_schema
 
 
 @pytest.fixture(scope="module")
@@ -68,3 +69,16 @@ def test_confirmed_mcp_changes_become_simulation_assumptions(client, monkeypatch
     simulation = mcp.call("run_retirement_simulation", overrides={"paths": 100}, recalculate_exit=False)
     assert simulation["assumptions"]["defaultSpend"] == 205
     assert simulation["assumptions"]["roth"] == 0.3
+
+
+def test_comparison_runner_output_matches_advertised_schema(client, monkeypatch, runtime):
+    register_user(client)
+    monkeypatch.setattr(sim, "RUNNER", runtime)
+    mcp = Mcp(client, scope="comp:read")
+    result = mcp.raw_call("compare_retirement_scenarios", scenarios=[
+        {"name": "Base", "overrides": {"epicExit": 4, "paths": 100}},
+        {"name": "Lower spending", "overrides": {"epicExit": 4, "paths": 100, "defaultSpend": 90}},
+    ])
+    tool = next(t for t in mcp.list_tools() if t["name"] == "compare_retirement_scenarios")
+    _assert_comparison_schema(tool["outputSchema"], result["structuredContent"])
+    assert json.loads(result["content"][0]["text"]) == result["structuredContent"]

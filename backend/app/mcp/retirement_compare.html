@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retirement comparison</title>
+<style>
+:root {
+  color-scheme: light dark;
+  font: 14px/1.45 system-ui, sans-serif;
+  --bg: #fffdf9; --text: #292520; --muted: #645e58;
+  --line: #e0d8cd; --panel: #f6f0e7; --accent: #a31c37;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme=light]) {
+    --bg: #24211f; --text: #f9f2e9; --muted: #c6bab0;
+    --line: #60564f; --panel: #342e29; --accent: #ff9eb0;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme: dark;
+  --bg: #24211f; --text: #f9f2e9; --muted: #c6bab0;
+  --line: #60564f; --panel: #342e29; --accent: #ff9eb0;
+}
+:root[data-theme=light] { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+main { max-width: 920px; margin: auto; padding: 16px; overflow-wrap: anywhere; }
+h1 { font-size: 22px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -.35px; }
+p { margin: 0 0 12px; }
+.note, #status { color: var(--muted); font-size: 12px; }
+#synthetic, #warnings p {
+  border-inline-start: 3px solid var(--accent); background: var(--panel);
+  padding: 8px 10px;
+}
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; min-width: 288px; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+table.three { min-width: 336px; }
+th, td { padding: 9px 7px; text-align: end; border-bottom: 1px solid var(--line); }
+thead th { background: var(--panel); vertical-align: bottom; }
+th:first-child { width: 30%; text-align: start; }
+th[scope=row] { font-weight: 500; color: var(--muted); }
+tbody tr:last-child > * { border-bottom: 0; }
+.source { display: block; color: var(--muted); font-size: 11px; }
+details { margin: 8px 0 12px; }
+summary { cursor: pointer; font-weight: 650; padding: 12px 2px; min-height: 44px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 520px) { th, td { font-size: 12px; } }
+@media (min-width: 640px) { main { padding: 24px; } th, td { padding: 11px 16px; } }
+</style>
+</head>
+<body>
+<main>
+  <p id="synthetic" role="note" hidden></p>
+  <h1>Retirement comparison</h1>
+  <p id="status" role="status">Waiting for scenario results…</p>
+  <div id="comparison" hidden>
+    <p class="note">Dollar amounts are in each scenario’s retirement-year purchasing power.</p>
+    <div id="warnings"></div>
+    <div id="overview" class="table-wrap" role="region" aria-label="Scenario metrics" tabindex="0"></div>
+    <details id="percentiles">
+      <summary>All ending wealth percentiles</summary>
+      <div id="distribution" class="table-wrap" role="region" aria-label="Ending wealth percentiles" tabindex="0"></div>
+    </details>
+    <p id="note" class="note"></p>
+  </div>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const money = new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const percent = new Intl.NumberFormat('en-US', {style: 'percent', maximumFractionDigits: 2});
+  const dollars = n => Number.isFinite(n) ? money.format(n) + 'M' : '—';
+  const probability = n => Number.isFinite(n) ? percent.format(n) : '—';
+  const feasible = result => result.modelFeasible !== false && !(result.preRetirementFundingGapM > 1e-9);
+  const node = (tag, value = '') => {
+    const el = document.createElement(tag);
+    el.textContent = value;
+    return el;
+  };
+
+  function table(scenarios, rows, label) {
+    const table = node('table');
+    table.classList.toggle('three', scenarios.length === 3);
+    table.setAttribute('aria-label', label);
+    const head = table.createTHead().insertRow();
+    for (const name of ['Metric', ...scenarios.map(s => s.name)]) {
+      const th = node('th', name);
+      th.scope = 'col';
+      head.append(th);
+    }
+    const body = table.createTBody();
+    for (const [name, value] of rows) {
+      const row = body.insertRow();
+      const th = node('th', name);
+      th.scope = 'row';
+      row.append(th);
+      for (const scenario of scenarios) {
+        const cell = row.insertCell();
+        const content = value(scenario);
+        if (typeof content === 'string') cell.textContent = content;
+        else cell.append(content);
+      }
+    }
+    return table;
+  }
+
+  function epicPayout(scenario) {
+    const amount = node('span', dollars(scenario.assumptions.epicExit));
+    const source = node('small', scenario.exitSource === 'projected_exit' ? 'After tax and loans' : 'Fixed input');
+    source.className = 'source';
+    amount.append(source);
+    return amount;
+  }
+
+  function render(data) {
+    const scenarios = data?.scenarios;
+    if (!Array.isArray(scenarios) || scenarios.length < 2 || scenarios.length > 3) {
+      throw new Error('Scenario results are unavailable.');
+    }
+    const percentile = (scenario, q) => feasible(scenario.result)
+      ? dollars(scenario.result.finalPercentiles.find(row => row.q === q)?.value)
+      : 'Unavailable';
+    const risk = (scenario, field) => feasible(scenario.result) ? probability(scenario.result[field]) : 'Unavailable';
+
+    const testing = data.account_context;
+    $('synthetic').hidden = !testing?.synthetic;
+    $('synthetic').textContent = testing?.synthetic
+      ? 'Fictional test account · ' + testing.scenario + ' · fixture v' + testing.fixture_version : '';
+    $('warnings').replaceChildren(...scenarios.filter(s => !feasible(s.result)).map(s => {
+      const message = node('p', s.name + ' has a pre-retirement funding gap of ' +
+        dollars(s.result.preRetirementFundingGapM) + '. Funding risks and ending wealth are unavailable.');
+      message.className = 'note';
+      return message;
+    }));
+    $('overview').replaceChildren(table(scenarios, [
+      ['Retirement date', s => s.retirementDate],
+      ['Epic payout', epicPayout],
+      ['Starting assets', s => dollars(s.result.startingTotalM)],
+      ['Any funding shortfall', s => risk(s, 'pctFundingShortfall')],
+      ['Liquidity shortfall', s => risk(s, 'pctLiquidityShortfall')],
+      ['Portfolio exhaustion', s => risk(s, 'pctExhausted')],
+      ['Ending wealth · 10th', s => percentile(s, .10)],
+      ['Ending wealth · median', s => percentile(s, .50)],
+      ['Ending wealth · 90th', s => percentile(s, .90)],
+    ], 'Retirement scenario metrics'));
+    const quantiles = [...new Set(scenarios.filter(s => feasible(s.result))
+      .flatMap(s => s.result.finalPercentiles.map(row => row.q)))].sort((a, b) => a - b);
+    $('distribution').replaceChildren(table(scenarios,
+      quantiles.map(q => [probability(q), s => percentile(s, q)]),
+      'Ending wealth by percentile'));
+    $('percentiles').hidden = !quantiles.length;
+    $('note').textContent = data.note ?? '';
+    $('comparison').hidden = false;
+    $('status').hidden = true;
+  }
+
+  const send = message => window.parent.postMessage({jsonrpc: '2.0', ...message}, '*');
+  const applyTheme = theme => {
+    if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+  };
+  function showError() {
+    $('comparison').hidden = $('synthetic').hidden = true;
+    $('status').hidden = false;
+    $('status').textContent = 'Could not display this retirement comparison.';
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const {id, method, result, params, error} = event.data;
+    if (id === 1 && !method) {
+      if (error) { showError(); return; }
+      applyTheme(result?.hostContext?.theme);
+      send({method: 'ui/notifications/initialized', params: {}});
+      new ResizeObserver(() => send({
+        method: 'ui/notifications/size-changed',
+        params: {height: Math.ceil(document.querySelector('main').getBoundingClientRect().height)},
+      })).observe(document.querySelector('main'));
+    }
+    if (method === 'ui/notifications/host-context-changed') applyTheme(params?.theme);
+    if (method === 'ui/resource-teardown' && id !== undefined) send({id, result: {}});
+    if (method === 'ui/notifications/tool-cancelled') showError();
+    if (method === 'ui/notifications/tool-result') {
+      try {
+        if (params?.isError) { showError(); return; }
+        render(params?.structuredContent ?? JSON.parse(params.content.find(block => block.type === 'text').text));
+      } catch {
+        showError();
+      }
+    }
+  });
+  send({id: 1, method: 'ui/initialize', params: {
+    appInfo: {name: 'epic-stocks-retirement-comparison', version: '1.0.0'},
+    appCapabilities: {}, protocolVersion: '2026-01-26',
+  }});
+})();
+</script>
+</body>
+</html>

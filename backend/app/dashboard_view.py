@@ -84,9 +84,12 @@ def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=
                    for key in ('proceeds', 'tax', 'loanPayoff', 'net')}
 
     interest_rows = []
+    booked_interest = 0.0
     if projection is not None:
         for loan in projection.loans:
             if loan.loan_type == 'Interest' and not loan.superseded:
+                if not loan.projected:
+                    booked_interest += loan.amount
                 interest_rows.append(dict(id=loan.key, amount=loan.amount,
                     label=f'{loan.grant_year} {loan.grant_type} interest {loan.loan_year}',
                     note='Projected capitalised interest' if loan.projected else 'Booked interest'))
@@ -121,7 +124,7 @@ def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=
             capGains=dict(vestingGroups=list(vest_groups.values()),
                           vestingTotal=round(sum(r['amount'] for r in vest_groups.values()), 2),
                           priceTotal=round(price_gains, 2), total=payload['total_cap_gains']),
-            interest=dict(rows=interest_rows, total=total_interest),
+            interest=dict(rows=interest_rows, total=total_interest, booked=round(booked_interest, 2)),
             tax=dict(taxLoans=round(tax_loans, 2), vestingIncomeTax=0,
                      cgTaxFromSales=round(sum(r['tax'] for r in cash_sales), 2),
                      deductionSavings=payload.get('tax_savings_from_deduction', 0),

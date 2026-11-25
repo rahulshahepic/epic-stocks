@@ -666,7 +666,7 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 - "Total Cap Gains" relabels to **"Cap Gains (after int. ded.)"** and shows the reduced amount.
 - "Cash Received" relabels to **"Cash (incl. int. ded. savings)"** and includes estimated tax savings.
 - The Income vs. Cap Gains and Estimated Tax Liability charts update to reflect lower taxable gains.
-- An inline card shows the total deduction applied with a toggle to preview before committing.
+- The dashboard shows interest booked on statements alongside the estimated tax savings through the selected exit date. For past dates it shows estimated savings on recorded activity. The toggle previews the change for the same date before saving.
 
 **What changes on the Events timeline:**
 

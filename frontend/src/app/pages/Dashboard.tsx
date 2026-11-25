@@ -223,7 +223,9 @@ export default function Dashboard() {
 
   // When toggling on for the first time (no existing exclusions), tell the
   // preview to auto-exclude past years so the number matches what Apply will do.
-  const shouldExcludePast = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+  const thisYear = Number(today.slice(0, 4))
+  const pastYearCutoff = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+    ? thisYear : undefined
 
   useEffect(() => {
     if (!pendingDeductionChanged || pendingDeduction === null) {
@@ -231,13 +233,14 @@ export default function Dashboard() {
       return
     }
     setDeductionPreview('loading')
+    let cancelled = false
     const timer = setTimeout(() => {
-      api.previewDeduction(pendingDeduction, shouldExcludePast)
-        .then(result => setDeductionPreview(result))
-        .catch(() => setDeductionPreview(null))
+      api.previewDeduction(pendingDeduction, cardDate, showExitPreview, pastYearCutoff)
+        .then(result => { if (!cancelled) setDeductionPreview(result) })
+        .catch(() => { if (!cancelled) setDeductionPreview(null) })
     }, 400)
-    return () => clearTimeout(timer)
-  }, [pendingDeductionChanged, pendingDeduction, shouldExcludePast])
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [pendingDeductionChanged, pendingDeduction, pastYearCutoff, cardDate, showExitPreview])
 
   async function applyDeduction(enabled: boolean) {
     setSavingDeduction(true)
@@ -246,7 +249,6 @@ export default function Dashboard() {
       // When first enabling and no year customization exists yet,
       // auto-exclude past years (you can't retroactively itemize)
       if (enabled && taxSettings && !taxSettings.deduction_excluded_years?.length) {
-        const thisYear = new Date().getFullYear()
         const pastYears = (taxSettings.taxable_years ?? []).filter(y => y < thisYear)
         if (pastYears.length > 0) {
           update.deduction_excluded_years = pastYears
@@ -596,15 +598,18 @@ export default function Dashboard() {
 
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
-        const currentSavings = cv?.tax_savings_from_deduction ?? 0
+        const currentSavings = showExitPreview
+          ? datedExit?.deduction_savings
+          : cv?.tax_savings_from_deduction
         const previewSavings = pendingDeductionChanged
           ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
           : null
         const delta = pendingDeductionChanged
           ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
-            ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
+            ? (displayEnabled ? `+${fmt$(previewSavings)}`
+              : currentSavings != null ? `−${fmt$(currentSavings)}` : null)
             : null)
-          : (displayEnabled ? fmt$(currentSavings) : null)
+          : (displayEnabled && currentSavings != null ? fmt$(currentSavings) : null)
         const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
         const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
         const appliedYears = allYears.filter(y => !excludedYears.has(y))
@@ -618,7 +623,7 @@ export default function Dashboard() {
         return (
           <div className="rounded-md bg-cs-raised px-3 py-2 text-xs">
             <div className="flex items-center gap-3">
-              <span className="text-cs-muted">Interest deduction</span>
+              <span className="text-cs-muted">{showExitPreview ? 'Estimated tax savings through exit' : 'Tax savings through this date'}</span>
               <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-cs-text-2'}`}>
                 {delta ?? '—'}
               </span>
@@ -651,6 +656,9 @@ export default function Dashboard() {
                 <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
+            {breakdowns?.interest.booked != null && (
+              <p className="mt-1 text-cs-muted">Interest booked on statements {fmt$(breakdowns.interest.booked)}</p>
+            )}
             {savedDeduction && !pendingDeductionChanged && (
               <p className="mt-1 text-[10px] text-cs-muted">
                 {appliedLabel}{' '}

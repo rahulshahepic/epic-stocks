@@ -102,7 +102,7 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText('2 sales')).toBeInTheDocument()
     })
-    expect(screen.getByText('2023-06-01')).toBeInTheDocument()
+    expect(screen.getByText('Jun 1, 2023')).toBeInTheDocument()
   })
 
   it('shows gross proceeds', async () => {
@@ -249,4 +249,15 @@ it('cancels queued sale previews when leaving the page', async () => {
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('explains future generated repayments without mislabeling confirmed payoffs', async () => {
+  mockApi({sales: [
+    {...MOCK_SALES[0], loan_id: 11, is_generated: true},
+    {...MOCK_SALES[1], date: '2090-01-01', loan_id: 22, is_generated: true},
+  ]})
+  renderSales()
+  expect(await screen.findByText(/Planned by the app for loan repayment/)).toBeInTheDocument()
+  expect(screen.getAllByText(/Planned by the app for loan repayment/)).toHaveLength(1)
+  expect(screen.getByRole('link', {name: 'Repayment settings'})).toHaveAttribute('href', '/settings#loans')
 })

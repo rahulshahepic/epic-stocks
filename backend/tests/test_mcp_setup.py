@@ -102,3 +102,12 @@ def test_unknown_staging_client_has_recovery_without_accepting_registration(clie
     assert 'Add Epic Stocks Staging Test as a new app' in response.text
     assert 'href="/mcp-setup"' in response.text
     assert 'location' not in response.headers
+
+
+def test_public_setup_leads_with_people_steps_and_collapses_protocol_details(client):
+    text = client.get('/mcp-setup').text
+    assert '<h1>Connect an AI assistant</h1>' in text
+    assert '<h2>ChatGPT</h2>' in text
+    assert '<h2>Claude</h2>' in text
+    assert text.index('<details>') < text.index('Streamable HTTP')
+    assert '/mcp/setup.json' in text

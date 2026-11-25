@@ -16,7 +16,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: theme })
       await page.setViewportSize(device === 'mobile' ? { width: 375, height: 812 } : { width: 1280, height: 900 })
       await page.goto('/mcp-setup')
-      await expect(page.getByRole('heading', { name: /MCP setup/ })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Connect an AI assistant' })).toBeVisible()
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
       await capture(page, `../screenshots/mcp-public-setup-${theme}-${device}.png`)
       await page.request.post('/api/auth/test-login', { data: { email: `seed-${theme}-${device}-${test.info().retry}@e2e.test`, name: 'Fictional Test User' } })
@@ -45,7 +45,7 @@ for (const theme of ['light', 'dark'] as const) {
 test('public setup is discoverable before signing in', async ({ page }) => {
   await page.goto('/login')
   await page.getByRole('link', { name: 'Connect an AI assistant — setup guide' }).click()
-  await expect(page.getByRole('heading', { name: /MCP setup/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Connect an AI assistant' })).toBeVisible()
   const doc = await (await page.request.get('/mcp/setup.json')).json()
   expect(doc.transport).toBe('streamable-http')
   expect(doc.authentication.type).toBe('oauth2')

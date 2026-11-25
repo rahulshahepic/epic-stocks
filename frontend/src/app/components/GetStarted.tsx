@@ -6,7 +6,7 @@ import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 /** An empty account: the ways in, easiest first. */
-export default function GetStarted() {
+export default function GetStarted({ onImported }: { onImported?: () => void }) {
   const config = useConfig()
   return (
     <div className="space-y-4 p-4">
@@ -16,7 +16,7 @@ export default function GetStarted() {
           Start with your Eureka files to bring in your grants and loans. You can review and change anything later.
         </p>
       </div>
-      <EpicFileImport allowAssistant={!!config?.ai_connections && !config?.epic_mode} />
+      <EpicFileImport onApplied={onImported} allowAssistant={!!config?.ai_connections && !config?.epic_mode} />
 
       <details className="space-y-4">
         <summary className="cursor-pointer py-2 text-sm font-semibold text-cs-text">Other ways to start</summary>

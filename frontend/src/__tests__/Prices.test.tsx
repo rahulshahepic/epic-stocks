@@ -64,7 +64,7 @@ describe('Prices', () => {
     await waitFor(() => {
       expect(screen.getByText('3 price entries')).toBeInTheDocument()
     })
-    expect(screen.getByText('2020-12-31')).toBeInTheDocument()
+    expect(screen.getByText('Dec 31, 2020')).toBeInTheDocument()
     expect(screen.getByText('$1.99')).toBeInTheDocument()
     expect(screen.getByText('$3.50')).toBeInTheDocument()
     expect(screen.getByText('$5.25')).toBeInTheDocument()

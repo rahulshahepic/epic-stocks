@@ -4,7 +4,7 @@ import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
-import { fmtPrice } from '../format.ts'
+import { fmtFullDate, fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { addCalendarYears, useToday } from '../dateUtils.ts'
@@ -258,7 +258,7 @@ export default function Prices() {
             />
             <span className="text-xs text-amber-800 dark:text-amber-300">
               Also delete {nearbyEstimates.length} estimated price{nearbyEstimates.length > 1 ? 's' : ''} within 31 days (this real price replaces them):{' '}
-              {nearbyEstimates.map(p => `${p.effective_date} (${fmtPrice(p.price)})`).join(', ')}
+              {nearbyEstimates.map(p => `${fmtFullDate(p.effective_date)} (${fmtPrice(p.price)})`).join(', ')}
             </span>
           </label>
         )}
@@ -329,7 +329,7 @@ export default function Prices() {
             <ul className="space-y-0.5">
               {estimatesToReplace.map(p => (
                 <li key={p.id} className="text-xs text-amber-700 dark:text-amber-300">
-                  {p.effective_date} — {fmtPrice(p.price)}
+                  {fmtFullDate(p.effective_date)} — {fmtPrice(p.price)}
                 </li>
               ))}
             </ul>
@@ -356,7 +356,7 @@ export default function Prices() {
                     const change = row.price - prev
                     return (
                       <tr key={row.date} className="bg-cs-surface">
-                        <td className="px-3 py-2 text-cs-text-2">{row.date}</td>
+                        <td className="px-3 py-2 text-cs-text-2">{fmtFullDate(row.date)}</td>
                         <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">{fmtPrice(row.price)}</td>
                         <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">+{fmtPrice(change)}</td>
                       </tr>
@@ -438,7 +438,7 @@ export default function Prices() {
               return (
                 <tr key={p.id} className={`bg-cs-surface ${isEst ? 'opacity-70' : ''}`}>
                   <td className="px-3 py-2 text-cs-text-2">
-                    <span>{p.effective_date}</span>
+                    <span>{fmtFullDate(p.effective_date)}</span>
                     <div className="mt-1 text-[10px] text-cs-muted">{isEst
                       ? `Announcement expected ${p.expected_announcement_date ?? `${p.effective_date.slice(0, 4)}-03-01`}`
                       : p.announced_date ? `Announced ${p.announced_date}` : 'Confirmed · announcement date unknown'}</div>

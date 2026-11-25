@@ -233,7 +233,9 @@ export interface DashboardData {
   price_is_estimate?: boolean
   expected_announcement_date?: string | null
   announced_date?: string | null
-  current_price: number
+  current_price: number | null
+  account_empty?: boolean
+  next_step?: {tool: string; message: string}
   total_shares: number
   total_income: number
   total_cap_gains: number
@@ -278,6 +280,7 @@ export interface TimelineEvent {
   estimated_tax?: number | null
   st_shares?: number | null
   sale_id?: number | null
+  is_generated?: boolean
   // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
   election_83b?: boolean
   // Estimated price (Share Price events from projected prices)

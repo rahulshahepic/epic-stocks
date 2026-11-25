@@ -170,7 +170,13 @@ function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[];
   }, [open])
 
   return (
-    <div ref={container} className={mobile ? undefined : 'relative'}>
+    <div
+      ref={container}
+      className={mobile ? undefined : 'relative'}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}
+    >
       <button
         ref={button}
         type="button"

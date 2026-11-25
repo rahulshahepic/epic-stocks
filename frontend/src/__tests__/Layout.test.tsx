@@ -152,6 +152,10 @@ describe('Layout responsive navigation', () => {
     await user.keyboard('{Escape}')
     expect(more).toHaveFocus()
     expect(navigation.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    await user.click(more)
+    await user.tab({ shift: true })
+    expect(navigation.getByRole('link', { name: 'Settings' })).toHaveFocus()
+    expect(more).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows Content to content editors and hides Admin and Epic-mode imports', async () => {

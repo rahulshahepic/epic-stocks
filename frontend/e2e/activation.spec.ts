@@ -38,7 +38,10 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await panel.evaluate(el => el.setAttribute('data-onboarding-panel', 'true'))
     expect((await new AxeBuilder({page}).include('[data-onboarding-panel]').analyze()).violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await panel.screenshot({style: '.sticky, header, [aria-label="Mobile navigation"] { visibility: hidden !important }', path: `../screenshots/onboarding-funnel-${theme}-${device}.png`})
+    // Remove only application chrome from the isolated panel capture. Sticky
+    // compositor layers can survive screenshot-only visibility overrides.
+    await page.locator('.sticky, nav[aria-label="Main navigation"], nav[aria-label="Mobile navigation"]').evaluateAll(nodes => nodes.forEach(node => node.remove()))
+    await panel.screenshot({style: '.sticky, header, [aria-label="Main navigation"], [aria-label="Mobile navigation"] { visibility: hidden !important }', path: `../screenshots/onboarding-funnel-${theme}-${device}.png`})
     await panel.getByRole('button', {name: 'Pause collection'}).click()
     await panel.getByRole('button', {name: 'Cancel', exact: true}).click()
     const report = await (await page.request.get('/api/admin/onboarding-funnel')).json()

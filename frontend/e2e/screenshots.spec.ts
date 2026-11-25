@@ -316,7 +316,8 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/admin`)
     const panel = page.getByRole('heading', {name: 'Onboarding attempts', exact: true}).locator('..')
     await expect(panel.getByText('Import attempts', {exact: true})).toBeVisible()
-    await panel.screenshot({style: '.sticky, header, [aria-label="Mobile navigation"] { visibility: hidden !important }', path: `${OUT}/trial-metrics-${theme}-mobile.png`})
+    await page.locator('.sticky, nav[aria-label="Main navigation"], nav[aria-label="Mobile navigation"]').evaluateAll(nodes => nodes.forEach(node => node.remove()))
+    await panel.screenshot({style: '.sticky, header, [aria-label="Main navigation"], [aria-label="Mobile navigation"] { visibility: hidden !important }', path: `${OUT}/trial-metrics-${theme}-mobile.png`})
   })
 
   test('admin - light - mobile', async ({ page }) => {

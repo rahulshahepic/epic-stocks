@@ -4,9 +4,9 @@
                               after signup goes to /api/epic-import/changes
 
 No account and no auth — this is the no-signup on-ramp. None of the
-uploaded data is written anywhere; the only thing that touches the
-database is a daily counter keyed by the date alone (see _bump), so the
-funnel can be measured without recording anything about a visitor.
+uploaded financial data is written anywhere. Legacy request counters remain
+separate from explicitly opted-in, bounded attempt measurement (see
+app.onboarding_measurement); neither stores file contents or financial values.
 
 It reuses the same parsing/reconciliation rules as /api/epic-import/analyze
 but skips the paste-out repair loop: if a file can't be fully read, the fix

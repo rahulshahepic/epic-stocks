@@ -22,11 +22,11 @@ import { useToday } from '../dateUtils.ts'
 export function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRange: (r: DateRange) => void; maxDate: string }) {
   const isAll = range.mode === 'all'
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-end gap-2">
       <button
         onClick={() => setRange({ mode: 'all', start: '', end: '' })}
         aria-pressed={isAll}
-        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${
+        className={`min-h-8 rounded-full px-2.5 text-xs font-semibold transition-colors ${
           isAll
             ? 'bg-cs-brand text-white'
             : 'bg-cs-raised text-cs-text-2 hover:bg-cs-border '
@@ -34,21 +34,24 @@ export function RangeControls({ range, setRange, maxDate }: { range: DateRange; 
       >
         All
       </button>
-      <input
-        type="date"
-        aria-label="Range start date"
-        value={range.mode === 'custom' ? range.start : ''}
-        onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
-        className="h-6 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
-      />
-      <span className="text-xs text-cs-text-2">–</span>
-      <input
-        type="date"
-        aria-label="Range end date"
-        value={range.mode === 'custom' ? range.end : ''}
-        onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
-        className="h-6 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
-      />
+      <label className="text-xs text-cs-text-2">
+        From
+        <input
+          type="date"
+          value={range.mode === 'custom' ? range.start : ''}
+          onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
+          className="mt-1 block h-8 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
+        />
+      </label>
+      <label className="text-xs text-cs-text-2">
+        To
+        <input
+          type="date"
+          value={range.mode === 'custom' ? range.end : ''}
+          onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
+          className="mt-1 block h-8 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
+        />
+      </label>
     </div>
   )
 }
@@ -328,7 +331,7 @@ export function ChartBox({ title, children, range, setRange, maxDate, className 
   return (
     <Card className={`overflow-hidden border-t-4 border-t-cs-border-strong ${className}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-serif text-lg font-semibold text-cs-text">{title}</h3>
+        <h3 className="text-base font-semibold text-cs-text">{title}</h3>
         {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}

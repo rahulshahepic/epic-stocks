@@ -1,3 +1,4 @@
+import { InlineTerm } from '../../components/EquityTerms.tsx'
 import { StatCard as Card } from '../../components/StatCard.tsx'
 import { BreakdownRow, BreakdownShell } from './Breakdown.tsx'
 import { useToday } from '../../dateUtils.ts'
@@ -19,7 +20,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
   const estimatedPriceChange = next?.event_type === 'Share Price' && !!next.price_is_estimate
   return (
     <section className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
+      <h3 className="text-sm font-semibold text-cs-muted">Your shares</h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {totalValue !== null && <Card
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
@@ -45,6 +46,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           value={fmtNum(cv.total_shares)}
           subvalue={cv.vested_stock_value === null ? undefined : fmt$(cv.vested_stock_value) + (cv.price_is_estimate ? ' (est.)' : '')}
           variant="shares"
+          showExplanation={false}
           subtitle={cv.current_price === null ? undefined : `Value at ${fmtPrice(cv.current_price)}/share`}
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
@@ -54,6 +56,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           value={fmtNum(cv.unvested_shares)}
           subvalue={fmt$(cv.purchased_unvested_stock_value)}
           variant="unvested"
+          showExplanation={false}
           subtitle="Value at purchase price"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
@@ -70,6 +73,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           className="col-span-2 sm:col-span-1"
         />}
       </div>
+      <InlineTerm term="vesting" />
       {openBreakdowns.has('nextEvent') && cv.next_event_detail && (
         <BreakdownShell title="Next Event">
           <BreakdownRow label="Date" value={fmtFullDate(cv.next_event_detail.date)} />

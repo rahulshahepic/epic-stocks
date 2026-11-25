@@ -1,5 +1,6 @@
+import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -142,6 +143,8 @@ export default function Events() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const [searchParams] = useSearchParams()
+  const { hash } = useLocation()
+  const showAnnualSummary = hash === '#annual-summary'
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
   const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: events, loading, reload } = useApiData<TimelineEvent[]>(fetchEvents)
@@ -191,7 +194,7 @@ export default function Events() {
   }, [typeDropdownOpen])
 
   useEffect(() => {
-    if (!highlightDate || !events) return
+    if (showAnnualSummary || !highlightDate || !events) return
     const matchingIndices = new Set<number>()
     filteredRef.current.forEach((e, i) => {
       if (typeof e.date === 'string' && e.date.startsWith(highlightDate)) {
@@ -204,7 +207,7 @@ export default function Events() {
       else if (filteredRef.current.length) matchingIndices.add(filteredRef.current.length - 1)
     }
     if (matchingIndices.size > 0) highlightAndScroll(matchingIndices)
-  }, [highlightDate, events, highlightAndScroll])
+  }, [showAnnualSummary, highlightDate, events, highlightAndScroll])
 
   function toggleType(t: string) {
     setTypeFilter(prev => {
@@ -267,6 +270,8 @@ export default function Events() {
   if (loading) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
 
+  const yearStart = `${today.slice(0, 4)}-01-01`
+  const hasPastRecords = events.some(e => e.event_type !== 'Share Price' && e.date < yearStart)
   const hasInterestDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
 
   return (
@@ -315,6 +320,8 @@ export default function Events() {
           )}
         </div>
       </div>
+
+      {!vid && (hasPastRecords || showAnnualSummary) && <AnnualStockSummary key={showAnnualSummary ? 'link' : 'events'} openFromLink={showAnnualSummary} />}
 
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">

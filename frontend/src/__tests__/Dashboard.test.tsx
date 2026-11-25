@@ -382,8 +382,8 @@ describe('Dashboard', () => {
     const allButtons = screen.getAllByText('All')
     expect(allButtons.length).toBeGreaterThanOrEqual(3)
     // Date inputs for custom range
-    const startInputs = screen.getAllByLabelText('Range start date')
-    const endInputs = screen.getAllByLabelText('Range end date')
+    const startInputs = screen.getAllByLabelText('From')
+    const endInputs = screen.getAllByLabelText('To')
     expect(startInputs.length).toBeGreaterThanOrEqual(3)
     expect(endInputs.length).toBeGreaterThanOrEqual(3)
   })
@@ -395,7 +395,7 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
     })
-    const startInputs = screen.getAllByLabelText('Range start date')
+    const startInputs = screen.getAllByLabelText('From')
     fireEvent.change(startInputs[0], { target: { value: '2022-01-01' } })
     // The All button should no longer be active (indigo-600) - custom range is active
     // Just verify the input now has a value
@@ -606,27 +606,6 @@ it('opens an inline price editor for unpriced holdings', async () => {
   expect(screen.queryByText('If you exited on this date')).not.toBeInTheDocument()
   expect(screen.queryByText(/Exit estimate unavailable/)).not.toBeInTheDocument()
 })
-
-for (const historical of [false, true]) {
-  it(`shows the annual summary only with historical stock activity: ${historical}`, async () => {
-    mockApi()
-    const original = vi.mocked(globalThis.fetch).getMockImplementation()!
-    vi.mocked(globalThis.fetch).mockImplementation(async (...args) => {
-      if (String(args[0]).includes('/api/events')) {
-        const year = new Date().getFullYear()
-        return new Response(JSON.stringify([
-          {...MOCK_EVENTS[1], date: `${year-2}-01-01`, event_type: 'Share Price'},
-          {...MOCK_EVENTS[0], date: `${historical ? year-1 : year}-01-01`},
-        ]), {status: 200})
-      }
-      return original(...args)
-    })
-    renderDashboard()
-    await screen.findByText('Your Shares')
-    if (historical) expect(screen.getByText(/Your \d{4} stock summary/)).toBeInTheDocument()
-    else expect(screen.queryByText(/Your \d{4} stock summary/)).not.toBeInTheDocument()
-  })
-}
 
 it('offers eligibility information instead of directly applying a deduction tip', async () => {
   mockApi()

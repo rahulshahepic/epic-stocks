@@ -30,7 +30,7 @@ describe('plain financial explanations', () => {
     render(<CostCards cv={cv} activeLoans={loans} breakdowns={null} hasInterestDeduction={false} openBreakdowns={new Set(['activeLoans'])} toggleBreakdown={() => {}} />)
     expect(screen.getByText('$100')).toBeInTheDocument()
     expect(screen.getByText('Recorded loan principal · explain')).toBeInTheDocument()
-    expect(screen.getAllByText('Repayments do not reduce this borrowing total. Open the active-loan breakdown for remaining balances.')).toHaveLength(2)
+    expect(screen.getByText('Repayments do not reduce this borrowing total. Open the active-loan breakdown for remaining balances.')).toBeInTheDocument()
     expect(screen.queryByText('Loan principal · explain')).toBeNull()
   })
   it('persists tour dismissal for this account only', () => {

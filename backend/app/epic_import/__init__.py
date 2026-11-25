@@ -13,9 +13,10 @@ comes back is validated by the same checks.
     build_prompt                                  the brief the user pastes out
     reconcile                                     draft vs. an exported dataset
 """
+from scaffold.safe_pdf import StatementParserBusy, StatementUnreadable, extract_lines
+
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement, StatementLoan
-from .pdf_statement import (StatementParserBusy, StatementUnreadable, extract_lines,
-                            parse_statement_lines, parse_statement_pdf)
+from .pdf_statement import parse_statement_lines, parse_statement_pdf
 from .share_csv import parse_share_csv, share_summary_text
 from .skeleton import Skeleton, TemplateRow, build_skeleton
 from .draft import (BLOCKING_CHECKS, Draft, DraftGrant, DraftLoan, DraftPrice,

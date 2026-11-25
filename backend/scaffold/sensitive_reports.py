@@ -249,7 +249,7 @@ def document(db, actor, report_id, document_id, *, as_text=False):
 
 def extract_text(metadata, raw):
     """Use existing import parser bounds and render cells as text, never formulas."""
-    from app.epic_import.pdf_statement import StatementParserBusy, StatementUnreadable, extract_lines
+    from scaffold.safe_pdf import StatementParserBusy, StatementUnreadable, extract_lines
     from scaffold.safe_workbook import load_workbook_safely
 
     mime = metadata["mime_type"]

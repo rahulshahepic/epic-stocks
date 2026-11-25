@@ -16,7 +16,8 @@ options or the attempted changes. Attachments use files already selected by
 the browser and are encoded only after Send. The server accepts PDF, CSV, XLSX,
 legacy Excel and JSON, up to three files, 5 MiB per file and 10 MiB combined.
 File type is checked before storage. PDFs and workbooks are read only on a
-separate text retrieval request using bounded parsers. Workbook text is a
+separate text retrieval request using the shared import parsers
+(`scaffold/safe_pdf.py` and `scaffold/safe_workbook.py`). Workbook text is a
 preview of a limited number of rows and columns. Legacy Excel and unreadable
 documents can be retrieved as originals. Text extraction does not run macros,
 evaluate formulas or invoke an AI service.

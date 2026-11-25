@@ -231,8 +231,8 @@ export function ReportDialog({
                   <span className="text-[11px] text-cs-muted">
                     {includeDetails && signedIn ? 'This report will identify you.'
                       : email.trim() ? 'Your reply email will be included.'
-                      : includeDocuments || includeDetails ? 'Shared details may identify you.'
-                      : 'This report is anonymous.'}
+                        : includeDocuments || includeDetails ? 'Shared details may identify you.'
+                          : 'This report is anonymous.'}
                   </span>
                   <button
                     type="button"

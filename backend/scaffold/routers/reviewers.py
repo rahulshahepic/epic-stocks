@@ -59,6 +59,7 @@ def login(request: Request, login: str = Form(..., max_length=80), password: str
     row = db.query(ReviewerAccount).filter_by(login=login).first()
     guard = account_lock(db, row.user_id) if row else nullcontext()
     with guard:
+        row = db.query(ReviewerAccount).filter_by(login=login).populate_existing().first()
         user_id = row.user_id if row else None
         reviewers.audit_login(db, user_id, 'attempt')
         try:

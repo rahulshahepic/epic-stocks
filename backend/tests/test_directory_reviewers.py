@@ -334,3 +334,27 @@ def test_nightly_cleanup_expires_auth_buckets_without_further_logins(db_session)
     db_session.commit()
     assert prune(db_session)['reviewer_auth_buckets'] == 1
     assert db_session.query(ReviewerLoginAudit).count() == 0
+
+
+def test_login_deleted_between_lookup_and_lock_returns_auth_failure(client, db_session, monkeypatch):
+    from contextlib import contextmanager
+    from scaffold import synthetic_accounts
+    from scaffold.user_deletion import delete_user
+    info, raw = provision(db_session)
+    uid = db_session.get(ReviewerAccount, info['id']).user_id
+    original = synthetic_accounts.account_lock
+    deleted = False
+    @contextmanager
+    def delete_before_lock(db, user_id, **kwargs):
+        nonlocal deleted
+        if user_id == uid and not deleted:
+            deleted = True
+            delete_user(db_session, uid)
+            db_session.commit()
+        with original(db, user_id, **kwargs):
+            yield
+    monkeypatch.setattr(synthetic_accounts, 'account_lock', delete_before_lock)
+    page = client.get('/reviewer-login')
+    csrf = page.text.split('name="csrf" value="')[1].split('"')[0]
+    response = client.post('/reviewer-login', data={'login': info['login'], 'password': raw, 'csrf': csrf})
+    assert response.status_code == 401, response.text

@@ -173,7 +173,7 @@ export function DashboardCharts({
           <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
         </ChartBox>
       )}
-      {events && events.length > 0 && (
+      {events?.some(e => e.cum_income !== 0 || e.cum_cap_gains !== 0) && (
         <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
           <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
         </ChartBox>
@@ -183,12 +183,12 @@ export function DashboardCharts({
           <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
         </ChartBox>
       )}
-      {dash.charts.tax.length > 0 && (
+      {dash.charts.tax.some(row => row.estimated !== 0 || row.paid !== 0) && (
         <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
           <TaxChart rows={dash.charts.tax} c={c} range={range} />
         </ChartBox>
       )}
-      {dash.charts.interest.length > 0 && (
+      {dash.charts.interest.some(row => row.recorded !== 0 || row.projected !== 0) && (
         <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
           <InterestChart rows={dash.charts.interest} c={c} range={rangeInterest} />
         </ChartBox>

@@ -608,10 +608,34 @@ it('refreshes the primary exit amount after applying a tax or lot-selection tip'
 })
 
 it('links unpriced holdings to Prices', async () => {
-  MOCK_DASHBOARD_NEXT_OVERRIDE.value = {current_price: null, total_stock_value: null, net_equity: null}
+  MOCK_DASHBOARD_NEXT_OVERRIDE.value = {current_price: null, total_stock_value: null, vested_stock_value: null, net_equity: null}
   mockApi([])
   renderDashboard()
   expect(await screen.findByText(/Price not entered for this date/)).toBeVisible()
   expect(screen.getByRole('link', {name: 'Add a price'})).toHaveAttribute('href', '/prices')
   expect(screen.getByText(/vested shares · Price not entered/)).toBeVisible()
+  expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
+  expect(screen.queryByText('If you exited on this date')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Exit estimate unavailable/)).not.toBeInTheDocument()
 })
+
+for (const historical of [false, true]) {
+  it(`shows the annual summary only with historical stock activity: ${historical}`, async () => {
+    mockApi()
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+    vi.mocked(globalThis.fetch).mockImplementation(async (...args) => {
+      if (String(args[0]).includes('/api/events')) {
+        const year = new Date().getFullYear()
+        return new Response(JSON.stringify([
+          {...MOCK_EVENTS[1], date: `${year-2}-01-01`, event_type: 'Share Price'},
+          {...MOCK_EVENTS[0], date: `${historical ? year-1 : year}-01-01`},
+        ]), {status: 200})
+      }
+      return original(...args)
+    })
+    renderDashboard()
+    await screen.findByText('Your Shares')
+    if (historical) expect(screen.getByText(/Your \d{4} stock summary/)).toBeInTheDocument()
+    else expect(screen.queryByText(/Your \d{4} stock summary/)).not.toBeInTheDocument()
+  })
+}

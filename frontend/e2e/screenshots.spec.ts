@@ -419,9 +419,9 @@ test.describe('Screenshots', () => {
       await page.goto(`${BASE}/settings#notifications`)
       const annual = page.getByLabel(/Include an annual stock summary/)
       await expect(annual).not.toBeChecked()
-      await annual.click()
-      await expect(annual).toBeChecked()
-      await expect.poll(async () => (await (await page.request.get(`${BASE}/api/notifications/email`)).json()).annual_summary_enabled).toBe(true)
+      await expect(annual).toBeDisabled()
+      await expect(page.getByText(/Turn on email or push notifications to receive the annual summary/)).toBeVisible()
+      expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).annual_summary_enabled).toBe(false)
       expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
       await page.getByRole('heading', {name: 'Notifications', exact: true}).locator('..').screenshot({path: `${OUT}/reminder-settings-${theme}-${size}.png`})
       await page.goto(`${BASE}/import`)
@@ -577,7 +577,7 @@ test.describe('Screenshots', () => {
     await page.locator('#trial-csv').setInputFiles(TRIAL_CSV)
     await page.locator('#trial-pdf').setInputFiles(TRIAL_PDF)
     await page.getByRole('button', { name: 'See my numbers' }).click()
-    await page.getByText('Net worth', { exact: false }).first().waitFor({ timeout: 20000 })
+    await page.getByText('Stock equity · as of', { exact: false }).first().waitFor({ timeout: 20000 })
     await page.waitForTimeout(1500)
   }
 

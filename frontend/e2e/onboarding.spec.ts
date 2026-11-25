@@ -10,13 +10,16 @@ test.describe('Getting started', () => {
     await page.waitForLoadState('networkidle')
   })
 
-  test('an empty account offers every way in on one screen', async ({ page }) => {
+  test('an empty account leads with Eureka and expands alternative routes', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Get your stock in' })).toBeVisible()
     await expect(page.getByText('Import from Eureka')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Add a grant' })).toBeHidden()
+    await page.getByText('Other ways to start', {exact: true}).click()
     await expect(page.getByRole('link', { name: 'Add a grant' })).toBeVisible()
   })
 
   test('add a grant, then move one vesting date for a leave', async ({ page }) => {
+    await page.getByText('Other ways to start', {exact: true}).click()
     await page.getByRole('link', { name: 'Add a grant' }).click()
     await page.getByRole('button', { name: '+ Bonus' }).click()
     await page.getByLabel('Year', { exact: true }).fill('2024')

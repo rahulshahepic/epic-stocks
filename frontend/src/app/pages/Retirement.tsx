@@ -34,7 +34,7 @@ import { Card, HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
 import { IconCompass, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
-import { localToday, useToday } from '../dateUtils.ts'
+import { addCalendarYears, localToday, useToday } from '../dateUtils.ts'
 import { suggestedRetirementDate } from '../retirementDate.ts'
 import {
   computeFanPercentiles,
@@ -62,7 +62,7 @@ import {
   type SimParams,
   type SimResult,
 } from './Retirement.math.ts'
-import { fmt$M, fmtPct } from '../format.ts'
+import { fmt$M, fmtPct, fmtFullDate } from '../format.ts'
 import LifeEventsPlanner from './LifeEventsPlanner.tsx'
 import PurchaseResults from './PurchaseResults.tsx'
 import BeforeRetirement from './BeforeRetirement.tsx'
@@ -443,6 +443,8 @@ function RetirementAccount() {
   const dateChosen = useRef(false)
   const autoRan = useRef(false)
   const workerRef = useRef<Worker | null>(null)
+  const comparisonWorker = useRef<Worker | null>(null)
+  const comparisonRequest = useRef<AbortController | null>(null)
   const inputsRef = useRef<HTMLDivElement>(null)
   const editVersion = useRef(0)
   const [editInputs, setEditInputs] = useState(true)
@@ -473,6 +475,16 @@ function RetirementAccount() {
     params: SimParams
     retirementDate: string
     spouseDOB: string | null
+    seed: number
+    exitMode: 'auto' | 'manual'
+    legacyExitHeld: boolean
+  } | null>(null)
+  const [dateComparison, setDateComparison] = useState<{
+    base: NonNullable<typeof completedRun>
+    date: string
+    result?: SimResult
+    exit?: number
+    error?: string
   } | null>(null)
   const [runError, setRunError] = useState('')
   const [planStage, setPlanStage] = useState<'before' | 'retirement'>('retirement')
@@ -493,6 +505,7 @@ function RetirementAccount() {
   const resultsStale = completedRun != null && (
     completedRun.retirementDate !== retirementDate ||
     completedRun.spouseDOB !== spouseDOB ||
+    completedRun.exitMode !== exitMode ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -765,6 +778,8 @@ function RetirementAccount() {
     if (runTimer.current) clearTimeout(runTimer.current)
     workerRef.current?.terminate()
     workerRef.current = null
+    comparisonRequest.current?.abort()
+    comparisonWorker.current?.terminate()
   }, [])
 
   const run = useCallback(() => {
@@ -781,6 +796,10 @@ function RetirementAccount() {
       setRunError('Resolve the exit projection or choose a manual amount before simulating.')
       return
     }
+    comparisonRequest.current?.abort()
+    comparisonWorker.current?.terminate()
+    setDateComparison(null)
+    const seed = params.seed ?? Math.floor(Math.random() * 2 ** 32)
     const runParams = {
       ...params,
       simulationStartDate: retirementDate,
@@ -797,6 +816,9 @@ function RetirementAccount() {
         params: { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) },
         retirementDate,
         spouseDOB,
+        seed,
+        exitMode,
+        legacyExitHeld,
       })
       setHasRun(true)
       const unchanged = editVersion.current === version
@@ -823,15 +845,76 @@ function RetirementAccount() {
         worker.terminate(); workerRef.current = null
       }
       worker.onerror = () => { if (workerRef.current === worker) { fail(new Error('The simulation could not run. Please retry.')); worker.terminate(); workerRef.current = null } }
-      worker.postMessage(runParams)
+      worker.postMessage({ params: runParams, marketPathSeed: seed })
     } else {
       runTimer.current = setTimeout(() => {
-        try { complete(simulate(runParams), runParams.plannedEvents?.length ? simulate({ ...runParams, plannedEvents: [] }) : null) }
+        try { complete(simulate(runParams, seed), runParams.plannedEvents?.length ? simulate({ ...runParams, plannedEvents: [] }, seed) : null) }
         catch (error) { fail(error) }
         finally { runTimer.current = null }
       }, 30)
     }
-  }, [params, retirementDate, spouseDOB, exitMode, exitPreviewLoading, exitError])
+  }, [params, retirementDate, spouseDOB, exitMode, exitPreviewLoading, exitError, legacyExitHeld])
+
+  async function compareOneYearLater() {
+    if (!completedRun || resultsStale || running) return
+    const base = completedRun
+    const date = addCalendarYears(base.retirementDate, 1)
+    const pending = { base, date }
+    comparisonRequest.current?.abort()
+    const request = new AbortController()
+    comparisonRequest.current = request
+    setDateComparison(pending)
+    const finish = (outcome: { result?: SimResult; exit?: number; error?: string }) => {
+      if (!request.signal.aborted) setDateComparison(current => current === pending ? { ...pending, ...outcome } : current)
+    }
+    try {
+      const age = ageFromDOB(ownerDOB, date) ?? base.params.currentAge + 1
+      if (age >= base.params.endAge) throw new Error('The later date is outside the plan’s simulation horizon.')
+      let exit = base.params.epicExit
+      if (base.exitMode === 'auto' && !emptyEquity) {
+        const projection = await (vid ? api.getSharedPreviewExit(vid, date) : api.previewExit(date))
+        if (request.signal.aborted) return
+        if (!projection || projection.date !== date) throw new Error('No Epic exit projection is available for the later date.')
+        exit = Math.max(0, Number((projection.net_cash / 1_000_000).toFixed(3)))
+      }
+      const laterParams: SimParams = {
+        ...base.params,
+        currentAge: age,
+        spouseCurrentAge: base.params.includeSpouse
+          ? ageFromDOB(base.spouseDOB, date) ?? base.params.spouseCurrentAge + 1
+          : base.params.spouseCurrentAge,
+        epicExit: exit,
+        simulationStartDate: date,
+        spouseBirthDate: base.spouseDOB ?? undefined,
+      }
+      if (typeof Worker === 'undefined') {
+        finish({ result: simulate(laterParams, base.seed), exit })
+        return
+      }
+      comparisonWorker.current?.terminate()
+      const worker = new Worker(new URL('../workers/retirementSimulation.ts', import.meta.url), { type: 'module' })
+      comparisonWorker.current = worker
+      const close = () => {
+        worker.terminate()
+        if (comparisonWorker.current === worker) comparisonWorker.current = null
+      }
+      worker.onmessage = event => {
+        if (event.data.error) finish({ error: event.data.error })
+        else finish({ result: event.data.result, exit })
+        close()
+      }
+      worker.onerror = () => { finish({ error: 'The comparison could not run. Please retry.' }); close() }
+      worker.postMessage({ params: laterParams, marketPathSeed: base.seed, compareOnly: true })
+    } catch (error) {
+      finish({ error: error instanceof Error ? error.message : 'The comparison could not run. Please retry.' })
+    }
+  }
+
+  const comparison = !resultsStale && dateComparison?.base === completedRun ? dateComparison : null
+  const comparisonExitNote = completedRun?.exitMode === 'manual' ? 'Epic cash stays fixed.'
+    : completedRun?.legacyExitHeld ? 'The first date uses your saved Epic cash. The later date uses a new projection.'
+      : emptyEquity ? 'No Epic holdings are included.' : 'Epic cash is projected for each date.'
+
 
   useEffect(() => {
     if (autoRan.current || !paramsLoaded || !ownerDOB || running || allocOver || totalPortfolio <= 0 || ageAtRetirement >= params.endAge || exitError || exitPreviewLoading || (exitMode === 'auto' && !legacyExitHeld && (emptyEquity || missingPrice))) return
@@ -1684,6 +1767,42 @@ function RetirementAccount() {
               <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">{fmtPct(1 - result.pctRuin, 1)} fully funded</p>
               <p className="mt-2 text-xs text-white">Through age {resultEndAge} · {result.finalWealth.length.toLocaleString()} simulations · amounts in {resultDollarYear} dollars</p>
             </HeroCard>
+            {!resultsStale && completedRun && <Card pad="md">
+              <button type="button" onClick={() => void compareOneYearLater()}
+                disabled={running || !!comparison && !comparison.result && !comparison.error}
+                className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text disabled:opacity-50">
+                {comparison && !comparison.result && !comparison.error ? 'Comparing…' : 'Compare one year later'}
+              </button>
+              {comparison?.error && <p role="alert" className="mt-2 text-sm text-cs-brand">{comparison.error}</p>}
+              {comparison?.result && <div className="mt-3" role="status">
+                {comparison.result.preRetirementFundingGapM > 1e-9
+                  ? <p className="text-sm text-cs-text">The later plan has a pre-retirement funding gap of {fmt$M(comparison.result.preRetirementFundingGapM)}. Fund the gap to compare retirement outcomes.</p>
+                  : <table className="w-full table-fixed text-left text-xs tabular-nums">
+                    <caption className="sr-only">Comparison of retirement dates</caption>
+                    <thead><tr>
+                      <th className="w-2/5 pb-2 pr-2" scope="col">Measure</th>
+                      <th className="pb-2 pr-2" scope="col">{fmtFullDate(completedRun.retirementDate)}</th>
+                      <th className="pb-2" scope="col">{fmtFullDate(comparison.date)}</th>
+                    </tr></thead>
+                    <tbody>{[
+                      ['Epic cash at exit', fmt$M(completedRun.params.epicExit), fmt$M(comparison.exit ?? 0)],
+                      ['Starting portfolio', fmt$M(result.startingTotal), fmt$M(comparison.result.startingTotal)],
+                      ['Any funding shortfall', fmtPct(result.pctRuin, 1), fmtPct(comparison.result.pctRuin, 1)],
+                      ['Assets exhausted', fmtPct(result.pctExhausted, 1), fmtPct(comparison.result.pctExhausted, 1)],
+                      ...(result.purchaseSummary || comparison.result.purchaseSummary ? [[
+                        'Any optional purchase',
+                        fmtPct(result.purchaseSummary?.purchaseProbability ?? 0, 1),
+                        fmtPct(comparison.result.purchaseSummary?.purchaseProbability ?? 0, 1),
+                      ]] : []),
+                    ].map(([label, first, later]) => <tr key={label} className="border-t border-cs-border">
+                      <th scope="row" className="py-2 pr-2 font-medium">{label}</th>
+                      <td className="py-2 pr-2">{first}</td><td className="py-2">{later}</td>
+                    </tr>)}</tbody>
+                  </table>}
+                {comparison.result.eventWarnings?.map(warning => <p key={warning} className="mt-2 text-xs text-cs-text-2">{warning}</p>)}
+                <p className="mt-2 text-xs text-cs-muted">Same market samples, spending and savings inputs. {comparisonExitNote} Amounts use each retirement year’s purchasing power. Your saved plan stays as entered.</p>
+              </div>}
+            </Card>}
             <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
             <div className="grid grid-cols-2 gap-3">
               <StatCard
@@ -1819,47 +1938,19 @@ function RetirementAccount() {
               <p className="mb-2 text-xs font-semibold text-cs-text-2">
                 Range of final outcomes at age {resultEndAge} ({resultDollarYear} purchasing power)
               </p>
-              <div className="overflow-x-auto" role="region" aria-label="Final wealth percentiles" tabIndex={0}>
-                <table className="w-full text-xs tabular-nums">
-                  <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-cs-text-2">
-                      {finalRows.map(r => {
-                        const q = Math.round(r.q * 100)
-                        const label =
-                          q === 1 ? 'worst 1%'
-                            : q === 5 ? 'worst 5%'
-                              : q === 10 ? 'worst 10%'
-                                : q === 25 ? 'worst 25%'
-                                  : q === 50 ? 'middle (typical)'
-                                    : q === 75 ? 'best 25%'
-                                      : q === 90 ? 'best 10%'
-                                        : q === 95 ? 'best 5%'
-                                          : q === 99 ? 'best 1%'
-                                            : `${q}th pct`
-                        return (
-                          <th key={r.q} className="px-2 py-1 font-medium">{label}</th>
-                        )
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      {finalRows.map(r => (
-                        <td
-                          key={r.q}
-                          className={`px-2 py-1 ${
-                            r.value >= result.startingTotal
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-cs-brand dark:text-rose-300'
-                          }`}
-                        >
-                          {fmt$M(r.value)}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <details>
+                <summary className="min-h-8 cursor-pointer text-xs font-semibold text-cs-text">Show all wealth percentiles</summary>
+                <dl className="grid grid-cols-2 gap-2 text-xs tabular-nums sm:grid-cols-3">
+                  {finalRows.map(({ q, value }) => {
+                    const percentile = Math.round(q * 100)
+                    const label = percentile < 50 ? `Worst ${percentile}%` : percentile > 50 ? `Best ${100 - percentile}%` : 'Middle (typical)'
+                    return <div key={q} className="rounded-lg border border-cs-border p-2">
+                      <dt className="text-cs-text-2">{label}</dt>
+                      <dd className={value >= result.startingTotal ? 'text-emerald-700 dark:text-emerald-400' : 'text-cs-brand dark:text-rose-300'}>{fmt$M(value)}</dd>
+                    </div>
+                  })}
+                </dl>
+              </details>
               <p className="mt-1.5 text-[10px] text-cs-muted">
                 Includes all runs, with remaining assets preserved after a funding shortfall.
               </p>

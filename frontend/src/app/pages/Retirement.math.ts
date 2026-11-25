@@ -2163,7 +2163,7 @@ export interface SimResult {
   p10FinalM: number
 }
 
-export function simulate(params: SimParams): SimResult {
+export function simulate(params: SimParams, marketPathSeed?: number): SimResult {
   const rand = params.seed != null ? mulberry32(params.seed) : Math.random
   const { stockShift, bondShift } = resolveScenarioShifts(params)
   const data = HISTORICAL_RETURNS
@@ -2324,6 +2324,8 @@ export function simulate(params: SimParams): SimResult {
   }) / 1_000_000
 
   for (let i = 0; i < N; i++) {
+    // Each path starts its own stream so two horizons can share the same markets.
+    const marketRandom = marketPathSeed == null ? rand : mulberry32(marketPathSeed + Math.imul(i, 0x9e3779b9))
     let pathPurchases = 0
     const owned = new Uint8Array(conditional.length)
     const boughtAt = new Int32Array(conditional.length)
@@ -2346,7 +2348,7 @@ export function simulate(params: SimParams): SimResult {
     let hadLiquidityShortfall = preRetirementShortfall && (tradTotal + rothTotal > 1e-9)
     let hadExhaustion = preRetirementShortfall && !(tradTotal + rothTotal > 1e-9)
     let taxArrears = 0
-    let dataIdx = Math.floor(rand() * dataLen)
+    let dataIdx = Math.floor(marketRandom() * dataLen)
 
     // Annual income accumulators — reset each simulation year.
     let yearTradWithdrawal = 0
@@ -2420,7 +2422,7 @@ export function simulate(params: SimParams): SimResult {
       // Stationary bootstrap: each month, with probability 1/L jump to a
       // new uniformly-random historical month; otherwise advance one month.
       if (m > 1) {
-        if (rand() < jumpProb) dataIdx = Math.floor(rand() * dataLen)
+        if (marketRandom() < jumpProb) dataIdx = Math.floor(marketRandom() * dataLen)
         else dataIdx = (dataIdx + 1) % dataLen
       }
       const sample = data[dataIdx]

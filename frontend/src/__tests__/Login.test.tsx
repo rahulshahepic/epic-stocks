@@ -128,7 +128,7 @@ describe('Login page', () => {
 
   it('offers a no-account trial to people not ready to sign up', () => {
     renderLogin()
-    expect(screen.getByRole('link', { name: /see it first, without an account/i }))
+    expect(screen.getByRole('link', { name: 'Import my files' }))
       .toHaveAttribute('href', '/try')
   })
 

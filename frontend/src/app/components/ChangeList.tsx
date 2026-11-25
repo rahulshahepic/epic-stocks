@@ -103,25 +103,28 @@ export default function ChangeList({ changes, extra = [], onApplied, onBusyChang
           return n ? [`${n} ${action === 'create' ? 'new' : action === 'delete' ? 'removed' : 'updated'} ${kind}${n === 1 ? '' : 's'}`] : []
         })
       }).join(', ')}. Check the selected changes to see the before-and-after position before saving.</p>
-      {GROUPS.map(({ key, title }) => {
-        const rows = changes.map((c, i) => [c, i] as const).filter(([c]) => groupOf(c) === key)
-        if (!rows.length) return null
-        return (
-          <fieldset key={key} className="rounded-md border border-cs-border p-2">
-            <legend className="px-1 text-xs font-semibold text-cs-text">{title}</legend>
-            {rows.map(([c, i]) => (
-              <label key={i} className="flex items-start gap-2 py-1.5 text-xs">
-                <input type="checkbox" checked={picked[i]} onChange={() => toggle(i)} disabled={busy}
-                  className="mt-0.5 rounded border-cs-border-strong" />
-                <span>
-                  <span className="font-medium text-cs-text">{c.label}</span>
-                  {c.detail && <span className="block text-cs-muted">{c.detail}</span>}
-                </span>
-              </label>
-            ))}
-          </fieldset>
-        )
-      })}
+      {changes.length > 0 && <details className="space-y-2 rounded-md border border-cs-border p-2.5">
+        <summary className="min-h-7 cursor-pointer text-xs font-semibold text-cs-text">Review individual records</summary>
+        {GROUPS.map(({ key, title }) => {
+          const rows = changes.map((c, i) => [c, i] as const).filter(([c]) => groupOf(c) === key)
+          if (!rows.length) return null
+          return (
+            <fieldset key={key} className="rounded-md border border-cs-border p-2">
+              <legend className="px-1 text-xs font-semibold text-cs-text">{title}</legend>
+              {rows.map(([c, i]) => (
+                <label key={i} className="flex items-start gap-2 py-1.5 text-xs">
+                  <input type="checkbox" checked={picked[i]} onChange={() => toggle(i)} disabled={busy}
+                    className="mt-0.5 rounded border-cs-border-strong" />
+                  <span>
+                    <span className="font-medium text-cs-text">{c.label}</span>
+                    {c.detail && <span className="block text-cs-muted">{c.detail}</span>}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )
+        })}
+      </details>}
 
       {preview && (
         <dl className="grid grid-cols-2 gap-2 rounded-md bg-cs-raised p-2.5 sm:grid-cols-3">

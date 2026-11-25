@@ -30,6 +30,13 @@ test('missing prices and assumed prices remain explicit', async ({page}) => {
   await expect(widget.getByText('Net equity · tentative price',{exact:true})).toBeVisible()
 })
 
+test('the portfolio summary distinguishes tentative prices from announcements', async ({page}) => {
+  const widget = await pluginHost(page, {initial: {...snapshots.summary, data: {...snapshots.summary.data,
+    next_event: {date: '2027-01-01', event_type: 'Share Price', price_is_estimate: true, expected_announcement_date: '2027-03-01'},
+  }}})
+  await expect(widget.getByText(/Share Price \(tentative\) · announcement expected/)).toBeVisible()
+})
+
 test('failed refresh keeps the snapshot and labels it stale', async ({page}) => {
   const widget = await pluginHost(page,{failure:true})
   await widget.getByRole('button',{name:'Refresh',exact:true}).click()

@@ -88,7 +88,7 @@ describe('EpicFileImport', () => {
     await readFiles()
     expect(await screen.findByText('679,000')).toBeInTheDocument()
     expect(screen.getByText('$3,795,000')).toBeInTheDocument()
-    expect(screen.getByText(/No blocking discrepancies found/)).toBeInTheDocument()
+    expect(screen.getByText(/You can preview these changes/)).toBeInTheDocument()
   })
 
   it('offers no assistant help when nothing disagrees', async () => {
@@ -134,7 +134,7 @@ describe('EpicFileImport', () => {
 
     await waitFor(() => expect(calls.length).toBe(2))
     expect(calls[1].body?.get('revised_json')).toContain('grants')
-    expect(await screen.findByText(/No blocking discrepancies found/)).toBeInTheDocument()
+    expect(await screen.findByText(/You can preview these changes/)).toBeInTheDocument()
   })
 
   it('accepts the reply as a file too', async () => {
@@ -160,7 +160,7 @@ describe('EpicFileImport', () => {
 
     await userEvent.type(screen.getByLabelText(/Paste the reply/), 'b')
     await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
-    expect(await screen.findByText(/No blocking discrepancies found/)).toBeInTheDocument()
+    expect(await screen.findByText(/You can preview these changes/)).toBeInTheDocument()
     expect(calls.length).toBe(3)
   })
 
@@ -187,7 +187,10 @@ describe('EpicFileImport → one screen of changes', () => {
     mockApi(CLEAN)
     renderCard()
     await readFiles()
-    expect(await screen.findByText('2026 Purchase grant')).toBeInTheDocument()
+    expect(await screen.findByText('What we found')).toBeVisible()
+    expect(screen.getByText('2026 Purchase grant')).not.toBeVisible()
+    await userEvent.click(screen.getByText('Review individual records'))
+    expect(screen.getByText('2026 Purchase grant')).toBeVisible()
     expect(screen.getByText(/not on your statement/)).toBeInTheDocument()
     expect(screen.getAllByRole('checkbox').filter(c => !c.closest('label')?.textContent?.includes('Help improve setup')).every(c => (c as HTMLInputElement).checked)).toBe(true)
   })
@@ -196,7 +199,8 @@ describe('EpicFileImport → one screen of changes', () => {
     const calls = mockApi(CLEAN, PREVIEW, SAVED)
     renderCard()
     await readFiles()
-    await userEvent.click(await screen.findByLabelText(/2021 Purchase interest loan 222/))
+    await userEvent.click(await screen.findByText('Review individual records'))
+    await userEvent.click(screen.getByLabelText(/2021 Purchase interest loan 222/))
     await userEvent.click(screen.getByRole('button', { name: 'Check 1 change' }))
     expect(await screen.findByText('$1,000 → $0')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Save 1 change' }))
@@ -273,7 +277,7 @@ describe('EpicFileImport — current share price', () => {
     renderCard()
     await readFiles()
 
-    await screen.findByText(/No blocking discrepancies found/)
+    await screen.findByText(/You can preview these changes/)
     expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
   })
 

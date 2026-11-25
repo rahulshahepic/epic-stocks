@@ -1,0 +1,16 @@
+{
+  "name": "epic-stocks",
+  "version": "1.3.0",
+  "description": "Understand Epic employee equity and loans, reconcile records, and explore retirement scenarios. Independent and unofficial.",
+  "author": {
+    "name": "rahulshahepic"
+  },
+  "homepage": "https://epic-stocks.com/mcp-setup",
+  "repository": "https://github.com/rahulshahepic/epic-stocks",
+  "license": "MIT",
+  "keywords": [
+    "equity",
+    "retirement",
+    "financial-planning"
+  ]
+}

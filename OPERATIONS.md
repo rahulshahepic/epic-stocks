@@ -629,3 +629,35 @@ remain in backups. The service refuses access once material is 30 days old.
 Daily maintenance deletes expired ciphertext and wrapped keys. Account
 deletion or an approved admin purge removes it sooner. See
 [problem reporting architecture](docs/problem-reporting.md).
+
+## Directory reviewer staging acceptance
+
+The tracked Deploy workflow invokes `python -m directory_reviewer_smoke` inside
+the running app **only on staging** after service health and routing restoration.
+The module additionally requires `APP_ENV=staging` and the exact staging domain,
+and refuses production before database/network work. It uses the existing
+fictional fixture provider and audited management services; no permanent review
+passwords, admin sessions or new deployment secrets are provisioned. Temporary
+accounts have one-day expiration and are removed with their OAuth registrations
+in `finally`. Only coarse status/phase information is logged, never credentials,
+tokens, document content or financial results.
+
+The acceptance flow traverses public HTTPS, including Cloudflare, and therefore
+will deliberately fail if reviewer login is challenged. Review
+`ops/cloudflare_directory_review.json` before narrowly exempting documentation
+GET/HEAD and reviewer login GET/POST from inappropriate browser challenges. Keep
+application authentication, CSRF and rate limiting intact. The staged recipe
+must use only the staging hostname; production changes remain a separate release
+gate. Re-read live rule versions before applying a patch. If cleanup fails,
+inspect the system journal for the acceptance-created reviewer IDs and revoke/
+delete only those restricted fictional accounts through the admin controls.
+
+Permanent production reviewer credentials are provisioned deliberately by the
+administrator after approved deployment, never by the Deploy workflow. Existing
+production approval protections are unchanged. See `docs/DIRECTORY_REVIEWERS.md`
+and `submissions/README.md` for lifecycle and submission instructions.
+
+The read-only `Submission packages` Actions workflow validates/package-builds
+allowlisted public files and uploads ZIP artifacts for 30 days. It has no
+production environment, deployment rights, or credentials. Source updates can
+regenerate the artifacts without storing duplicate screenshots in Git.

@@ -1,0 +1,90 @@
+[
+  {
+    "file": "assets/icon.svg",
+    "source": "plugins/epic-stocks/assets/icon.svg",
+    "purpose": "Existing brand icon; primary listing/composer icon, both themes",
+    "evidence_kind": "brand",
+    "width": 512,
+    "height": 512,
+    "bytes": 953,
+    "sha256": "4eaf09956beba8dcfb296012cb67d24a55dba6e5c22414f6a68703c0a0c6dd37",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/icon-512.png",
+    "source": "frontend/public/icon-512.png",
+    "purpose": "Existing 512px raster brand icon for portals preferring PNG",
+    "evidence_kind": "brand",
+    "width": 512,
+    "height": 512,
+    "bytes": 13783,
+    "sha256": "b3841b484eefd562c6137185b24bd8d9361e29a1a1d3be20ffdc1ce340cea6cc",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/equity-desktop.png",
+    "source": "screenshots/directory-equity-light-desktop.png",
+    "purpose": "Actual website equity, established fictional reviewer",
+    "evidence_kind": "website",
+    "width": 1280,
+    "height": 800,
+    "bytes": 94014,
+    "sha256": "55bae256bbd63bc3bb5e67ac92bc26199810e81ce4b888214261fd9e8bca02a9",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/loans-desktop.png",
+    "source": "screenshots/directory-loans-light-desktop.png",
+    "purpose": "Actual website loan balances, established fictional reviewer",
+    "evidence_kind": "website",
+    "width": 1280,
+    "height": 800,
+    "bytes": 72583,
+    "sha256": "9815744590964d24886e5caebe236b56458c9c70bb35d53453bf08f4e8e2eafe",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/equity-mobile.png",
+    "source": "screenshots/directory-equity-light-mobile.png",
+    "purpose": "Actual mobile website equity, fictional reviewer",
+    "evidence_kind": "website",
+    "width": 375,
+    "height": 3555,
+    "bytes": 399948,
+    "sha256": "a2a0fd135913696ac7287a711c31d37d1b74ef35906278d070436f8e9301afb3",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/retirement-desktop.png",
+    "source": "screenshots/demo-retirement-light-desktop.png",
+    "purpose": "Actual website retirement using existing fictional demo profile",
+    "evidence_kind": "website",
+    "width": 1280,
+    "height": 1591,
+    "bytes": 175421,
+    "sha256": "165407b15386666c0cc0461d74085f32ca564f69f814158ccc6de00da489264c",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/equity-widget-local.png",
+    "source": "screenshots/chatgpt-plugin-light-desktop.png",
+    "purpose": "Local simulated host equity widget; NOT actual ChatGPT or Claude",
+    "evidence_kind": "local-simulation",
+    "width": 1280,
+    "height": 800,
+    "bytes": 51483,
+    "sha256": "606c54bb48d13be07aaad65ac02b794ecfa0435c13ddf54cbc803f4d79d91fce",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/retirement-widget-local.png",
+    "source": "screenshots/mcp-apps-retirement-light-desktop.png",
+    "purpose": "Local simulated host retirement widget; NOT actual ChatGPT or Claude",
+    "evidence_kind": "local-simulation",
+    "width": 1280,
+    "height": 1124,
+    "bytes": 82819,
+    "sha256": "bb94ef3300873138d87cbdc2e089aa0e7e21c33d55f0294ce40141e844adc296",
+    "actual_host_capture": false
+  }
+]

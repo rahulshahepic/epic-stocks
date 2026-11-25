@@ -72,6 +72,16 @@ describe('Connect your AI', () => {
     expect(link).toHaveAttribute('download', 'epic-stocks-chatgpt.zip')
   })
 
+  it('shows ChatGPT workspace and Free plan limits before the setup steps', async () => {
+    renderPage()
+    await userEvent.selectOptions(screen.getByLabelText('Your assistant'), 'chatgpt')
+    const notice = screen.getByText(/Epic’s ChatGPT Enterprise workspace currently blocks custom connectors/)
+    expect(notice).toHaveTextContent('ChatGPT Free cannot add custom connectors')
+    expect(notice).toHaveTextContent(/import your Eureka CSV or Stock Loan Statement directly/)
+    const firstStep = screen.getByText(/^In ChatGPT on the web/)
+    expect(notice.compareDocumentPosition(firstStep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('gives Muse a setup request carrying this server', async () => {
     const write = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText: write } })

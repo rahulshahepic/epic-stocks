@@ -39,12 +39,13 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
     name: 'ChatGPT',
     company: 'OpenAI',
     steps: [
-      'In ChatGPT on the web, open Settings → Apps. Enable Developer mode under Advanced settings if your account requires it.',
-      'Choose Create to add a custom MCP app.',
-      'Name it Epic Stocks (or Epic Stocks Staging Test for testing), paste the server address and choose OAuth. Scan the tools, then create the app.',
+      'In ChatGPT on the web, open Plugins → + → Add custom MCP server. In the older Apps view, look for Create.',
+      'Name it Epic Stocks (or Epic Stocks Staging Test for testing), paste the server address and choose OAuth.',
+      'Review the connection and create the plugin.',
       'Sign in to Epic Stocks and approve the permissions.',
     ],
-    note: 'Business and Enterprise workspaces may need an admin to allow custom connectors.',
+    note: 'Epic’s ChatGPT Enterprise workspace currently blocks custom connectors. ChatGPT Free cannot add custom connectors. You can still import your Eureka CSV or Stock Loan Statement directly in Epic Stocks.',
+    docs: 'https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt',
     plugin: { href: '/api/ai/plugin/chatgpt', filename: 'epic-stocks-chatgpt.zip' },
   },
   {

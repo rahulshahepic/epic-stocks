@@ -874,7 +874,10 @@ test.describe('Screenshots', () => {
       await page.waitForLoadState('networkidle')
       await page.getByLabel('Your assistant').selectOption(assistant)
       await expect(page.getByLabel('Server address')).toHaveValue(/\/mcp$/)
-      await shoot(page, `connect-ai-${assistant}-${theme}-mobile`)
+      if (assistant === 'chatgpt') {
+        await expect(page.getByText(/ChatGPT Free cannot add custom connectors/)).toBeVisible()
+      }
+      await shoot(page, `connect-ai-${assistant}-${theme}-mobile`, { fullPage: assistant === 'chatgpt' })
     })
   }
 

@@ -23,6 +23,18 @@ def test_public_setup_has_no_auth_or_host_spoofing(client, domain, environment, 
         assert client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}).status_code == 401
 
 
+def test_public_setup_explains_chatgpt_eligibility_before_connection_steps(client):
+    requirements = client.get('/mcp/setup.json').json()['chatgpt_requirements']
+    notice = requirements['notice']
+    assert 'Epic’s ChatGPT Enterprise workspace currently blocks custom connectors.' in notice
+    assert 'ChatGPT Free cannot add custom connectors.' in notice
+    assert 'import your Eureka CSV or Stock Loan Statement directly' in notice
+    page = client.get('/mcp-setup').text
+    assert page.index(notice) < page.index('Add custom MCP server')
+    assert requirements['docs_url'] in page
+    assert notice in client.get('/llms.txt').text
+
+
 @pytest.mark.parametrize('domain,staging', [('epic-stocks.com', False), ('staging.epic-stocks.com', True)])
 def test_public_discovery_explains_value_and_first_import(client, domain, staging):
     with patch.dict('os.environ', {'DOMAIN': domain}):

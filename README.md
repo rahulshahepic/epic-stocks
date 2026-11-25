@@ -2127,13 +2127,15 @@ to its tab-local preview. After sign-in, addition-only carryover reports saved,
 already-matching, review-needed or failed status. Existing rows are preserved;
 corrections require the normal reviewed import. Preview carryover expires after
 30 minutes. Choosing Connect AI, Import, Retirement or Comp before sign-in returns
-to that page. Dashboard, Planning and Settings are the three main destinations on phones and desktop.
-Open Stock Records from the Dashboard to browse Events, Grants, Sales, Loans,
-Prices or Import / Export. The Dashboard also links directly to the holdings,
+to that page. Dashboard, Planning and Settings are the three primary tabs on phones
+and desktop. Open **More** for Stock Records, the Compensation Calculator, and
+account tools such as Connect AI, Content and Admin when available to your account.
+Stock Records includes Events, Grants, Sales, Loans, Prices and Import / Export. The Dashboard also links directly to the holdings,
 price, loan or upcoming event behind a figure. Settings links to account tools. Successful record
 edits show a result with links to the updated position and retirement.
 
-Release walkthroughs: [position](screenshots/magic-position-light-mobile.png),
+Release walkthroughs: [More navigation](screenshots/navigation-more-light-mobile.png),
+[position](screenshots/magic-position-light-mobile.png),
 [retirement results](screenshots/magic-retirement-dark-mobile.png),
 [announced price](screenshots/magic-price-light-mobile.png), and
 [focused signup](screenshots/magic-signup-light-mobile.png).

@@ -1,0 +1,23 @@
+# ChatGPT compliance checklist
+
+Verified 2026-11-25. **Complete** means implemented/observed at the stated layer,
+not deployed approval. [Official requirement register](../shared/requirements.md).
+
+| Requirement/source | Implementation/evidence | Status / remaining action |
+|---|---|---|
+| [Verified publisher](https://developers.openai.com/plugins/plugin-guidelines#2-developer-verification) | Owner-only dashboard | Blocked: owner verification/identity/contact |
+| [Public authenticated MCP](https://developers.openai.com/plugins/build/auth) | OAuth metadata public probes; oauth server and tests | Complete existing discovery; production reviewer flow awaits deployment |
+| PKCE/audience/scopes/revocation | scaffold/oauth; OAuth and reviewer tests | Complete local; staging/host validation pending |
+| Independent populated reviewer | reviewers service/model/login/admin; existing fixture seeder | Complete implementation; production provisioning blocked until deployment |
+| Least privilege/isolation | own-account resolution, separate admin endpoint, namespace/live checks | Complete local tests; independent review/CI recorded in evidence |
+| Accurate tools/confirmations | annotations registry, apply_changes, retirement services | Complete existing mechanisms; platform tool scans and all-tool host runs pending |
+| Financial effects | equity tool wording, deterministic services, no trade/bank APIs | Complete implementation; platform policy review still required |
+| [Privacy/restricted inputs](https://developers.openai.com/plugins/plugin-guidelines#4-privacy) | PRIVACY.md and public page; minimal import fields, website parser | Updated; 403 public privacy probe blocks submission until edge fix verified |
+| Retention/export/deletion | single deletion service, export, audit cleanup, privacy | Existing controls; operator must verify deployed backup retention and restore policy |
+| Terms/support URLs | setup URL exists; terms draft supplied | Terms blocked: owner adoption/public URL; monitored contact needed |
+| [UI sandbox/mobile](https://developers.openai.com/plugins/build/chatgpt-ui) | versioned resources, empty external CSP, browser tests | Local simulation only; actual ChatGPT/iOS/Android rendering and unique component origin pending |
+| IP/independent branding | existing brand icon, unofficial name/disclosures | Complete copy; publisher must attest rights/affiliation truthfully |
+| [Listing/package/assets](https://developers.openai.com/plugins/deploy/submission) | plugin candidate, asset manifest, packaging validation | Prepared; final portal scans required |
+| Five positive/three negative tests | review-cases.json + candidate manifest | Complete cases; actual-host results pending |
+| Reviewer walkthrough video | demonstration script | Blocked: actual-host capture and accessible URL |
+| Legal/publish/deploy approval | no submission or approval performed | Owner action only |

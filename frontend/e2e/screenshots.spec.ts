@@ -1254,3 +1254,40 @@ test.describe('Directory reviewer screenshots', () => {
   })
 
 })
+
+test.describe('Public privacy screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`public privacy policy - ${theme} - ${size}`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(viewport)
+      await page.goto(`${BASE}/privacy-policy`)
+      await expect(page.getByRole('heading', { name: 'Privacy Policy', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-privacy-${theme}-${size}.png` })
+      await expect(page.locator('ol')).toHaveCount(3)
+      await page.locator('ol').nth(1).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${OUT}/public-privacy-lists-${theme}-${size}.png` })
+    })
+  }
+})
+
+
+test.describe('Public support screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) {
+    test(`public support - ${theme} - mobile`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(MOBILE)
+      await page.goto(`${BASE}/support`)
+      await expect(page.getByRole('heading', { name: 'Epic Stocks support', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-support-${theme}-mobile.png`, fullPage: true })
+      await page.goto(`${BASE}/mcp-setup`)
+      await expect(page.getByRole('link', { name: 'Support', exact: true })).toBeVisible()
+      await page.screenshot({ path: `${OUT}/public-setup-${theme}-mobile.png`, fullPage: true })
+    })
+  }
+})

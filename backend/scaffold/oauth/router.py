@@ -90,6 +90,7 @@ def _protected_resource_doc(request: Request, *, admin: bool = False) -> dict:
         "scopes_supported": list(scope_defs.ADMIN_SCOPES if admin else scope_defs.SUPPORTED_SCOPES),
         "bearer_methods_supported": ["header"],
         "resource_documentation": f"{issuer(request)}/mcp-setup",
+        "resource_policy_uri": f"{issuer(request)}/privacy-policy",
     }
 
 

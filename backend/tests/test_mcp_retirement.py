@@ -650,3 +650,12 @@ def test_run_rejects_malformed_saved_plan_shape(mcp, db_session):
         user.retirement_params = ['legacy-invalid']
         db_session.commit()
     assert 'Saved retirement settings are invalid' in mcp.error('run_retirement_simulation')
+
+
+def test_simulation_path_bounds_are_discoverable_and_errors_explain_them(mcp):
+    from app.mcp.tools import REGISTRY
+    schema = REGISTRY['show_retirement'].describe()['inputSchema']['properties']['overrides']['properties']
+    assert schema['paths']['type'] == 'integer'
+    assert schema['paths']['minimum'] == 100
+    assert schema['paths']['maximum'] == 100_000
+    assert '100 to 100000' in mcp.error('show_retirement', overrides={'paths': 32})

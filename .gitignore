@@ -14,3 +14,6 @@ test-results/
 
 # Local Python virtualenv (backend deps for running the suite outside Docker)
 .venv/
+
+# Reproducible directory submission archives (never reviewer credentials)
+/submissions/dist/

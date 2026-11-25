@@ -244,7 +244,7 @@ register(Tool(
         "Amounts are annual dollars (185000, not 185). Adds to what is already "
         "there rather than replacing it, and an entry identical to one already "
         "stored is skipped, so this is safe to retry. Call get_compensation "
-        "first to see what is on record."
+        "first to see what is on record. Writes immediately; use only when the person explicitly asks to save these entries."
     ),
     input_schema=object_schema({
         "entries": {
@@ -289,6 +289,7 @@ register(Tool(
     scope=COMP_WRITE,
     handler=_add_compensation,
     read_only=False,
+    destructive=True,
     idempotent=True,
 ))
 
@@ -462,5 +463,6 @@ register(Tool(
     scope=COMP_WRITE,
     handler=_set_retirement_accounts,
     read_only=False,
+    destructive=True,
     idempotent=True,
 ))

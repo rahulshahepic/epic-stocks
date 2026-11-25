@@ -2165,3 +2165,27 @@ Vite's proxy target; use port 8100 where port 8000 is reserved. Optional
 
 ![Fictional reviewer sign-in](screenshots/directory-reviewer-login-light-mobile.png)
 ![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
+
+## Publication packages
+
+Open the [submission control center](submissions/README.md) for separate ChatGPT
+and Claude instructions, paste-ready answers, listing assets, official sources,
+reviewer guides and release gates. Generate credential-free ZIPs with
+`python scripts/package_submissions.py`; validate only with `--check`.
+
+`backend/directory_reviewer_smoke.py` is the staging-only deployment acceptance
+runner. The Deploy workflow runs it after staging starts: it provisions temporary
+fictional OpenAI/Anthropic identities, tests public HTTPS login/OAuth, reads and
+confirmed persistent writes, verifies admin refusal/revocation, then removes only
+its own identities and registrations. It refuses production before touching the
+database/network and never prints credentials. No new secrets or environment
+settings are required. Narrow staging edge exemptions must allow the reviewer
+login and consent flow; a failure blocks promotion rather than claiming success.
+
+Directory metadata links the [server-readable privacy policy](https://epic-stocks.com/privacy-policy) · [Support](https://epic-stocks.com/support)
+(with a [plain-text alternative](https://epic-stocks.com/privacy.md)). These public endpoints render the
+same repository `PRIVACY.md` without requiring JavaScript or sign-in;
+`scaffold/routers/public_privacy.py` handles them and the Docker image includes
+the public policy source. The ordinary website privacy screen remains available.
+
+![Public privacy policy on mobile](screenshots/public-privacy-light-mobile.png)

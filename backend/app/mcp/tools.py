@@ -42,8 +42,8 @@ class Tool:
     input_schema: dict[str, Any]
     scope: str | None
     handler: Callable[[ToolContext, dict], Any]
-    # MCP tool annotations. Most tools here only read; the one that does not
-    # still destroys nothing — it stages a proposal the user accepts elsewhere.
+    # MCP annotations describe actual effects. Public financial writers use
+    # conservative destructive hints so hosts can confirm saved modifications.
     read_only: bool = True
     idempotent: bool = True
     destructive: bool = False
@@ -85,11 +85,12 @@ def visible_to(connector: Connector) -> list[Tool]:
     Listing a tool the caller may not call wastes a round trip and invites the
     model to promise the user something it cannot deliver.
     """
-    admin = connector.user.email.lower() in get_admin_emails()
+    admin = not connector.user.is_synthetic and connector.user.email.lower() in get_admin_emails()
     from scaffold.synthetic_accounts import is_staging
+    from scaffold.reviewers import identity as reviewer_identity
     return [t for t in REGISTRY.values()
             if (t.scope is None or t.scope in connector.scopes)
-            and (not t.staging_only or is_staging())
+            and (not t.staging_only or (is_staging() and not reviewer_identity(connector.user)))
             and (t.scope not in ADMIN_SCOPES or admin)]
 
 

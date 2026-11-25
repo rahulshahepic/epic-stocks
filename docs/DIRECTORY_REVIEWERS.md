@@ -76,9 +76,12 @@ SMS, MFA, or dataset setup is required.
 
 ## Deployment
 
-Alembic revision `y6z7a8b9c0d1` adds only the reviewer binding table. No credentials
-or reviewer users are created by migration, startup or deployment. There are no
-new production secrets or environment switches. Provision production accounts
+Alembic revision `y6z7a8b9c0d1` adds reviewer bindings and bounded daily login
+audit counters. Migration/startup never provision reviewer identities or
+credentials. The staging-only deployment acceptance test creates two temporary
+fictional identities and deletes them deliberately in cleanup; it rejects
+production before DB/network work. There are no new production secrets or
+environment switches. Provision production accounts
 only after approved deployment; test production discovery without real data.
 Production validation is not implied by passing local/staging tests.
 

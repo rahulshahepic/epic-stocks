@@ -52,7 +52,8 @@ Data collection/use explanation:
 > support diagnostics and original failed-import files are encrypted, excluded
 > from scheduled backups and expire after 30 days. They may be retrieved by
 > administrator-connected assistants only with the sensitive-report permission;
-> ordinary admin access exposes stubs, not those contents.
+> ordinary admin MCP access exposes stubs, not those contents. Browser admins
+> can retrieve explicitly consented support material through an audited view.
 
 Permissions:
 

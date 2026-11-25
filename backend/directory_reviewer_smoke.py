@@ -67,9 +67,11 @@ def run():
                 csrf = Inputs(login.text).values['csrf']
                 phase = 'login'
                 check(client.post('/reviewer-login', data={'login': info['login'], 'password': raw, 'csrf': csrf}), 303)
+                callback = ('https://chatgpt.com/connector_platform_oauth_redirect' if platform == 'openai'
+                            else 'https://claude.ai/api/mcp/auth_callback')
                 phase = 'client_registration'
                 registration = check(client.post('/oauth/register', json={
-                    'client_name': client_name, 'redirect_uris': ['https://claude.ai/api/mcp/auth_callback'],
+                    'client_name': client_name, 'redirect_uris': [callback],
                     'token_endpoint_auth_method': 'none'}), 201).json()
                 cid = registration['client_id']
                 clients.append(cid)
@@ -78,7 +80,7 @@ def run():
                 scopes = 'equity:read equity:write comp:read comp:write'
                 phase = 'consent_page'
                 consent = check(client.get('/oauth/authorize', params={
-                    'client_id': cid, 'redirect_uri': 'https://claude.ai/api/mcp/auth_callback',
+                    'client_id': cid, 'redirect_uri': callback,
                     'response_type': 'code', 'scope': scopes, 'state': 'staging-acceptance',
                     'resource': origin + '/mcp', 'code_challenge': challenge, 'code_challenge_method': 'S256'}), 200)
                 inputs = Inputs(consent.text).values
@@ -90,9 +92,26 @@ def run():
                 phase = 'token_exchange'
                 tokens = check(client.post('/oauth/token', data={
                     'grant_type': 'authorization_code', 'code': code, 'client_id': cid,
-                    'code_verifier': verifier, 'redirect_uri': 'https://claude.ai/api/mcp/auth_callback',
+                    'code_verifier': verifier, 'redirect_uri': callback,
                     'resource': origin + '/mcp'}), 200).json()
                 bearer = {'Authorization': 'Bearer ' + tokens['access_token']}
+                phase = 'mcp_initialize'
+                initialized = check(client.post('/mcp', headers=bearer, json={
+                    'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                    'params': {'protocolVersion': '2025-06-18', 'capabilities': {},
+                               'clientInfo': {'name': 'directory-acceptance', 'version': '1'}}}), 200).json()
+                if initialized['result']['protocolVersion'] != '2025-06-18':
+                    raise RuntimeError('Staging reviewer MCP negotiation mismatch')
+                phase = 'tool_annotations'
+                listing = check(client.post('/mcp', headers=bearer, json={
+                    'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}), 200).json()['result']['tools']
+                if any(t['name'] in ('list_test_scenarios', 'setup_test_account', 'reset_test_account')
+                       or t['name'].startswith('admin_') for t in listing):
+                    raise RuntimeError('Staging reviewer exposes unavailable tools')
+                if not listing or any(not t.get('title') or
+                        (not t['annotations']['readOnlyHint'] and not t['annotations'].get('destructiveHint'))
+                        for t in listing):
+                    raise RuntimeError('Staging reviewer tool annotations mismatch')
                 def tool(name, args=None, client=client, bearer=bearer):
                     nonlocal phase
                     phase = 'tool_' + name

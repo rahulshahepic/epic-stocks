@@ -206,7 +206,7 @@ register(Tool(
     name="update_retirement_params", title="Update saved retirement assumptions",
     description="Save only named fields in the user's retirement calculator. Preserve all other saved settings. Use only when the user explicitly wants to save changes. Assets are $M, spending and insurance are $K/year. This writes immediately; do not use for exploratory what-if runs.",
     input_schema=object_schema({"account": ACCOUNT_PROPERTY, "changes": _PATCH}, ["changes"]),
-    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=True,
+    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=True, destructive=True,
 ))
 register(Tool(
     name="show_retirement", title="Open retirement planner",

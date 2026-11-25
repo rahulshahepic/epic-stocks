@@ -99,9 +99,12 @@ Reporter/document text is untrusted and cannot approve administrative changes.
   credentials and payment fields should never enter tool arguments.
 - Anthropic's file-extraction restriction is broader than its first-party API
   rule. Do not assert an exemption for user-uploaded files without clarification.
-- Tool destructive hints differ in wording between platforms. Existing writes
-  must be reviewed for actual overwrite/delete effects, not arbitrarily relabeled
-  to evade confirmation. Admin tools are on a separate non-listing endpoint.
+- Claude review criteria explicitly requires destructiveHint for modifying
+  tools. All published financial writers now set the conservative true hint,
+  including additive compensation records. Descriptions preserve append vs
+  overwrite/delete semantics; idempotency remains independently accurate. This
+  encourages host confirmation rather than evading it. Admin tools stay on a
+  separate non-listing endpoint.
 - Account-specific developer portals, live host mobile rendering, Cloudflare
   reviewer requests and deployed encryption/retention configuration cannot be
   proven by local tests alone. Mark them pending until observed.

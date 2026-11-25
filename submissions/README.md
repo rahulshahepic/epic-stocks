@@ -15,6 +15,14 @@ validated in production.
 [Compliance audit](shared/audit.md) · [Official sources/requirements](shared/requirements.md) ·
 [Testing and deployment](shared/evidence/README.md) · [Walkthrough script](shared/demonstration.md) · [Website demo video](../frontend/public/review/epic-stocks-website-demo.webm).
 
+## Release status
+
+[Reviewer security PR #747](https://github.com/rahulshahepic/epic-stocks/pull/747):
+required checks and independent security review passed at `e190e04`; automated
+review/merge/deployment still pending.
+[Submission PR #749](https://github.com/rahulshahepic/epic-stocks/pull/749):
+independent review and current-head CI pending. No production release approved.
+
 ## Before either submission
 
 - [ ] Complete required independent review/CI and staging acceptance, then review

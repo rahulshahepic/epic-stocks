@@ -93,7 +93,7 @@ register(Tool(
 
 register(Tool(
     name="set_investment_interest_method", title="Set investment interest projection method",
-    scope=EQUITY_WRITE, handler=_set_investment_interest_method, read_only=False,
+    scope=EQUITY_WRITE, handler=_set_investment_interest_method, read_only=False, destructive=True,
     description=("With the person's permission, set only the investment interest projection method. "
                  "Accrual counts interest in the year it accrues. Cash counts it in the year it is paid. "
                  "This changes app estimates, not the person's tax return or whether the deduction is enabled."),

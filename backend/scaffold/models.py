@@ -37,6 +37,7 @@ class User(Base):
     notification_offer_dismissed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     annual_summary_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     statement_reminder_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_reminder_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
     # carry the value at issue time; mismatch = forced re-login.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)

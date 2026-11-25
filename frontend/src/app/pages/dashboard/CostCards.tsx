@@ -20,6 +20,7 @@ export function CostCards({ cv, activeLoans, breakdowns, hasInterestDeduction, o
           label="Loan Principal"
           value={fmt$(cv.total_loan_principal)}
           variant="loans"
+          explanation="borrowed_principal"
           subtitle="Total amount borrowed"
           onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
           expanded={openBreakdowns.has('activeLoans')}

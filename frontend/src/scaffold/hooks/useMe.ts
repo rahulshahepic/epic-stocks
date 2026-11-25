@@ -49,13 +49,14 @@ export function useMe() {
   const [me, setMe] = useState<MeData | null>(cached)
 
   useEffect(() => {
-    if (cached) return
-    api.getMe()
-      .then(data => {
-        purgeIfUserChanged(data.id)
-        cached = data
-        setMe(data)
-      })
+    // Another consumer may populate the cache between render and this effect.
+    // Hydrate this consumer too, rather than leaving its initial null state.
+    const request = cached ? Promise.resolve(cached) : api.getMe()
+    request.then(data => {
+      purgeIfUserChanged(data.id)
+      cached = data
+      setMe(data)
+    })
       .catch(() => {})
   }, [])
 

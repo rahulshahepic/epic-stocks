@@ -32,6 +32,7 @@ export function EarningsCards({ cv, breakdowns, openBreakdowns, toggleBreakdown 
         />
         <Card
           label="Cash Received"
+          explanation="sales_cash"
           value={fmt$(cv.cash_received)}
           variant="cash"
           subtitle="Net proceeds from sales through this date"

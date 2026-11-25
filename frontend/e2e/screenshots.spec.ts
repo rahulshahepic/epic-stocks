@@ -290,6 +290,9 @@ test.describe('Screenshots', () => {
   for (const [viewport, size] of [[MOBILE, 'mobile'], [DESKTOP, 'desktop']] as const) {
     test(`dashboard estimated price - light - ${size}`, async ({ page }) => {
       await authedPage(page, viewport, 'light')
+      // A timed-out browser attempt may leave its synthetic price behind.
+      const existing = (await (await page.request.get(`${BASE}/api/prices`)).json()).find((p: {effective_date: string}) => p.effective_date === '2027-01-01')
+      if (existing) expect((await page.request.delete(`${BASE}/api/prices/${existing.id}`)).ok()).toBe(true)
       const created = await page.request.post(`${BASE}/api/prices`, {
         data: { effective_date: '2027-01-01', price: 9.5, is_estimate: true } })
       expect(created.ok()).toBeTruthy()
@@ -299,11 +302,13 @@ test.describe('Screenshots', () => {
         await page.waitForLoadState('networkidle')
         await page.locator('input[type="date"]').first().fill('2026-12-31')
         await page.waitForLoadState('networkidle')
-        const card = page.getByRole('button', { name: /Share Price \(est\.\)/ })
+        const card = page.getByRole('link', { name: 'Open next event' })
         await expect(card).toBeVisible()
-        await card.click()
-        await page.getByText('Announcement expected', { exact: true }).scrollIntoViewIfNeeded()
+        await expect(card).toContainText('estimated price change')
+        await page.getByText(/Your estimate · announcement expected/).first().scrollIntoViewIfNeeded()
         await shoot(page, `dashboard-estimated-price-light-${size}`)
+        await card.click()
+        await expect(page).toHaveURL(/\/events\?date=2027-01-01/)
       } finally {
         await page.request.delete(`${BASE}/api/prices/${id}`)
       }
@@ -933,24 +938,14 @@ test.describe('Screenshots', () => {
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
     const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
-    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExit: 5, taxableAdditional: 1, defaultSpend: 180, minSpend: 120, retirementDate: '2032-01-01', epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, plannedEvents: [], paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.patch(`${BASE}/api/me/profile`, {data: {date_of_birth: '1976-04-15'}})).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    // DOB is the first <input type="date"> on the page.
-    const dob = page.locator('input[type="date"]').first()
-    await dob.click()
-    await dob.fill('1976-04-15')
-    await page.locator('body').click()
-    await page.waitForTimeout(300)
-    const fill = async (label: RegExp, value: string) => {
-      const input = page.getByLabel(label, { exact: false })
-      await input.click()
-      await input.fill(value)
-    }
-    await fill(/Epic exit value/, '5')
-    await fill(/Taxable brokerage at retirement/, '1')
-    await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+    // Initial results now run automatically from the synthetic saved plan.
+    // Setup-only API writes bypass the profile cache used by the UI.
+    await page.reload()
+    await expect(page.getByLabel(/^Date of birth/)).toHaveValue('1976-04-15')
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
     await page.getByText('Funding risk details', { exact: true }).click()
     await expect(page.getByText('Shortfall with assets remaining', { exact: true })).toBeVisible()
@@ -975,7 +970,7 @@ test.describe('Screenshots', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await shoot(page, `retirement-basic-${theme}-${size}`, { fullPage: true })
       await page.getByRole('button', { name: 'Show advanced assumptions' }).click()
-      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1')
+      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1000000')
       const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await shoot(page, `retirement-advanced-${theme}-${size}`, { fullPage: true })

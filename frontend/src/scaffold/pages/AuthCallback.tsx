@@ -1,4 +1,4 @@
-import { claimMeasurement, measurementEvent, measurementToken } from '../onboarding.ts'
+import { measurementEvent } from '../onboarding.ts'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useReportProblem } from '../components/reportContext.ts'
@@ -6,7 +6,7 @@ import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
 import { takeNext } from '../postLogin.ts'
 import { platform } from '../../platform/index.ts'
-import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts'
+import { saveTrialDraft, takeStashedTrialPayload } from '../../app/trialImport.ts'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -75,23 +75,16 @@ export default function AuthCallback() {
       // up. Only what is new is added: an account that already has data keeps
       // every row it had, and the Import page can bring in the rest.
       const trialDraft = await takeStashedTrialPayload()
+      if (!trialDraft && await platform.storage.get('trial_preview_expired')) {
+        await platform.storage.set('trial_carryover_result', 'expired')
+        await platform.storage.remove('trial_preview_expired')
+      }
       if (trialDraft) {
         try {
-          await claimMeasurement()
-          const { changes, blocked } = await api.draftChanges(trialDraft)
-          const additions = changes.filter(c => c.action === 'create')
-          if (!blocked && additions.length) {
-            const preview = await api.previewChanges(additions)
-            if (preview.confirm) {
-              const token = await measurementToken()
-              if (token) await api.applyChanges(additions, preview.confirm, token)
-              else await api.applyChanges(additions, preview.confirm)
-              pingConverted()
-            }
-          }
+          await saveTrialDraft(trialDraft)
         } catch {
           void measurementEvent('carryover_failed')
-          // Save failed — they still have a working account; they can import again.
+          await platform.storage.set('trial_carryover_result', 'failed')
         }
       }
 
@@ -100,7 +93,8 @@ export default function AuthCallback() {
       // server-rendered route, so this is a navigation, not a router push.
       const next = await takeNext()
       if (next) {
-        window.location.assign(next)
+        if (['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(next)) navigate(next, { replace: true })
+        else window.location.assign(next)
         return
       }
 

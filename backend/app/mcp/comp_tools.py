@@ -18,6 +18,7 @@ Nothing returns the document it just changed. A connection may hold comp:write
 without comp:read, and a write must not become a way to read.
 """
 from datetime import date
+from app.financial_literacy import MAX_PORTFOLIO_MILLIONS
 
 from scaffold.oauth.scopes import COMP_WRITE
 from .accounts import ACCOUNT_PROPERTY, resolve_account
@@ -37,10 +38,9 @@ MAX_NOTE_LEN = 200
 MAX_COMP_AMOUNT = 100_000_000
 
 # Retirement buckets are stored in millions of dollars, because that is what
-# the simulator's inputs are labelled in ("$M"). That makes a unit slip the
+# the simulator's saved parameters and MCP use. That makes a unit slip the
 # likeliest way for a model to be wrong here by a factor of a million, so the
 # ceiling is low enough to catch one and the error says which way to go.
-MAX_PORTFOLIO_MILLIONS = 1_000
 
 # Entry dates are bounded for the same reason grant years are in draft.py:
 # every downstream use is `date` arithmetic.

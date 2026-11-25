@@ -66,7 +66,7 @@ def notification_details(events: list[dict]) -> list[str]:
         if event.get("event_type") == "Share Price Update":
             details.append(f"Epic's share price effective {event['price_effective_date']} was expected "
                            f"to be announced by {event['expected_announcement_date']}. If it has been, "
-                           "replace your estimate with the announced price.")
+                           "add or update your price with the announced value.")
         elif event.get("price_is_estimate"):
             expected = event.get("expected_announcement_date")
             details.append("Monetary values use a tentative share price" +

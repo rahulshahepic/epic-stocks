@@ -33,7 +33,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     expect((await page.request.post('/api/grants', { data: { year, type: 'Purchase', shares: 100, price: 0,
       exercise_date: today, vest_start: today, periods: 1, dp_shares: 0, election_83b: true } })).ok()).toBe(true)
     await page.reload()
-    await expect(page.getByRole('link', { name: 'Add a price' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add a price' })).toBeVisible()
     await expect(page.getByText('100 shares', { exact: true })).toBeVisible()
     await expect(page.getByText(/Interest: Calculated estimate/)).toHaveCount(0)
     await expect(page.getByText(/Exit estimate unavailable/)).toHaveCount(0)
@@ -50,5 +50,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     const audit = await new AxeBuilder({ page }).include('.campus-dashboard').withTags(['wcag2a', 'wcag2aa']).analyze()
     expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await page.screenshot({ path: `../screenshots/first-use-sparse-${theme}-${device}.png`, fullPage: true, style: '[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+    await page.getByRole('button', { name: 'Add a price' }).click()
+    await expect(page.getByLabel('Announced price', { exact: true })).toBeFocused()
   })
 }

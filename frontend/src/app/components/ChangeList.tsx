@@ -1,5 +1,6 @@
 import { claimMeasurement, measurementEvent, measurementToken } from '../../scaffold/onboarding.ts'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, type Change, type ChangePosition, type ChangeResult } from '../../api.ts'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 
@@ -33,11 +34,12 @@ function groupOf(c: Change): NonNullable<Change['group']> {
  * Apply previews the rest exactly as the app would store it, then saves them
  * all together — or none, if any one is refused.
  */
-export default function ChangeList({ changes, extra = [], onApplied }: {
+export default function ChangeList({ changes, extra = [], onApplied, onBusyChange }: {
   changes: Change[]
   /** Edits added on the page itself, such as sales the person dated and priced. */
   extra?: Change[]
   onApplied?: (result: ChangeResult) => void
+  onBusyChange?: (busy: boolean) => void
 }) {
   const [picked, setPicked] = useState<boolean[]>(() => changes.map(c => c.selected !== false))
   const [preview, setPreview] = useState<ChangeResult | null>(null)
@@ -53,14 +55,16 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
   }
 
   async function check() {
+    onBusyChange?.(true)
     setBusy(true); setError('')
     try { setPreview(await api.previewChanges(chosen)) }
     catch (e) { setError(e instanceof Error ? e.message : 'These changes could not be checked') }
-    finally { setBusy(false) }
+    finally { setBusy(false); onBusyChange?.(false) }
   }
 
   async function apply() {
     if (!preview?.confirm) return
+    onBusyChange?.(true)
     setBusy(true); setError('')
     try {
       await measurementEvent('save_intent')
@@ -72,7 +76,7 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'These changes could not be saved')
       setPreview(null)
-    } finally { setBusy(false) }
+    } finally { setBusy(false); onBusyChange?.(false) }
   }
 
   if (done) {
@@ -84,7 +88,7 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
   }
 
   if (!changes.length && !extra.length) {
-    return <p className="mt-3 text-xs text-cs-muted">Nothing to change — your account already matches these files.</p>
+    return <div className="mt-3 space-y-2 text-xs text-cs-muted"><p>Nothing to change — your account already matches these files.</p><p>You’re up to date. <Link to="/" className="font-semibold text-cs-brand underline">Review your position</Link> or <Link to="/retirement" className="font-semibold text-cs-brand underline">explore retirement</Link>.</p></div>
   }
 
   const pos = (k: keyof ChangePosition) => [preview?.position_before[k] as number | null | undefined,
@@ -92,6 +96,13 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
 
   return (
     <div className="mt-3 space-y-3">
+      <p className="text-sm font-semibold text-cs-text">What changed</p>
+      <p className="text-xs text-cs-text-2">Compared with your saved records: {(['grant', 'loan', 'price', 'sale'] as const).flatMap(kind => {
+        return (['create', 'update', 'delete'] as const).flatMap(action => {
+          const n = changes.filter(c => c.kind === kind && c.action === action).length
+          return n ? [`${n} ${action === 'create' ? 'new' : action === 'delete' ? 'removed' : 'updated'} ${kind}${n === 1 ? '' : 's'}`] : []
+        })
+      }).join(', ')}. Check the selected changes to see the before-and-after position before saving.</p>
       {GROUPS.map(({ key, title }) => {
         const rows = changes.map((c, i) => [c, i] as const).filter(([c]) => groupOf(c) === key)
         if (!rows.length) return null

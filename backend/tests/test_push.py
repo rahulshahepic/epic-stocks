@@ -161,7 +161,9 @@ def test_get_todays_events(db_session):
             user_id=user.id, year=2021, type="Purchase", shares=1000, price=2.0,
             vest_start=target, periods=3, exercise_date=date(2021, 12, 31), dp_shares=0,
         )
-        price = Price(user_id=user.id, effective_date=date(2021, 1, 1), price=2.0)
+        # Keep this vesting-notification test separate from the annual
+        # missing-current-price reminder, which has its own coverage.
+        price = Price(user_id=user.id, effective_date=date(2022, 1, 1), price=2.0)
         db_session.add_all([grant, price])
         db_session.commit()
 

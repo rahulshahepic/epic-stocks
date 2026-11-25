@@ -30,7 +30,7 @@ export default function StalePriceNotice({ latestPrice, latestDate, onApply, bus
       </p>
       <form
         className="mt-3 flex flex-wrap items-center gap-2"
-        onSubmit={e => { e.preventDefault(); if (valid) onApply(parsed) }}
+        onSubmit={e => { e.preventDefault(); if (valid && !busy) onApply(parsed) }}
       >
         <label htmlFor="trial-current-price" className="sr-only">Current share price</label>
         <input

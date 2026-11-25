@@ -11,6 +11,7 @@ import PushNudge from './PushNudge.tsx'
 import UnofficialBadge from './UnofficialBadge.tsx'
 import StagingSeedPanel from '../../app/components/StagingSeedPanel.tsx'
 import { CampusCorner, CampusNavIcon } from './CampusMotifs.tsx'
+import TaskOutcome from '../../app/components/TaskOutcome.tsx'
 
 export default function Layout() {
   const { logout } = useAuth()
@@ -85,13 +86,18 @@ export default function Layout() {
           {campusWing && <div className="campus-wing-marker max-w-4xl"><span>{campusWing.label}</span><span lang="la" title={campusWing.translation}>{campusWing.motto}</span></div>}
           {!config ? <p role="status">Loading application…</p> : staging && !['/admin', '/content', '/connect-ai'].some(path => location.pathname.startsWith(path)) && !me?.staging_account?.initialized
             ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)
-            : <Outlet />}
+            : <>{!viewing && <TaskOutcome />}<Outlet /></>}
 
         </div>
       </main>
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">
-        {mobileMenuOpen && <div id="mobile-more-menu" className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl border border-cs-border bg-cs-surface p-3 shadow-pop"><p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-cs-muted">Everything</p><div className="grid grid-cols-3 gap-1">{navItems.filter(item => !mobilePrimaryItems.some(primary => primary.to === item.to)).map(({ to, label }) => <NavLink key={to} to={to} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-center text-sm font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}><CampusNavIcon route={to} />{label}</NavLink>)}</div></div>}
-        <div className="mx-auto grid max-w-lg grid-cols-5 px-2 py-1.5">{mobilePrimaryItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} aria-label={label} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><CampusNavIcon route={to} className="h-4 w-4" />{label === 'Retirement' ? 'Plan' : label === 'Grants' ? 'Data' : label}</NavLink>)}<button type="button" aria-label="More" aria-expanded={mobileMenuOpen} aria-controls="mobile-more-menu" onClick={() => setMobileMenuOpen(open => !open)} className={`flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${mobileMenuOpen ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><span aria-hidden="true" className="text-base leading-4">•••</span>More</button></div>
+        {mobileMenuOpen && <div id="mobile-more-menu" className="absolute bottom-full left-3 right-3 mb-2 max-h-[70vh] overflow-y-auto rounded-2xl border border-cs-border bg-cs-surface p-3 shadow-pop">
+          {[{ title: 'Your records', routes: recordsRoutes }, { title: 'Planning', routes: ['/retirement', '/comp-calculator'] }, { title: 'Account', routes: workshopRoutes }].map(group => <section key={group.title} className="mb-2">
+            <h2 className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-cs-muted">{group.title}</h2>
+            <div className="grid grid-cols-3 gap-1">{navItems.filter(item => group.routes.includes(item.to)).map(({to, label}) => <NavLink key={to} to={to} onClick={() => setMobileMenuOpen(false)} className={({isActive}) => `flex min-h-11 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}><CampusNavIcon route={to} />{label}</NavLink>)}</div>
+          </section>)}
+        </div>}
+        <div className="mx-auto grid max-w-lg grid-cols-5 px-2 py-1.5">{mobilePrimaryItems.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} aria-label={label} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-[11px] font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><CampusNavIcon route={to} className="h-4 w-4" />{label}</NavLink>)}<button type="button" aria-label="More" aria-expanded={mobileMenuOpen} aria-controls="mobile-more-menu" onClick={() => setMobileMenuOpen(open => !open)} className={`flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${mobileMenuOpen ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}><span aria-hidden="true" className="text-base leading-4">•••</span>More</button></div>
       </nav>
       <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
     </div>

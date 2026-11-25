@@ -1,6 +1,10 @@
 import { Card, IconTile, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp, IconPieChart, IconDocument, IconCompass } from '../../scaffold/components/ui/icons.tsx'
+import { InlineTerm } from './EquityTerms.tsx'
+import { EQUITY_TERMS, type EquityTerm } from '../equityTerms.ts'
+
+const CARD_TERMS: Record<string, EquityTerm> = {price: 'fmv', shares: 'vesting', unvested: 'vesting', income: 'ordinary_income', gains: 'capital_gains', loans: 'loan', interest: 'interest', event: 'timeline', tax: 'tax', cash: 'exit', value: 'fmv', costbasis: 'basis'}
 
 /**
  * The dashboard's stat tile. Shared with the no-account preview (/try) so the
@@ -23,9 +27,10 @@ const CARD_STYLES: Record<string, { tone: TileTone; icon: React.ReactNode }> = {
   costbasis: { tone: 'slate', icon: <IconDocument className="h-4 w-4" /> },
 }
 
-export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded, className = '' }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean; className?: string }) {
+export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded, className = '', explanation }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean; className?: string; explanation?: EquityTerm }) {
   const s = CARD_STYLES[variant] ?? CARD_STYLES.event
   const clickable = !!onClick
+  const term = explanation ?? CARD_TERMS[variant]
   const content = (
     <>
       <div className="flex items-center justify-between">
@@ -42,17 +47,18 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
       {subtitle && <p className="mt-1 text-[11px] leading-tight text-cs-muted">{subtitle}</p>}
     </>
   )
-  if (clickable) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-expanded={!!expanded}
-        className={cardClass('md', `text-left transition hover:-translate-y-0.5 hover:shadow-pop ${className}`)}
-      >
-        {content}
-      </button>
-    )
-  }
-  return <Card pad="md" className={className}>{content}</Card>
+  const card = clickable ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={!!expanded}
+      className={cardClass('md', 'w-full text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+    >
+      {content}
+    </button>
+  ) : <Card pad="md">{content}</Card>
+  return <div className={`min-w-0 ${className}`} data-equity-card={term}>
+    {card}
+    {term && <>{['costbasis', 'loans', 'tax', 'cash'].includes(variant) && <p className="mt-2 text-[11px] leading-relaxed text-cs-muted">{EQUITY_TERMS[term].meaning}</p>}<InlineTerm term={term} figure={value} /></>}
+  </div>
 }

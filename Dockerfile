@@ -8,6 +8,7 @@ COPY frontend/package.json frontend/package-lock.json* ./
 # the working endpoint, so npm ci's own report is redundant either way.
 RUN npm install -g npm@11.19.1 && npm ci --no-audit
 COPY frontend/ ./
+COPY backend/app/financial_terms.json /app/backend/app/financial_terms.json
 ARG COMMIT_SHA=dev
 ENV VITE_COMMIT_SHA=$COMMIT_SHA
 ARG APP_ENV=production

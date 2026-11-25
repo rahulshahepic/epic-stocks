@@ -14,6 +14,16 @@ export default function EurekaFileGuide({ allowAssistant = false }: { allowAssis
           <li>A purchase agreement, screenshot or scanned document needs a different route: {allowAssistant ? 'use your AI assistant from a signed-in account, or enter the details yourself.' : 'enter the details from your paperwork yourself.'}</li>
         </ul>
       </details>
+      <details>
+        <summary className="cursor-pointer py-2 font-medium text-cs-brand">Where do I find these?</summary>
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>Sign in to Eureka using your usual Epic access.</li>
+          <li>Search for <strong>Data for Stock Workbook</strong> and download the original CSV or Excel file.</li>
+          <li>If you have loans, find your latest <strong>Stock Loan Statement</strong> and download the PDF.</li>
+          <li>Choose both downloads here. Review the changes before saving.</li>
+        </ol>
+        <p className="mt-2">Menu names can vary. Look for the document titles above; a screenshot, purchase agreement or scanned statement needs manual entry or help from your assistant.</p>
+      </details>
     </div>
   )
 }

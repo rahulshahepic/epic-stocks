@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { isLoggedIn } from './api.ts'
 import { AppProvider } from './app/AppProvider.tsx'
 import { useSessionRefresh } from './scaffold/hooks/useSessionRefresh.ts'
@@ -34,7 +34,9 @@ import Retirement from './app/pages/Retirement.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   useSessionRefresh()
-  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
+  const location = useLocation()
+  const intent = ['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(location.pathname) ? `?intent=${encodeURIComponent(location.pathname)}` : ''
+  return isLoggedIn() ? <>{children}</> : <Navigate to={`/login${intent}`} replace />
 }
 
 // Wraps financial pages — shows a placeholder during maintenance instead of

@@ -188,17 +188,18 @@ def _analyze(
     # The files carry the prices Epic has already announced, and nothing newer.
     # Valuing a position at a price a year or more stale understates it badly, so
     # the preview lets someone supply the current one. It lands as an ordinary
-    # price point dated today, in *both* the payload the timeline is computed
+    # price point applicable January 1, in both the payload the timeline is computed
     # from and the price list the charts render — anything else would show a
     # dashboard and a chart that disagree about what a share is worth.
     today_iso = _date.today().isoformat()
+    applicable = f"{today_iso[:4]}-01-01"
     if wizard_payload["prices"]:
         latest = max(p["effective_date"] for p in wizard_payload["prices"])
-        if current_price is not None and current_price > 0 and today_iso > latest:
+        if current_price is not None and current_price > 0 and latest < applicable:
             wizard_payload["prices"].append(
-                {"effective_date": today_iso, "price": current_price})
+                {"effective_date": applicable, "price": current_price})
             prefill["prices"].append({
-                "id": -(len(prefill["prices"]) + 1), "effective_date": today_iso,
+                "id": -(len(prefill["prices"]) + 1), "effective_date": applicable,
                 "price": current_price, "is_estimate": False, "version": 1,
             })
 

@@ -755,6 +755,9 @@ def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None):
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format") from None
 
+    from services.price_state import price_metadata
+
+    inputs = inputs if inputs is not None else load_calculation_inputs(user, db)
     ctx = _projected_events(user, db, horizon_date=preview_date, inputs=inputs)
     if db is not None:
         db.close()
@@ -771,9 +774,11 @@ def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None):
     )
     if not summary:
         return None
+    price = next((row for row in reversed(inputs.prices) if row.effective_date <= preview_date), None)
     return {
         "date": preview_date.isoformat(),
         **summary,
+        **(price_metadata(price, ctx["today"]) if price is not None else {}),
     }
 
 

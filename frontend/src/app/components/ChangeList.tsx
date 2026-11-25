@@ -1,8 +1,11 @@
 import { claimMeasurement, measurementEvent, measurementToken } from '../../scaffold/onboarding.ts'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type Change, type ChangePosition, type ChangeResult } from '../../api.ts'
+import { stockValueLabel } from '../format.ts'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
+
+const NO_EXTRA: Change[] = []
 
 const GROUPS: { key: NonNullable<Change['group']>; title: string }[] = [
   { key: 'add', title: 'Add' },
@@ -34,30 +37,43 @@ function groupOf(c: Change): NonNullable<Change['group']> {
  * Apply previews the rest exactly as the app would store it, then saves them
  * all together — or none, if any one is refused.
  */
-export default function ChangeList({ changes, extra = [], onApplied, onBusyChange }: {
+export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBusyChange, disabled = false }: {
   changes: Change[]
   /** Edits added on the page itself, such as sales the person dated and priced. */
   extra?: Change[]
   onApplied?: (result: ChangeResult) => void
   onBusyChange?: (busy: boolean) => void
+  disabled?: boolean
 }) {
-  const [picked, setPicked] = useState<boolean[]>(() => changes.map(c => c.selected !== false))
-  const [preview, setPreview] = useState<ChangeResult | null>(null)
+  const [selections, setSelections] = useState<Record<string, boolean>>({})
+  const rowKeys = useMemo(() => {
+    const occurrences = new Map<string, number>()
+    return changes.map(change => {
+      const fingerprint = JSON.stringify([change.kind, change.action, change.id, change.version, change.values])
+      const occurrence = (occurrences.get(fingerprint) ?? 0) + 1
+      occurrences.set(fingerprint, occurrence)
+      return `${fingerprint}:${occurrence}`
+    })
+  }, [changes])
+  const [checked, setChecked] = useState<{ selection: Change[]; result: ChangeResult } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<ChangeResult | null>(null)
+  const confirmation = useRef<HTMLHeadingElement>(null)
+  const [done, setDone] = useState<{ source: Change[]; result: ChangeResult } | null>(null)
 
-  const chosen = useMemo(() => [...changes.filter((_, i) => picked[i]), ...extra], [changes, picked, extra])
+  const chosen = useMemo(() => [
+    ...changes.filter((row, i) => selections[rowKeys[i]] ?? row.selected !== false),
+    ...extra,
+  ], [changes, selections, rowKeys, extra])
 
-  function toggle(i: number) {
-    setPicked(p => p.map((v, j) => (j === i ? !v : v)))
-    setPreview(null)
-  }
+  // A confirmation token applies to the exact rows that were previewed.
+  const preview = checked?.selection === chosen ? checked.result : null
+  useEffect(() => { if (preview) confirmation.current?.focus() }, [preview])
 
   async function check() {
     onBusyChange?.(true)
     setBusy(true); setError('')
-    try { setPreview(await api.previewChanges(chosen)) }
+    try { setChecked({ selection: chosen, result: await api.previewChanges(chosen) }) }
     catch (e) { setError(e instanceof Error ? e.message : 'These changes could not be checked') }
     finally { setBusy(false); onBusyChange?.(false) }
   }
@@ -71,18 +87,18 @@ export default function ChangeList({ changes, extra = [], onApplied, onBusyChang
       await claimMeasurement()
       const token = await measurementToken()
       const result = token ? await api.applyChanges(chosen, preview.confirm, token) : await api.applyChanges(chosen, preview.confirm)
-      setDone(result)
+      setDone({ source: changes, result })
       onApplied?.(result)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'These changes could not be saved')
-      setPreview(null)
+      setChecked(null)
     } finally { setBusy(false); onBusyChange?.(false) }
   }
 
-  if (done) {
+  if (done?.source === changes) {
     return (
       <p className="mt-3 rounded-md bg-emerald-50 p-3 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-        Saved {done.changes.length} change{done.changes.length === 1 ? '' : 's'}.
+        Saved {done.result.changes.length} change{done.result.changes.length === 1 ? '' : 's'}.
       </p>
     )
   }
@@ -102,7 +118,35 @@ export default function ChangeList({ changes, extra = [], onApplied, onBusyChang
           const n = changes.filter(c => c.kind === kind && c.action === action).length
           return n ? [`${n} ${action === 'create' ? 'new' : action === 'delete' ? 'removed' : 'updated'} ${kind}${n === 1 ? '' : 's'}`] : []
         })
-      }).join(', ')}. Check the selected changes to see the before-and-after position before saving.</p>
+      }).join(', ')}. Review the before-and-after position before saving.</p>
+      {preview && <h3 ref={confirmation} tabIndex={-1} className="scroll-mt-28 text-sm font-semibold text-cs-text">Confirm import</h3>}
+      {preview && (
+        <dl className="grid grid-cols-2 gap-2 rounded-md bg-cs-raised p-2.5 sm:grid-cols-3">
+          <Position label={stockValueLabel} before={pos('total_stock_value')[0]} after={pos('total_stock_value')[1]} />
+          <Position label="Loans outstanding" before={pos('outstanding_loan_balance')[0]} after={pos('outstanding_loan_balance')[1]} />
+          <Position label="Stock equity before exit taxes" before={pos('net_equity')[0]} after={pos('net_equity')[1]} />
+        </dl>
+      )}
+
+      {error && (
+        <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/30">
+          <ReportableError message={error} source="import" className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400" />
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {!preview ? (
+          <button type="button" onClick={check} disabled={disabled || busy || !chosen.length}
+            className="min-h-11 rounded-lg bg-cs-brand px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40">
+            {busy ? 'Checking…' : 'Review and save'}
+          </button>
+        ) : (
+          <button type="button" onClick={apply} disabled={disabled || busy}
+            className="min-h-11 rounded-lg bg-cs-brand px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40">
+            {busy ? 'Saving…' : `Save ${chosen.length} change${chosen.length === 1 ? '' : 's'}`}
+          </button>
+        )}
+      </div>
       {changes.length > 0 && <details className="space-y-2 rounded-md border border-cs-border p-2.5">
         <summary className="min-h-7 cursor-pointer text-xs font-semibold text-cs-text">Review individual records</summary>
         {GROUPS.map(({ key, title }) => {
@@ -112,8 +156,10 @@ export default function ChangeList({ changes, extra = [], onApplied, onBusyChang
             <fieldset key={key} className="rounded-md border border-cs-border p-2">
               <legend className="px-1 text-xs font-semibold text-cs-text">{title}</legend>
               {rows.map(([c, i]) => (
-                <label key={i} className="flex items-start gap-2 py-1.5 text-xs">
-                  <input type="checkbox" checked={picked[i]} onChange={() => toggle(i)} disabled={busy}
+                <label key={rowKeys[i]} className="flex items-start gap-2 py-1.5 text-xs">
+                  <input type="checkbox" checked={selections[rowKeys[i]] ?? c.selected !== false}
+                    onChange={e => { const checked = e.target.checked; setSelections(previous => ({ ...previous, [rowKeys[i]]: checked })) }}
+                    disabled={disabled || busy}
                     className="mt-0.5 rounded border-cs-border-strong" />
                   <span>
                     <span className="font-medium text-cs-text">{c.label}</span>
@@ -126,33 +172,6 @@ export default function ChangeList({ changes, extra = [], onApplied, onBusyChang
         })}
       </details>}
 
-      {preview && (
-        <dl className="grid grid-cols-2 gap-2 rounded-md bg-cs-raised p-2.5 sm:grid-cols-3">
-          <Position label="Stock value today" before={pos('total_stock_value')[0]} after={pos('total_stock_value')[1]} />
-          <Position label="Loans outstanding" before={pos('outstanding_loan_balance')[0]} after={pos('outstanding_loan_balance')[1]} />
-          <Position label="Net equity" before={pos('net_equity')[0]} after={pos('net_equity')[1]} />
-        </dl>
-      )}
-
-      {error && (
-        <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/30">
-          <ReportableError message={error} source="import" className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400" />
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        {!preview ? (
-          <button type="button" onClick={check} disabled={busy || !chosen.length}
-            className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40">
-            {busy ? 'Checking…' : `Check ${chosen.length} change${chosen.length === 1 ? '' : 's'}`}
-          </button>
-        ) : (
-          <button type="button" onClick={apply} disabled={busy}
-            className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40">
-            {busy ? 'Saving…' : `Save ${chosen.length} change${chosen.length === 1 ? '' : 's'}`}
-          </button>
-        )}
-      </div>
     </div>
   )
 }

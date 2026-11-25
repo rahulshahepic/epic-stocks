@@ -1,7 +1,7 @@
 import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
 import StockFiles from './StockFiles.tsx'
 import { claimMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ImportEvidence from './ImportEvidence.tsx'
 import EurekaFileGuide from './EurekaFileGuide.tsx'
 import ChangeList from './ChangeList.tsx'
@@ -10,15 +10,16 @@ import FindingList, { ReportFindingsButton } from './FindingList.tsx'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from './StalePriceNotice.tsx'
 import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../epicImport.ts'
+import { fmt$, fmtFullDate, fmtPrice } from '../format.ts'
 import { platform } from '../../platform/index.ts'
 
 type Stage = 'idle' | 'analyzing' | 'result'
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, caption }: { label: string; value: string; caption?: string }) {
   return (
     <div>
       <dt className="text-[11px] text-cs-muted">{label}</dt>
-      <dd className="text-sm font-semibold text-cs-text">{value}</dd>
+      <dd className="text-sm font-semibold text-cs-text">{value}{caption && <span className="mt-1 block text-xs font-normal text-cs-text-2">{caption}</span>}</dd>
     </div>
   )
 }
@@ -37,9 +38,20 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('idle')
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
+  const [replacing, setReplacing] = useState(false)
+  const reviewHeading = useRef<HTMLHeadingElement>(null)
+  const uploadHeading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     if (stage === 'result' && result) void measurementEvent('preview_viewed', result.measurementSequence).then(claimMeasurement)
   }, [stage, result])
+  useEffect(() => {
+    if (stage === 'result' && !replacing) {
+      reviewHeading.current?.focus()
+    } else if (replacing) {
+      uploadHeading.current?.focus()
+    }
+  }, [stage, replacing])
+  const [repair, setRepair] = useState<{ json?: string; file?: File | null }>({})
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -66,7 +78,9 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson,
         pricedAt ?? undefined))
+      setRepair({ json: revisedJson, file: revisedDraft })
       setStage('result')
+      setReplacing(false)
       setPasted('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read those files')
@@ -78,7 +92,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   async function applyCurrentPrice(price: number) {
     setRepricing(true)
     try {
-      setResult(await epicImport.analyze(files, undefined, price))
+      setResult(await epicImport.analyze({ ...files, revisedDraft: repair.file }, repair.json, price))
       setPricedAt(price)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not apply that price')
@@ -107,53 +121,60 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
 
   const counts = result ? severityOf(result.findings) : { errors: 0, warnings: 0 }
   const needsHelp = !!result && (result.blocked || counts.errors > 0)
+  const reviewing = stage === 'result' && !!result && !replacing
+  const statementDate = typeof result?.draft.statement_date === 'string' ? result.draft.statement_date : null
+  const staleStatement = result?.reconciliation?.some(check => check.status === 'stale')
+  const hasStatement = !!pdf || statementDate != null || (result?.summary.loans ?? 0) > 0
 
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
-      <span className="text-sm font-semibold text-cs-text">Import from Eureka</span>
-      <div className="mt-2"><EurekaFileGuide allowAssistant={allowAssistant} /></div>
-      <span className="mt-2 text-xs text-cs-muted">
-        Vesting dates start from the company grant schedule; you can change any
-        of them afterwards on the Grants page.
-      </span>
+      <div hidden={reviewing}>
+        <h2 ref={uploadHeading} tabIndex={-1} className="scroll-mt-28 text-base font-semibold text-cs-text">Import from Eureka</h2>
+        <div className="mt-2"><EurekaFileGuide allowAssistant={allowAssistant} /></div>
+        <span className="mt-2 text-xs text-cs-muted">
+          Vesting dates start from the company grant schedule; you can change any
+          of them afterwards on the Grants page.
+        </span>
 
-      <div className="mt-3 space-y-3">
-        <StockFiles csv={csv} pdf={pdf} disabled={busy} onFiles={({workbook, statement}) => {
-          if (workbook) setCsv(workbook)
-          if (statement) setPdf(statement)
-          setResult(null); setStage('idle'); setPricedAt(null); setAnswers({})
-        }} />
-        <details><summary className="cursor-pointer py-2 text-xs text-cs-text-2">Choose or replace files separately</summary>
-          <div>
-            <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
-              Data for Stock Workbook (.csv or .xlsx)
-            </label>
-            <input
-              id="epic-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
-              onChange={e => { setCsv(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
-              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-            />
-          </div>
-          <div>
-            <label htmlFor="epic-pdf" className="text-xs font-medium text-cs-text-2">
-              Stock Loan Statement (.pdf)
-            </label>
-            <input
-              id="epic-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
-              onChange={e => { setPdf(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
-              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-            />
-          </div>
-        </details>
-        <button
-          type="button" onClick={() => run()} disabled={(!csv && !pdf) || busy}
-          className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
-        >
-          {busy ? 'Reading…' : result ? 'Read again' : 'Read my files'}
-        </button>
+        <div className="mt-3 space-y-3">
+          <StockFiles csv={csv} pdf={pdf} disabled={busy} onFiles={({workbook, statement}) => {
+            if (workbook) setCsv(workbook)
+            if (statement) setPdf(statement)
+            setResult(null); setStage('idle'); setPricedAt(null); setAnswers({})
+          }} />
+          <details><summary className="cursor-pointer py-2 text-xs text-cs-text-2">Choose or replace files separately</summary>
+            <div>
+              <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
+                Data for Stock Workbook (.csv or .xlsx)
+              </label>
+              <input
+                id="epic-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
+                onChange={e => { setCsv(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
+                className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+              />
+            </div>
+            <div>
+              <label htmlFor="epic-pdf" className="text-xs font-medium text-cs-text-2">
+                Stock Loan Statement (.pdf)
+              </label>
+              <input
+                id="epic-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
+                onChange={e => { setPdf(e.target.files?.[0] ?? null); setResult(null); setStage('idle'); setPricedAt(null); setAnswers({}) }}
+                className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+              />
+            </div>
+          </details>
+          <button
+            type="button" onClick={() => run()} disabled={(!csv && !pdf) || busy}
+            className="min-h-11 rounded-lg bg-cs-brand px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? 'Reading…' : 'Read my files'}
+          </button>
+          {replacing && result && stage !== 'analyzing' && <button type="button" onClick={() => setReplacing(false)} className="ml-3 min-h-11 text-sm text-cs-text underline">Back to review</button>}
+        </div>
+
+        <MeasurementChoice />
       </div>
-
-      <MeasurementChoice />
       {error && (
         <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
           <ReportableError
@@ -164,19 +185,19 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
         </div>
       )}
 
-      {stage === 'result' && result && (
-        <div className="mt-4 border-t border-cs-border pt-3">
-          <h2 className="text-sm font-semibold text-cs-text">What we found</h2>
-          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-            <Stat label="Grants" value={String(result.summary.grants)} />
-            <Stat label="Loans" value={String(result.summary.loans)} />
-            <Stat label="Total shares" value={result.summary.total_shares.toLocaleString()} />
-            <Stat
-              label="Loan balance"
-              value={result.summary.total_loan_balance.toLocaleString(undefined, {
-                style: 'currency', currency: 'USD', maximumFractionDigits: 0,
-              })}
-            />
+      {result && (
+        <div hidden={!reviewing} className="space-y-3">
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 ref={reviewHeading} tabIndex={-1} className="scroll-mt-28 font-serif text-xl font-semibold text-cs-text">What we found</h2>
+              <p className="mt-1 text-sm text-cs-text">{result.summary.grants} {result.summary.grants === 1 ? 'grant' : 'grants'}{hasStatement ? ` and ${result.summary.loans} ${result.summary.loans === 1 ? 'loan' : 'loans'}` : ''}</p>
+            </div>
+            <button type="button" disabled={busy} onClick={() => setReplacing(true)} className="min-h-11 px-1 text-sm font-semibold text-cs-brand underline disabled:opacity-50">Replace files</button>
+          </header>
+          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-cs-raised p-3">
+            <Stat label="Shares in files" value={result.summary.total_shares.toLocaleString()} />
+            <Stat label="Loan principal in files" value={hasStatement && !result.blocked ? fmt$(result.summary.total_loan_balance) : 'Unavailable'}
+              caption={statementDate ? `Statement from ${fmtFullDate(statementDate)}${staleStatement ? ' · out of date' : ''}` : hasStatement ? 'Statement date unavailable' : 'No statement uploaded'} />
           </dl>
 
           <p className={`mt-3 text-xs font-medium ${
@@ -192,8 +213,20 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
                   : 'No changes to preview.'}
           </p>
 
-          {result.reconciliation?.some(check => check.status === 'stale') &&
-            <p className="mt-2 text-xs text-cs-text-2">The loan statement is out of date. Use a recent statement before relying on the balance.</p>}
+          {result.price_is_stale && pricedAt == null && <p className="text-sm text-cs-text-2">
+            Share price in the files: {latestDate ? `${fmtPrice(latestPrice)} from ${fmtFullDate(latestDate)}` : 'unavailable'}. You can add this year’s announced price below.
+          </p>}
+          {!result.blocked && result.unanswered_sales.length > 0 && <p className="text-sm text-cs-text-2">
+            <a href="#import-unmatched-shares" className="font-semibold text-cs-brand underline">Review shares that left a grant</a> if you know they were sold.
+          </p>}
+          {!result.blocked && (
+            <>
+              {repricing && <p role="status" className="text-sm text-cs-text-2">Updating the review with your price…</p>}
+              <div hidden={repricing}>
+                <ChangeList changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} disabled={repricing} />
+              </div>
+            </>
+          )}
 
           <FindingList findings={result.findings} grouped collapseAll={!result.blocked && counts.errors === 0 && !result.changes.length && !answered.length} />
           {!!result.reconciliation?.length && <details className="mt-3 rounded-md border border-cs-border p-3">
@@ -224,7 +257,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
           )}
 
           {!result.blocked && result.unanswered_sales.length > 0 && (
-            <div className="mt-3 rounded-md border border-cs-border p-2.5">
+            <div id="import-unmatched-shares" className="mt-3 scroll-mt-28 rounded-md border border-cs-border p-2.5">
               <p className="text-xs font-semibold text-cs-text">Shares that left a grant</p>
               <p className="mt-1 text-xs text-cs-muted">
                 Your files show these shares gone but not when or for how much. Fill in a
@@ -234,22 +267,18 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
                 <div key={i} className="mt-2 grid grid-cols-[1fr_1fr_1fr] items-end gap-2 text-xs">
                   <span className="text-cs-text">{sale.shares.toLocaleString()} shares</span>
                   <label className="text-cs-muted">Date
-                    <input type="date" value={answers[i]?.date ?? ''}
+                    <input type="date" disabled={busy} value={answers[i]?.date ?? ''}
                       onChange={e => setAnswers(a => ({ ...a, [i]: { date: e.target.value, price: a[i]?.price ?? '' } }))}
                       className="mt-0.5 block w-full rounded border border-cs-border bg-cs-surface px-1.5 py-1 text-cs-text" />
                   </label>
                   <label className="text-cs-muted">Price per share
-                    <input type="number" min="0" step="0.01" value={answers[i]?.price ?? ''}
+                    <input type="number" disabled={busy} min="0" step="0.01" value={answers[i]?.price ?? ''}
                       onChange={e => setAnswers(a => ({ ...a, [i]: { date: a[i]?.date ?? '', price: e.target.value } }))}
                       className="mt-0.5 block w-full rounded border border-cs-border bg-cs-surface px-1.5 py-1 text-cs-text" />
                   </label>
                 </div>
               ))}
             </div>
-          )}
-
-          {!result.blocked && (
-            repricing ? <p role="status" className="py-3 text-sm text-cs-muted">Updating changes with your price…</p> : <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} />
           )}
 
           {needsHelp && (

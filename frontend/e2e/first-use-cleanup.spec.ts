@@ -9,7 +9,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.goto('/try')
     await page.locator('#trial-csv').setInputFiles(path.resolve('../test_data/epic_share_summary.csv'))
     await page.getByRole('button', { name: 'See my numbers' }).click()
-    const hero = page.getByText(/Stock value \(loans not included\) · as of/).locator('..')
+    const hero = page.getByText(/Stock value before loans and taxes · as of/).locator('..')
     await expect(hero).toContainText('Loans: not uploaded')
     await expect(hero).toContainText('cannot subtract shares you have sold')
     await expect(page.getByText('Not uploaded', { exact: true })).toBeVisible()

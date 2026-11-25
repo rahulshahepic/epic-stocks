@@ -92,7 +92,7 @@ it('saves causal rules and car lifetime with nominal depreciation', () => {
   const onChange = mount()
   fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'vehicle' } })
   fireEvent.change(screen.getByLabelText('Purchase / start date'), { target: { value: '2037-01-01' } })
-  fireEvent.click(screen.getByLabelText('Buy only when conditions hold'))
+  fireEvent.click(screen.getByLabelText('Optional purchase'))
   fireEvent.change(screen.getByLabelText(/Minimum portfolio before purchase/), { target: { value: '5000000' } })
   fireEvent.change(screen.getByLabelText(/Minimum portfolio as %/), { target: { value: '120' } })
   fireEvent.change(screen.getByLabelText('Sell car after N years (optional)'), { target: { value: '15' } })
@@ -109,7 +109,7 @@ it('saves causal rules and car lifetime with nominal depreciation', () => {
 
 it('allows optional thresholds to be cleared', () => {
   const onChange = mount()
-  fireEvent.click(screen.getByLabelText('Buy only when conditions hold'))
+  fireEvent.click(screen.getByLabelText('Optional purchase'))
   const threshold = screen.getByLabelText(/Minimum portfolio before purchase/)
   fireEvent.change(threshold, { target: { value: '5000000' } })
   fireEvent.change(threshold, { target: { value: '' } })
@@ -129,7 +129,7 @@ it('rejects a zero vehicle lifetime before autosave', () => {
 it('preserves typing, pasting, clearing and editing 140% without floating point text', async () => {
   const onChange = mount()
   const user = userEvent.setup()
-  await user.click(screen.getByLabelText('Buy only when conditions hold'))
+  await user.click(screen.getByLabelText('Optional purchase'))
   const input = screen.getByLabelText(/Minimum portfolio as %/)
   await user.type(input, '140')
   expect(input).toHaveValue(140)

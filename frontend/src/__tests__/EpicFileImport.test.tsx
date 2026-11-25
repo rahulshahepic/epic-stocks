@@ -95,7 +95,7 @@ describe('EpicFileImport', () => {
     mockApi(CLEAN)
     renderCard()
     await readFiles()
-    expect(await screen.findByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Review and save' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy prompt' })).not.toBeInTheDocument()
   })
 
@@ -106,7 +106,7 @@ describe('EpicFileImport', () => {
     expect(await screen.findByText(/1 figure\(s\) do not agree/)).toBeInTheDocument()
     expect(screen.getByText('C3')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review and save' })).toBeInTheDocument()
   })
 
   it('refuses to proceed when the statement itself was misread', async () => {
@@ -115,7 +115,7 @@ describe('EpicFileImport', () => {
     await readFiles()
     expect(await screen.findByText(/does not add up to its own totals/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Check \d+ change/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review and save' })).not.toBeInTheDocument()
   })
 
   it('says the figures go wherever the user chooses, not to the app', async () => {
@@ -201,7 +201,7 @@ describe('EpicFileImport → one screen of changes', () => {
     await readFiles()
     await userEvent.click(await screen.findByText('Review individual records'))
     await userEvent.click(screen.getByLabelText(/2021 Purchase interest loan 222/))
-    await userEvent.click(screen.getByRole('button', { name: 'Check 1 change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Review and save' }))
     expect(await screen.findByText('$1,000 → $0')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Save 1 change' }))
     expect(await screen.findByText(/Saved 1 change/)).toBeInTheDocument()
@@ -215,15 +215,44 @@ describe('EpicFileImport → one screen of changes', () => {
     expect(apply.changes).toEqual(preview.changes)
   })
 
+  it('preserves the preview and the chosen rows when replacement is cancelled', async () => {
+    mockApi(CLEAN, PREVIEW)
+    renderCard()
+    await readFiles()
+    await userEvent.click(await screen.findByText('Review individual records'))
+    await userEvent.click(screen.getByLabelText(/2021 Purchase interest loan 222/))
+    await userEvent.click(screen.getByRole('button', { name: 'Replace files' }))
+    expect(screen.getByRole('button', { name: 'Read my files' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Back to review' }))
+    expect(screen.getByRole('heading', { name: 'What we found' })).toHaveFocus()
+    expect(screen.getByLabelText(/2021 Purchase interest loan 222/)).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Review and save' }))
+    expect(await screen.findByRole('button', { name: 'Save 1 change' })).toBeVisible()
+  })
+
+  it('does not offer saved rows again when an unmatched sale field changes', async () => {
+    const draft = { ...CLEAN, unanswered_sales: [{ shares: 500, date: null, price_per_share: null, notes: 'n' }] }
+    const calls = mockApi(draft, PREVIEW, SAVED)
+    renderCard()
+    await readFiles()
+    await userEvent.click(await screen.findByRole('button', { name: 'Review and save' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Save 2 changes' }))
+    expect(await screen.findByText('Saved 1 change.')).toBeVisible()
+    await userEvent.type(screen.getByLabelText('Date'), '2024-03-01')
+    await userEvent.type(screen.getByLabelText('Price per share'), '12.5')
+    expect(screen.queryByRole('button', { name: 'Review and save' })).toBeNull()
+    expect(calls).toHaveLength(3)
+  })
+
   it('adds a sale only once the person gives its date and price', async () => {
     const calls = mockApi({ ...CLEAN, unanswered_sales: [{ shares: 500, date: null, price_per_share: null, notes: 'n' }] },
       PREVIEW)
     renderCard()
     await readFiles()
-    expect(await screen.findByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Review and save' })).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Date'), '2024-03-01')
     await userEvent.type(screen.getByLabelText('Price per share'), '12.5')
-    await userEvent.click(screen.getByRole('button', { name: 'Check 3 changes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Review and save' }))
     await waitFor(() => expect(calls.length).toBe(2))
     const sent = JSON.parse(String(calls[1].body)).changes
     expect(sent[2]).toMatchObject({ kind: 'sale', action: 'create',
@@ -244,9 +273,9 @@ describe('EpicFileImport — current share price', () => {
     await userEvent.click(screen.getByRole('button', {name: 'Use this price'}))
     expect(screen.getByLabelText('Stock files (.csv, .xlsx, .pdf)')).toBeDisabled()
     expect(screen.getByLabelText(/Data for Stock Workbook/)).toBeDisabled()
-    expect(screen.queryByRole('button', {name: 'Check 2 changes'})).toBeNull()
+    expect(screen.queryByRole('button', {name: 'Review and save'})).toBeNull()
     finish(new Response(JSON.stringify(CLEAN), {status: 200}))
-    expect(await screen.findByRole('button', {name: 'Check 2 changes'})).toBeEnabled()
+    expect(await screen.findByRole('button', {name: 'Review and save'})).toBeEnabled()
   })
 
   it('locks repricing and source selection while checking changes', async () => {
@@ -255,12 +284,33 @@ describe('EpicFileImport — current share price', () => {
     await readFiles()
     let finish!: (response: Response) => void
     vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-    await userEvent.click(await screen.findByRole('button', {name: 'Check 2 changes'}))
+    await userEvent.click(await screen.findByRole('button', {name: 'Review and save'}))
     expect(screen.getByLabelText('Current share price')).toBeDisabled()
     expect(screen.getByLabelText('Stock files (.csv, .xlsx, .pdf)')).toBeDisabled()
     finish(new Response(JSON.stringify({confirm: 'fictional', changes: CLEAN.changes, position_before: {}, position_after: {}}), {status: 200}))
     expect(await screen.findByRole('button', {name: 'Save 2 changes'})).toBeEnabled()
     expect(screen.getByLabelText('Current share price')).toBeEnabled()
+  })
+
+  it('keeps an excluded row and a repaired draft when adding a price', async () => {
+    const repaired = { ...CLEAN, price_is_stale: true }
+    const newPrice = { kind: 'price', action: 'create', group: 'add', label: 'Announced share price', values: { price: 25 } }
+    const repriced = { ...repaired, price_is_stale: false, changes: [newPrice, ...repaired.changes] }
+    const previewResponse = { confirm: 'review', changes: [], position_before: {}, position_after: {} }
+    const calls = mockApi(BLOCKED, repaired, repriced, previewResponse)
+    renderCard()
+    await readFiles()
+    await userEvent.type(await screen.findByLabelText(/Paste the reply/), 'repaired-draft')
+    await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
+    await userEvent.click(await screen.findByText('Review individual records'))
+    await userEvent.click(screen.getByLabelText(/2021 Purchase interest loan 222/))
+    await userEvent.type(screen.getByLabelText('Current share price'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Use this price' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Review and save' }))
+    expect(await screen.findByRole('button', { name: 'Save 2 changes' })).toBeVisible()
+    expect(calls[2].body?.get('revised_json')).toBe('repaired-draft')
+    const preview = JSON.parse(String(calls[3].body))
+    expect(preview.changes.map((change: { label: string }) => change.label)).toEqual(['Announced share price', '2026 Purchase grant'])
   })
 
   it('asks for it when the files carry only older prices', async () => {
@@ -301,7 +351,7 @@ it('notifies the owning page after a confirmed import save', async () => {
     {changes: CLEAN.changes, position_before: {}, position_after: {}})
   renderCard(onApplied)
   await readFiles()
-  await userEvent.click(await screen.findByRole('button', {name: 'Check 2 changes'}))
+  await userEvent.click(await screen.findByRole('button', {name: 'Review and save'}))
   expect(onApplied).not.toHaveBeenCalled()
   await userEvent.click(await screen.findByRole('button', {name: 'Save 2 changes'}))
   await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1))

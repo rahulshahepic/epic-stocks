@@ -52,20 +52,29 @@ Nothing is sent on a price's applicable date (January 1): Epic announces the pri
 ## First import and retirement comparison
 
 The welcome page puts **Try the demo**, **Import my files**, and **Sign in**
-before the campus artwork. Eureka import starts with what was found and
-any items that need your input. **What the files could verify** shows the
-evidence checks, and **Review individual records** lets you choose which
-records go through the preview and confirmation.
+before the campus artwork. After reading Eureka files, import opens a review
+with the share count, statement date and any outdated or missing evidence.
+**Review and save** previews the selected changes before confirmation.
+**Replace files** opens the file picker, **What the files could verify** shows
+the evidence checks, and **Review individual records** changes the selection.
+[Mobile import review](screenshots/import-review-light-mobile.png).
 
-On retirement results, **Compare one year later** uses the same market paths
-and holds spending and account assumptions steady. It shows stock exit cash,
-starting assets, funding risks and optional purchase odds side by side.
-Automatic exit cash is projected for each date, and saved inputs stay in place.
+The trial shows **Stock value before loans and taxes**. The saved dashboard
+also shows **Estimated cash if you left today**, with the applicable price date
+and whether the price is tentative. The trial reports an unavailable loan
+balance when a statement is missing. An announced price entered in preview takes effect January 1 and carries through signup. Update an announced price from Prices,
+or from the dashboard if the applicable price needs attention.
+
+Retirement opens on the result once a run completes. **Compare one year later**
+uses the same market paths and keeps spending and account assumptions steady.
+The comparison summarizes the change in shortfall risk and shows stock exit
+cash, starting assets and purchase odds. Automatic exit cash is projected for
+each date, and saved inputs stay in place.
 [Mobile date comparison](screenshots/retirement-date-comparison-light-mobile.png).
 
 ## Purchase planning presets
 
-The car editor summarizes price, ownership costs, sale timing and purchase rules above **Add event**. Cars use a **Sell after** ownership period (10 years initially). Select **Replace when sold** to reuse that period as the replacement interval. Replacement overrides allow a gap or a different price; otherwise each replacement uses the original real purchase price. Each car's sale repays remaining debt and ends its ownership costs. **Existing car trade-in** is net proceeds after payoff, credited only at the first purchase; later car sales are calculated automatically.
+The car editor starts with price, timing and optionality. Its summary stays visible as you refine ownership and purchase rules. Cars use a **Sell after** ownership period (10 years initially). Select **Replace when sold** to reuse that period as the replacement interval. Replacement overrides allow a gap or a different price; otherwise each replacement uses the original real purchase price. Each car's sale repays remaining debt and ends its ownership costs. **Existing car trade-in** is net proceeds after payoff, credited only at the first purchase; later car sales are calculated automatically.
 
 Choose a depreciation schedule instead of entering a rate. The following are approximate **nominal retained values**, with linear interpolation between years. An optional age at each purchase applies the remaining curve relative to the used-car price paid. Collector means an assumed flat nominal price, not a promised investment return. Existing plans keep their custom rates until edited.
 
@@ -82,6 +91,11 @@ These are planning curves chosen from broad market evidence, not fitted forecast
 College starts with **annual tuition and living costs for four years**. Childcare and care also lead with annual costs and allow a duration; optional setup costs are under advanced options. Wedding, travel, renovation, gifts and other expenses lead with one-time cost. Recurring costs and repeat intervals are optional. Houses default to cash; choosing financing starts with a 30-year term, versus five years for a car. Enter the actual loan rate. All categories remain required unless you add purchase conditions.
 
 ![Car ownership editor](screenshots/car-purchase-editor-light-mobile.png)
+
+The purchase chart groups counts into **None**, **1**, **2**, and **3+** so they
+fit on phones. Expand **Show exact purchase counts** for individual counts.
+Purchase odds and the chance of buying while fully funding retirement appear
+together.
 ![Purchase outcomes in dark mode](screenshots/retirement-purchase-outcomes-dark-mobile.png)
 
 

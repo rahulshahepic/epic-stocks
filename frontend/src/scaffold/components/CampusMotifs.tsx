@@ -2,6 +2,7 @@ type MotifProps = { className?: string }
 
 export function CampusNavIcon({ route, className = 'h-4 w-4' }: { route: string; className?: string }) {
   const common = { className, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true as const }
+  if (route === 'more') return <svg {...common}><path d="M5 12h.01M12 12h.01M19 12h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
   if (route === '/') return <svg {...common}><path d="M4 20V9l8-5 8 5v11" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M9 20v-6h6v6M8 9h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
   if (route === '/planning') return <svg {...common}><path d="m5 20 5.5-9 2.5 4 2-3 4 8" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M15.5 5.5 20 3l-1.8 4.6-4.6 1.8 1.9-3.9Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
   if (route.includes('events')) return <svg {...common}><path d="M6 5h12v15H6z" stroke="currentColor" strokeWidth="1.8"/><path d="M9 3v4m6-4v4M8.5 11h7M8.5 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>

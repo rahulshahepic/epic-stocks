@@ -42,18 +42,10 @@ export async function navigateTo(page: Page, label: string) {
   const navigation = mobile
     ? mobileNav
     : page.getByRole('navigation', { name: 'Main navigation' })
-  let link = navigation.getByRole('link', { name: label, exact: true })
-  if (['Admin', 'Content'].includes(label)) {
-    await navigation.getByRole('link', { name: 'Settings', exact: true }).click()
-    link = page.getByRole('navigation', { name: 'Account tools' }).getByRole('link', { name: label, exact: true })
-  } else if (['Events', 'Grants', 'Sales', 'Loans', 'Prices', 'Import'].includes(label)) {
-    const records = page.getByRole('navigation', { name: 'Stock records' })
-    if (!await records.isVisible()) {
-      await navigation.getByRole('link', { name: 'Dashboard', exact: true }).click()
-      await page.getByRole('link', { name: 'Stock Records', exact: true }).click()
-    }
-    link = records.getByRole('link', { name: label === 'Import' ? 'Import / Export' : label, exact: true })
+  if (!['Dashboard', 'Planning', 'Settings'].includes(label)) {
+    await navigation.getByRole('button', { name: 'More', exact: true }).click()
   }
+  const link = navigation.getByRole('link', { name: label === 'Import' ? 'Import / Export' : label, exact: true })
   // Derive the expected pathname from the link's own href instead of guessing
   // from the label — Dashboard is "/" not "/dashboard", and we don't want to
   // hard-code mappings here.

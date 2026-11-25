@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
@@ -49,6 +49,19 @@ export default function Layout() {
     ...(config?.ai_connections && !viewing ? [{ to: '/connect-ai', label: 'Connect AI' }] : []),
     ...navItems.filter(item => ['/content', '/admin'].includes(item.to)),
   ]
+  const moreGroups = [
+    {
+      label: 'Stock records',
+      links: navItems.filter(item => recordsRoutes.includes(item.to))
+        .map(item => item.to === '/import' ? { ...item, label: 'Import / Export' } : item),
+    },
+    {
+      label: 'Planning',
+      links: navItems.filter(item => item.to === '/comp-calculator')
+        .map(item => ({ ...item, label: 'Compensation Calculator' })),
+    },
+    { label: 'Account', links: accountLinks },
+  ].filter(group => group.links.length > 0)
   const primaryLocation = (to: string) => {
     if (to === location.pathname) return 'page'
     if ((to === '/' && isRecords) || (to === '/planning' && isObservatory)) return 'location'
@@ -81,8 +94,9 @@ export default function Layout() {
               <button onClick={logout} aria-label="Sign out of your account" className="shrink-0 whitespace-nowrap text-xs text-cs-text-2 hover:text-cs-text">Sign Out</button>
             </div>
           </div>
-          <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 overflow-x-auto px-6 pb-2.5 lg:px-8 md:flex">
+          <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 px-6 pb-2.5 lg:px-8 md:flex">
             {primaryItems.map(({ to, label }) => <Link key={to} to={to} aria-current={primaryLocation(to)} className={`campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${primaryLocation(to) ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</Link>)}
+            <MoreNavigation key={location.key} groups={moreGroups} />
           </nav>
         </header>
       </div>
@@ -111,16 +125,91 @@ export default function Layout() {
         </div>
       </main>
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-3 px-2 py-1.5">
+        <div className="mx-auto grid max-w-lg grid-cols-4 px-2 py-1.5">
           {primaryItems.map(({ to, label }) => (
             <Link key={to} to={to} aria-current={primaryLocation(to)}
               className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-xs font-semibold ${primaryLocation(to) ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300' : 'text-cs-text-2'}`}>
               <CampusNavIcon route={to} />{label}
             </Link>
           ))}
+          <MoreNavigation key={location.key} groups={moreGroups} mobile />
         </div>
       </nav>
       <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
+    </div>
+  )
+}
+
+type NavigationGroup = { label: string; links: { to: string; label: string }[] }
+
+function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[]; mobile?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const container = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+
+  useEffect(() => {
+    if (!open) return
+    function dismissOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !container.current?.contains(event.target)) setOpen(false)
+    }
+    function dismissWithEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      if (container.current?.contains(document.activeElement)) {
+        event.preventDefault()
+        button.current?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', dismissOutside)
+    document.addEventListener('keydown', dismissWithEscape)
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside)
+      document.removeEventListener('keydown', dismissWithEscape)
+    }
+  }, [open])
+
+  return (
+    <div ref={container} className={mobile ? undefined : 'relative'}>
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(previous => !previous)}
+        className={`flex items-center justify-center text-xs font-semibold ${mobile
+          ? 'min-h-11 w-full flex-col gap-0.5 rounded-xl px-1 py-1.5'
+          : 'h-full gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5'} ${open
+          ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300'
+          : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}
+      >
+        <CampusNavIcon route="more" className={mobile ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
+        More
+      </button>
+      <div
+        id={panelId}
+        hidden={!open}
+        className={`absolute z-10 max-h-[min(65dvh,26rem)] overflow-y-auto overscroll-contain rounded-2xl border border-cs-border bg-cs-surface p-2 shadow-pop ${mobile
+          ? 'inset-x-3 bottom-full mx-auto mb-2 max-w-lg'
+          : 'left-0 top-full mt-2 w-80'}`}
+      >
+        {groups.map(group => (
+          <div key={group.label} className="border-b border-cs-border p-1 last:border-b-0">
+            <h2 className="px-2 pt-1 text-xs font-semibold text-cs-muted">{group.label}</h2>
+            <div className="grid grid-cols-2 gap-x-1">
+              {group.links.map(({ to, label }) => (
+                <NavLink key={to} to={to} onClick={() => setOpen(false)}
+                  className={({ isActive }) => `flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm ${isActive
+                    ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300'
+                    : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}>
+                  <CampusNavIcon route={to} className="h-4 w-4 shrink-0 opacity-75" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -9,7 +9,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.emulateMedia({colorScheme: theme})
     await page.setViewportSize(device === 'mobile' ? {width: 375, height: 812} : {width: 1280, height: 900})
     await page.goto('/try')
-    const choice = page.getByRole('checkbox', {name: /Share optional onboarding counts/})
+    const choice = page.getByRole('checkbox', {name: /Help improve setup/})
     await expect(choice).not.toBeChecked()
     await choice.check()
     await page.locator('#trial-csv').setInputFiles({name: 'fictional.csv', mimeType: 'text/csv', buffer: CSV})

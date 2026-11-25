@@ -8,9 +8,10 @@ from app.retirement_simulation import run, MAX_SCENARIOS, MAX_PATHS
 
 RETIREMENT_RESOURCE_VERSION = 8
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
+RETIREMENT_COMPARE_RESOURCE_URI = "ui://epic-stocks/retirement-compare-v1.html"
 RETIREMENT_RESOURCE_URIS = frozenset(
     f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
-)
+) | {RETIREMENT_COMPARE_RESOURCE_URI}
 
 _EVENT_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -111,6 +112,36 @@ _RESULT = object_schema({
     "result": {"type": "object"},
     "saved": {"type": "boolean"},
 }, ["retirementDate", "exitSource", "assumptions", "result", "saved"])
+
+
+_COMPARISON_METRICS = {
+    "modelFeasible": {"type": "boolean"},
+    "modelWarning": {"type": ["string", "null"]},
+    "preRetirementFundingGapM": {"type": "number"},
+    "startingTotalM": {"type": "number"},
+    "pctFundingShortfall": {"type": "number"},
+    "pctLiquidityShortfall": {"type": "number"},
+    "pctExhausted": {"type": "number"},
+    "finalPercentiles": {"type": "array", "items": object_schema({
+        "q": {"type": "number"}, "value": {"type": "number"},
+    }, ["q", "value"])},
+}
+_COMPARISON_RESULT = object_schema({
+    "account_context": _RESULT["properties"]["account_context"],
+    "scenarios": {
+        "type": "array", "minItems": 2, "maxItems": MAX_SCENARIOS,
+        "items": object_schema({
+            **{key: value for key, value in _RESULT["properties"].items() if key != "account_context"},
+            "name": {"type": "string"},
+            "assumptions": {"type": "object", "properties": {"epicExit": {"type": "number"}},
+                            "required": ["epicExit"]},
+            "result": {"type": "object", "properties": _COMPARISON_METRICS,
+                       "required": list(_COMPARISON_METRICS)},
+        }, ["name", *_RESULT["required"]]),
+    },
+    "saved": {"type": "boolean"},
+    "note": {"type": "string"},
+}, ["scenarios", "saved", "note"])
 
 
 def _run(ctx: ToolContext, args: dict):
@@ -219,7 +250,13 @@ register(Tool(
             },
             "required": ["name"],
         }},
-    }, ["scenarios"]), scope=COMP_READ, handler=_compare, blocking_io=True,
+    }, ["scenarios"]), output_schema=_COMPARISON_RESULT, scope=COMP_READ, handler=_compare, blocking_io=True,
+    metadata={
+        "ui": {"resourceUri": RETIREMENT_COMPARE_RESOURCE_URI, "visibility": ["model", "app"]},
+        "openai/ui": {"entrypoints": [{"type": "global"}, {"type": "thread"}]},
+        "openai/toolInvocation/invoking": "Comparing retirement scenarios…",
+        "openai/toolInvocation/invoked": "Retirement comparison ready",
+    },
 ))
 register(Tool(
     name="update_retirement_params", title="Update saved retirement assumptions",

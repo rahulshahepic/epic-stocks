@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot, snapshots, retirementSnapshot } from './plugin-host'
+import { comparisonSnapshot, pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot, snapshots, retirementSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 import { openFailedImportReport } from './reporting-fixture'
 
@@ -253,6 +253,23 @@ test.describe('Screenshots', () => {
     await expect(card.getByRole('status')).toContainText('Neither scenario was saved')
     await shoot(page, 'mcp-apps-retirement-comparison-light-desktop', { fullPage: true })
   })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`MCP standalone retirement comparison - ${theme}`, async ({ page }) => {
+      await page.setViewportSize(theme === 'light' ? DESKTOP : MOBILE)
+      const card = await retirementHost(page, theme, {
+        initial: { ...comparisonSnapshot, scenarios: comparisonSnapshot.scenarios.slice(0, 2) },
+        resourceHtml: readFileSync(new URL('../../backend/app/mcp/retirement_compare.html', import.meta.url), 'utf8'),
+        readyText: 'Retirement comparison',
+      })
+      await expect(card.getByRole('table', { name: 'Retirement scenario metrics' })).toBeVisible()
+      await card.getByText('All ending wealth percentiles').click()
+      await expect(card.getByRole('table', { name: 'Ending wealth by percentile' })).toBeVisible()
+      const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+      expect(audit.violations).toEqual([])
+      await card.locator('main').screenshot({ path: `${OUT}/mcp-standalone-comparison-${theme}.png` })
+    })
+  }
 
   for (const theme of ['light', 'dark'] as const) test(`MCP retirement comparison - ${theme} - mobile`, async ({ page }) => {
     await page.setViewportSize(MOBILE)

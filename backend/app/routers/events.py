@@ -100,9 +100,11 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
 
 
 def _compute_unvested_cost(grants, as_of_date) -> float:
-    """Proceeds from selling unvested shares at cost basis (grant price)."""
+    """Proceeds from returning exercised, unvested shares at cost."""
     total_cost = 0.0
     for g in grants:
+        if g['exercise_date'].date() > as_of_date:
+            continue
         total = g['shares']
         vested = sum(n for d, n in g['vesting'] if d.date() <= as_of_date)
         unvested = total - vested
@@ -907,9 +909,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
     for lp in loan_payments_db:
         if lp.date <= cutoff:
             payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
-    purchased = [g for g in grants if g["exercise_date"].date() <= cutoff]
     position = {
-        "purchased_unvested_value": round(_compute_unvested_cost(purchased, cutoff), 2),
+        "purchased_unvested_value": round(_compute_unvested_cost(grants, cutoff), 2),
         "outstanding_loan_balance": round(
             _compute_outstanding_principal(loans_db, loan_payments_db, sales_db, cutoff), 2
         ),

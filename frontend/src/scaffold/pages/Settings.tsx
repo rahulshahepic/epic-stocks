@@ -98,7 +98,7 @@ export default function Settings() {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold text-cs-text">Settings</h1>
-      {config?.staging_demo && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
+      {config?.staging_demo && !me?.reviewer_account && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
 
       {/* Display Settings */}
       <Card as="section" pad="md">

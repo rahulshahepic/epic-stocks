@@ -86,6 +86,7 @@ export default function Login() {
                 {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">{error}</p>}
                 <div className="mt-3 space-y-2">{providers.map((p, i) => <button key={p.name} onClick={() => handleSignIn(p.name)} disabled={loading !== null} className={`min-h-11 w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-card transition disabled:opacity-50 ${i === 0 ? 'bg-rose-700 text-white hover:bg-rose-800' : 'border border-cs-border-strong bg-cs-surface text-cs-text hover:bg-cs-raised'}`}>{loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}</button>)}{providers.length === 0 && <p className="text-center text-sm text-cs-text-2">No sign-in providers configured.</p>}</div>
               </div>
+              {next?.startsWith('/oauth/authorize') && <a href={`/reviewer-login?${new URLSearchParams({ next })}`} className="inline-flex min-h-11 items-center text-sm text-cs-brand underline">Directory reviewer sign-in</a>}
               <div className="mt-5 flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0" /><span><span className="font-extrabold text-cs-brand dark:text-rose-300">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
             </div>
             <figure className="relative z-0 mt-5">

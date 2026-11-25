@@ -45,11 +45,15 @@ const PrivacyDataCollected = (
         <li>Optimization tip acceptance — which optimization tips you have accepted on the Dashboard</li>
       </Ul>
     </Sub>
-    <Sub title="Computed data (never stored)">
+    <Sub title="Computed data and caches">
       <P>
         The event timeline (vesting events, income, capital gains) is computed from your
-        grants, loans, and prices on every request. Computed events are never written to
-        the database — they exist only in memory during your request.
+        grants, loans, and prices. Events are not database records. Computed timelines may
+        be cached per account in server memory and in password-protected Redis for up to
+        24 hours. Redis financial results do not use database column encryption. In-process
+        cache entries may remain until replaced or the process restarts; Redis entries
+        can remain until expiry after reset/deletion. Authentication and data-hash checks
+        prevent these caches from granting access to a deleted account.
       </P>
     </Sub>
     <Sub title="Problem reports">

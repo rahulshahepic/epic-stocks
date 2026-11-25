@@ -1,9 +1,10 @@
+const REVIEW_TEST_BACKEND = process.env.VITE_BACKEND_ORIGIN ?? 'http://localhost:8000'
 import { createHash } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs } from './helpers'
 import { retirementHost } from './plugin-host'
 
-const API = process.env.E2E_API_URL ?? 'http://localhost:8000'
+const API = process.env.E2E_API_URL ?? `${REVIEW_TEST_BACKEND}`
 
 async function connect(page: Page) {
   await loginAs(page, `resource-loader-${Date.now()}@example.com`)

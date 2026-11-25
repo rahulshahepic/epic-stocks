@@ -144,8 +144,10 @@ def _fingerprint(user, db) -> str:
 def confirmation(user, db, changes) -> str:
     generation = user.session_version
     if user.is_synthetic:
-        from scaffold.models import MCPTestAccount
+        from scaffold.models import MCPTestAccount, ReviewerAccount
+        reviewer = db.query(ReviewerAccount.generation).filter(ReviewerAccount.user_id == user.id).scalar()
         fixture = db.query(MCPTestAccount.generation).filter(MCPTestAccount.synthetic_id == user.id).scalar()
+        fixture = reviewer or fixture
         if fixture is None:
             raise ChangeError("Synthetic fixture is unavailable; preview again after setup")
         generation = fixture

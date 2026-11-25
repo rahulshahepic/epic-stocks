@@ -76,6 +76,9 @@ def _ensure_user_key(user, db) -> None:
 
 def _upsert_user(identity, db: Session) -> User:
     """Create or update a User from a provider UserIdentity. Returns the user."""
+    from scaffold.reviewers import PROVIDER
+    if identity.provider_name == PROVIDER:
+        raise HTTPException(403, 'Directory reviewer identities cannot use an external sign-in provider')
     if not identity.email_verified:
         raise HTTPException(status_code=403, detail="Email address is not verified by the identity provider")
     email = identity.email

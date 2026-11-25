@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
+import * as retirementMath from '../app/pages/Retirement.math.ts'
 import { resetMeCache } from '../scaffold/hooks/useMe.ts'
 import { ViewingProvider } from '../scaffold/contexts/ViewingContext.tsx'
 import { useViewing } from '../scaffold/contexts/viewing.ts'
@@ -71,6 +72,24 @@ it('accepts plain-dollar spending and preserves thousands in saved parameters', 
   })
   fireEvent.change(field, {target: {value: '10000001'}})
   expect(field).toHaveAttribute('aria-invalid', 'true')
+})
+
+it('compares on paired paths and advances both ages without changing the saved date', async () => {
+  mockApi({savedParams: {retirementDate: '2032-01-01', epicExitMode: 'manual', epicExit: 2, paths: 10,
+    currentAge: 55, includeSpouse: true, spouseDOB: '1968-01-01', defaultSpend: 65, minSpend: 50}})
+  const run = vi.spyOn(retirementMath, 'simulate')
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await userEvent.click(await screen.findByRole('button', {name: /Simulate 10 retirements/}))
+  await userEvent.click(await screen.findByRole('button', {name: 'Compare one year later'}))
+  expect(await screen.findByRole('columnheader', {name: 'Jan 1, 2033'})).toBeVisible()
+  expect(run).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    currentAge: 55, spouseCurrentAge: 64, simulationStartDate: '2032-01-01',
+  }), expect.any(Number))
+  expect(run).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    currentAge: 56, spouseCurrentAge: 65, simulationStartDate: '2033-01-01', epicExit: 2,
+  }), run.mock.calls[0][1])
+  expect(vi.mocked(fetch).mock.calls.some(([, init]) =>
+    init?.method === 'PUT' && JSON.parse(String(init.body)).params.retirementDate === '2033-01-01')).toBe(false)
 })
 
 it('warns about an invalid legacy amount while saving edits to other fields', async () => {

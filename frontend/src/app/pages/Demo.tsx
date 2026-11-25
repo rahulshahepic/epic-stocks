@@ -51,7 +51,7 @@ export default function Demo() {
   const [saleShares, setSaleShares] = useState('100')
   const [requestedShares, setRequestedShares] = useState<number>()
   const [breakdowns, setBreakdowns] = useState(new Set<string>())
-  const [spend, setSpend] = useState('65')
+  const [spend, setSpend] = useState('65000')
   const [simulation, setSimulation] = useState<DemoSimulation | null>(null)
   const [simulating, setSimulating] = useState(false)
   const worker = useRef<Worker | null>(null)
@@ -97,7 +97,7 @@ export default function Demo() {
     setRetirementDate('2032-01-01')
     setRequestedShares(undefined)
     setSaleShares('100')
-    setSpend('65')
+    setSpend('65000')
     setTab('Overview')
     setRevision((v) => v + 1)
   }
@@ -143,8 +143,8 @@ export default function Demo() {
       epicExit: data.exit.net_cash / 1_000_000,
       taxableAdditional: info.other_assets_m,
       additionalBasis: info.other_assets_m,
-      defaultSpend: Number(spend),
-      minSpend: Number(spend) * 0.7,
+      defaultSpend: Number(spend) / 1000,
+      minSpend: Number(spend) * 0.7 / 1000,
       currentAge: age,
       endAge: 95,
       simulationStartDate: retirementDate,
@@ -187,7 +187,7 @@ export default function Demo() {
               invalidate()
               setProfile(key)
               setRequestedShares(undefined)
-              setSpend(key === 'early' ? '40' : key === 'exit' ? '90' : '65')
+              setSpend(key === 'early' ? '40000' : key === 'exit' ? '90000' : '65000')
               setRevision((v) => v + 1)
             }}
           >
@@ -436,12 +436,12 @@ export default function Demo() {
                 }}
               >
                 <label className="min-w-0 flex-1 text-xs font-semibold">
-                  Annual spending ($ thousands)
+                  Annual spending ($)
                   <input
                     className={input}
                     type="number"
-                    min="1"
-                    max="500"
+                    min="1000"
+                    max="500000"
                     required
                     value={spend}
                     onChange={(e) => {
@@ -452,6 +452,7 @@ export default function Demo() {
                       setSimulation(null)
                     }}
                   />
+                  {spend && <span className="mt-1 block font-normal text-cs-muted">{fmt$(Number(spend))} per year</span>}
                 </label>
                 <button
                   className={button}

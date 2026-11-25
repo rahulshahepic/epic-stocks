@@ -1,6 +1,6 @@
 # Epic Stocks (Unofficial)
 
-Retirement money inputs accept **dollars**, with the interpreted amount below
+The web, fictional demo, and ChatGPT retirement editors accept **dollars**. The web planner shows the interpreted amount below
 each field. Saved simulation parameters still use millions for assets and
 thousands for annual spending, so existing plans keep their units. Web and MCP
 share bounds from `backend/app/financial_terms.json`; invalid edits do not
@@ -49,9 +49,23 @@ The ChatGPT plugin uses the same price writes and shows applicable/announcement 
 
 Nothing is sent on a price's applicable date (January 1): Epic announces the price later and backdates it. Once a price's expected announcement date (March 1 by default) has passed and it is still a tentative estimate, the daily notification sends one **Update your share price** reminder that opens the Prices page; it is not sent if you have already confirmed the price, and moving the expected announcement date re-arms it. Several overdue estimates produce one reminder. A reminder that fails to deliver stays pending for the next run. Shared viewers do not get it. Other event notifications identify monetary values using a tentative price. On the dashboard, a **Next Event** that is an estimated price change reads *Share Price (est.)* with the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
 
+## First import and retirement comparison
+
+The welcome page puts **Try the demo**, **Import my files**, and **Sign in**
+before the campus artwork. Eureka import starts with what was found and
+any items that need your input. **What the files could verify** shows the
+evidence checks, and **Review individual records** lets you choose which
+records go through the preview and confirmation.
+
+On retirement results, **Compare one year later** uses the same market paths
+and holds spending and account assumptions steady. It shows stock exit cash,
+starting assets, funding risks and optional purchase odds side by side.
+Automatic exit cash is projected for each date, and saved inputs stay in place.
+[Mobile date comparison](screenshots/retirement-date-comparison-light-mobile.png).
+
 ## Purchase planning presets
 
-Cars use a **Sell after** ownership period (10 years initially). Select **Replace when sold** to reuse that period as the replacement interval. Replacement overrides allow a gap or a different price; otherwise each replacement uses the original real purchase price. Each car's sale repays remaining debt and ends its ownership costs. **Existing car trade-in** is net proceeds after payoff, credited only at the first purchase; later car sales are calculated automatically.
+The car editor summarizes price, ownership costs, sale timing and purchase rules above **Add event**. Cars use a **Sell after** ownership period (10 years initially). Select **Replace when sold** to reuse that period as the replacement interval. Replacement overrides allow a gap or a different price; otherwise each replacement uses the original real purchase price. Each car's sale repays remaining debt and ends its ownership costs. **Existing car trade-in** is net proceeds after payoff, credited only at the first purchase; later car sales are calculated automatically.
 
 Choose a depreciation schedule instead of entering a rate. The following are approximate **nominal retained values**, with linear interpolation between years. An optional age at each purchase applies the remaining curve relative to the used-car price paid. Collector means an assumed flat nominal price, not a promised investment return. Existing plans keep their custom rates until edited.
 

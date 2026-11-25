@@ -1053,11 +1053,17 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             else:
                 break
 
+    from services.price_state import price_metadata
+
     next_event = None
     for e in timeline:
         edate = _to_date(e["date"])
         if edate >= today:
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
+            if e["event_type"] == "Share Price":
+                row = next((price for price in inputs.prices if price.effective_date == edate), None)
+                if row is not None:
+                    next_event.update(price_metadata(row, cutoff))
             break
 
     # Investment interest deduction: interest actually paid by the cutoff,
@@ -1087,7 +1093,6 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         else:
             break
 
-    from services.price_state import price_metadata
     applicable_price = next((p for p in reversed(inputs.prices) if p.effective_date <= cutoff), None)
     metadata = price_metadata(applicable_price, cutoff) if applicable_price else {}
     price_is_estimate = metadata.get("price_is_estimate", False)

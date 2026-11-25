@@ -166,9 +166,8 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
 
       {stage === 'result' && result && (
         <div className="mt-4 border-t border-cs-border pt-3">
-          <ImportEvidence evidence={result.reconciliation ?? []} />
-          {typeof result.draft.statement_date === 'string' && <p className="mt-2 text-xs text-cs-text-2">Statement dated {result.draft.statement_date}. Changes below compare these files with your saved records.</p>}
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+          <h2 className="text-sm font-semibold text-cs-text">What we found</h2>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <Stat label="Grants" value={String(result.summary.grants)} />
             <Stat label="Loans" value={String(result.summary.loans)} />
             <Stat label="Total shares" value={result.summary.total_shares.toLocaleString()} />
@@ -188,10 +187,20 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
               ? 'The statement does not add up to its own totals — some of it was misread.'
               : counts.errors > 0
                 ? `${counts.errors} figure(s) do not agree between your two files.`
-                : 'No blocking discrepancies found. Review Needs you, FYI checks and any missing evidence before saving.'}
+                : result.changes.length || answered.length
+                  ? 'You can preview these changes. Review anything that needs your input before saving.'
+                  : 'No changes to preview.'}
           </p>
 
+          {result.reconciliation?.some(check => check.status === 'stale') &&
+            <p className="mt-2 text-xs text-cs-text-2">The loan statement is out of date. Use a recent statement before relying on the balance.</p>}
+
           <FindingList findings={result.findings} grouped collapseAll={!result.blocked && counts.errors === 0 && !result.changes.length && !answered.length} />
+          {!!result.reconciliation?.length && <details className="mt-3 rounded-md border border-cs-border p-3">
+            <summary className="min-h-7 cursor-pointer text-xs font-semibold text-cs-text">What the files could verify</summary>
+            {typeof result.draft.statement_date === 'string' && <p className="my-2 text-xs text-cs-text-2">Statement dated {result.draft.statement_date}.</p>}
+            <ImportEvidence evidence={result.reconciliation} />
+          </details>}
 
           {(result.blocked || counts.errors > 0 || counts.warnings > 0) && (
             <p className="mt-2">
@@ -219,7 +228,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
               <p className="text-xs font-semibold text-cs-text">Shares that left a grant</p>
               <p className="mt-1 text-xs text-cs-muted">
                 Your files show these shares gone but not when or for how much. Fill in a
-                sale only if it was one; leave it blank otherwise.
+                sale only if it was one. You can leave it blank and record it later.
               </p>
               {result.unanswered_sales.map((sale, i) => (
                 <div key={i} className="mt-2 grid grid-cols-[1fr_1fr_1fr] items-end gap-2 text-xs">

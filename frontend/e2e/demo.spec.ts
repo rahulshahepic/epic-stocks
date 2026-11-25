@@ -22,7 +22,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto('/login')
       expect((await new AxeBuilder({page}).analyze()).violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await page
-        .getByRole('link', { name: /Explore a fictional employee demo/ })
+        .getByRole('link', { name: 'Try the demo' })
         .click()
       await expect(
         page.getByText('Estimated cash if leaving', { exact: false })
@@ -59,6 +59,9 @@ for (const theme of ['light', 'dark'] as const) {
       await page
         .getByRole('button', { name: 'Retirement', exact: true })
         .click()
+      const spending = page.getByLabel('Annual spending ($)')
+      await expect(spending).toHaveValue('90000')
+      await expect(page.getByText('$90,000 per year', { exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'Run simulation' }).click()
       await expect(page.getByLabel('Retirement results')).toBeVisible({
         timeout: 25000

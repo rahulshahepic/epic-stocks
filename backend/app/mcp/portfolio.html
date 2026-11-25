@@ -80,7 +80,12 @@
       const metrics=el('div',undefined,'metrics');
       metrics.append(metric('Stock value',money(data.total_stock_value)),metric('Outstanding loans',money(data.outstanding_loan_balance)),metric('Held vested shares',number(data.held_vested_shares)),metric('Accrued interest',money(data.accrued_unbooked_interest)));
       root.append(metrics,el('p','Already-purchased unvested shares are valued at cost. Future scheduled shares are not current holdings.','muted'));
-      if(data.next_event) root.append(row('Next scheduled event',when(data.next_event.date)+' · '+data.next_event.event_type));
+      if(data.next_event) {
+        const next=data.next_event;
+        const tentative=next.event_type==='Share Price' && next.price_is_estimate;
+        const announcement=tentative && next.expected_announcement_date ? ' · announcement expected '+when(next.expected_announcement_date) : '';
+        root.append(row('Next scheduled event',when(next.date)+' · '+next.event_type+(tentative?' (tentative)':'')+announcement));
+      }
     } else if(snapshot.view==='grants') {
       root.append(el('h2','Your grants'));
       if(!data.grants?.length) root.append(el('p','No grants recorded yet. Add them in Epic Stocks or ask your assistant to help enter a grant.','muted'));

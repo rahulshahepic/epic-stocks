@@ -1,3 +1,4 @@
+import { fmtFullDate } from '../format.ts'
 import { useId, useState } from 'react'
 import { localToday } from '../dateUtils.ts'
 import PurchaseResults from './PurchaseResults.tsx'
@@ -34,6 +35,19 @@ function PercentInput({ value, onChange, ...props }: {
   return <input {...props} type="number" value={text ?? format(value)} onFocus={() => setText(format(value))}
     onChange={e => { setText(e.target.value); onChange(e.target.value === '' ? undefined : Number(e.target.value) / 100) }}
     onBlur={() => setText(null)} />
+}
+
+function purchaseRule(event: PlannedEvent): string {
+  const conditions = [
+    event.condition?.requireFullSpending ? 'regular spending stays at its target' : '',
+    event.condition?.minPortfolioM != null ? `the portfolio is at least ${dollar(event.condition.minPortfolioM * 1_000_000)}` : '',
+    event.condition?.minStartingWealthRatio != null ? `the portfolio is at least ${Number((event.condition.minStartingWealthRatio * 100).toFixed(8))}% of starting wealth` : '',
+  ].filter(Boolean)
+  if (!conditions.length) return ''
+  const fallback = event.conditionFailure === 'defer'
+    ? `Otherwise, check again monthly${event.deadlineDate ? ` until ${fmtFullDate(event.deadlineDate)}` : ''}.`
+    : 'Otherwise, skip the purchase.'
+  return `Buy only if ${conditions.join(' and ')}. ${fallback}`
 }
 
 export default function LifeEventsPlanner({
@@ -174,11 +188,7 @@ export default function LifeEventsPlanner({
                 {event.annualCostM && event.amountM > 0 ? <span className="text-cs-muted"> + {dollar(event.annualCostM * 1_000_000)}/yr</span> : null}
                 {event.durationYears ? <span className="text-cs-muted"> · {event.durationYears} years</span> : null}
                 {event.loanYears ? <span className="text-cs-muted"> · financed over {event.loanYears} years</span> : null}
-                {event.condition && <span className="block text-cs-text-2">Buy only if: {[
-                  event.condition.requireFullSpending ? 'regular spending is not cut' : '',
-                  event.condition.minPortfolioM != null ? `portfolio ≥ ${dollar(event.condition.minPortfolioM * 1_000_000)}` : '',
-                  event.condition.minStartingWealthRatio != null ? `portfolio ≥ ${Math.round(event.condition.minStartingWealthRatio * 100)}% of starting wealth` : '',
-                ].filter(Boolean).join(' and ')}. {event.conditionFailure === 'defer' ? `Otherwise wait and check monthly${event.deadlineDate ? ' until ' + event.deadlineDate : ''}.` : 'Otherwise skip.'}</span>}
+                {event.condition && <span className="block text-cs-text-2">{purchaseRule(event)}</span>}
                 {event.lifetimeYears && <span className="block text-cs-text-2">Sell after {event.lifetimeYears} years · {event.depreciationProfile ? DEPRECIATION_PROFILES[event.depreciationProfile].label : `${((event.depreciationRate ?? 0) * 100).toFixed(1)}% annual nominal depreciation`}</span>}
                 {event.funding === 'epic' ? <span className="text-cs-muted"> · hypothetical Epic sale</span> : null}
               </div>
@@ -393,6 +403,20 @@ export default function LifeEventsPlanner({
               </div>
             </details>
           </div>
+          {draft.kind === 'vehicle' && <section aria-label="Car plan summary" className="rounded-lg border border-cs-border bg-cs-surface p-3 text-sm text-cs-text">
+            <p className="font-semibold">Your car plan</p>
+            <p className="mt-1 text-xs leading-relaxed text-cs-text-2">
+              {draft.amountM > 0 ? `Buy for ${dollar(draft.amountM * 1_000_000)}` : 'Enter a purchase price'}
+              {draft.date ? ` on ${fmtFullDate(draft.date)}` : ''}
+              {financed && (draft.downPaymentPct ?? 1) < 1 ? `, with ${Number(((draft.downPaymentPct ?? 1) * 100).toFixed(8))}% down and a ${draft.loanYears}-year loan` : ''}.
+              {draft.annualCostM ? ` Budget ${dollar(draft.annualCostM * 1_000_000)} a year while you own it.` : ''}
+              {draft.lifetimeYears ? ` Sell after ${draft.lifetimeYears} ${draft.lifetimeYears === 1 ? 'year' : 'years'}.` :
+                draft.resaleDate ? ` Sell on ${fmtFullDate(draft.resaleDate)}.` : ''}
+              {draft.replacementEveryYears ? ` Replace ${linkedReplacement ? 'when sold' : `every ${draft.replacementEveryYears} years`}${draft.replacementCostM ? ` for ${dollar(draft.replacementCostM * 1_000_000)}` : ''}.` : ''}
+              {' '}Amounts in {amountYear} dollars.
+            </p>
+            {draft.condition && <p className="mt-1 text-xs leading-relaxed text-cs-text-2">{purchaseRule(draft)}</p>}
+          </section>}
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button type="button" className="min-h-11 flex-1 rounded-lg bg-cs-text px-3 py-2 text-sm font-semibold text-cs-surface"

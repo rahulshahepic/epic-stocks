@@ -99,8 +99,9 @@ function renderTry() {
   )
 }
 
-async function upload() {
+async function upload(withStatement = true) {
   await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), csv())
+  if (withStatement) await userEvent.upload(screen.getByLabelText(/Stock Loan Statement/i), new File(['pdf'], 'loans.pdf', { type: 'application/pdf' }))
   await userEvent.click(screen.getByRole('button', { name: 'See my numbers' }))
 }
 
@@ -126,7 +127,7 @@ describe('Try — upload stage', () => {
     await userEvent.click(screen.getByText('Which files do I need?'))
     expect(screen.getByText(/No loans\? You can skip/)).toBeVisible()
     expect(screen.getByText(/Files are sent to the server/)).toBeVisible()
-    await upload()
+    await upload(false)
     expect(screen.getByText(/No loan statement uploaded/)).toBeVisible()
   })
 
@@ -161,10 +162,32 @@ describe('Try — preview', () => {
 
     // Vested 400 × $10 = $4,000, plus unvested 200 at their $8 cost = $1,600,
     // less $700 of loans.
-    expect(await screen.findByText('Net worth · as of', { exact: false })).toBeInTheDocument()
+    expect(await screen.findByText('Stock equity · as of', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('$4,900')).toBeInTheDocument()
     expect(screen.getByText('Vested shares')).toBeInTheDocument()
     expect(screen.getByText('Loan balance')).toBeInTheDocument()
+  })
+
+  it('keeps missing debt unknown and the sales caveat beside the headline', async () => {
+    mockFetch({ ...CLEAN, loans: [] })
+    renderTry()
+    await upload(false)
+    const title = await screen.findByText(/Stock value \(loans not included\)/)
+    expect(title.parentElement).toHaveTextContent('Loans: not uploaded')
+    expect(title.parentElement).toHaveTextContent('cannot subtract shares you have sold')
+    expect(screen.getByText('Not uploaded')).toBeInTheDocument()
+    expect(screen.queryByText(/Stock equity · as of/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\$0 loans/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /fictional employee demo/i })).not.toBeInTheDocument()
+  })
+
+  it('shows a known zero loan balance when a statement reports none', async () => {
+    mockFetch({ ...CLEAN, loans: [] })
+    renderTry()
+    await upload()
+    const title = await screen.findByText(/Stock equity · as of/)
+    expect(title.parentElement).toHaveTextContent('$0 loans')
+    expect(screen.queryByText('Not uploaded')).not.toBeInTheDocument()
   })
 
   it('values unvested shares at cost, not at zero', async () => {
@@ -197,7 +220,7 @@ describe('Try — preview', () => {
     renderTry()
     await upload()
 
-    await screen.findByText('Net worth · as of', { exact: false })
+    await screen.findByText('Stock equity · as of', { exact: false })
     expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
   })
 
@@ -220,7 +243,7 @@ describe('Try — preview', () => {
     mockFetch(CLEAN)
     renderTry()
     await upload()
-    await screen.findByText('Net worth · as of', { exact: false })
+    await screen.findByText('Stock equity · as of', { exact: false })
     expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
   })
 

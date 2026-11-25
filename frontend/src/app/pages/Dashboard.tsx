@@ -334,6 +334,8 @@ export default function Dashboard() {
   const hasInterestDeduction = (cv?.interest_deduction_total ?? 0) > 0
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
   const showDeductionCard = !!cv && (hasInterestDeduction || hasInterestLoans)
+  const hasPrice = cv != null && cv.current_price !== null
+  const hasPastRecords = events?.some(e => e.event_type !== 'Share Price' && e.date < `${today.slice(0, 4)}-01-01`)
   const totalValue = cv?.total_stock_value ?? null
   const datedExit = exitPreview && exitPreview !== 'loading' && exitPreview.date === cardDate ? exitPreview : null
 
@@ -360,19 +362,20 @@ export default function Dashboard() {
             <div>
               <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (cv.net_equity === null ? '—' : fmt$(cv.net_equity))}
+                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (cv.net_equity === null ? '—' : fmt$(cv.net_equity))}
               </p>
-              <p className="mt-2 text-sm font-semibold text-white">{showExitPreview ? 'Estimated cash from leaving on this date' : 'Stock equity before exit tax'}</p>
-              {showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
-              {showExitPreview && datedExit && <p className="mt-2 text-xs text-white">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection come from your saved settings; price {cv.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>}
+              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitPreview ? 'Estimated cash from leaving on this date' : 'Stock equity before exit tax'}</p>
+              {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
+              {hasPrice && showExitPreview && datedExit && <p className="mt-2 text-xs text-white">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection come from your saved settings; price {cv.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>}
               {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
             </div>
             <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
               <p className="font-bold tabular-nums">
-                {totalValue === null ? '—' : fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans
+                {totalValue === null ? 'Stock value needs a share price' : `${fmt$(totalValue)} in shares`}
+                {cv.total_loan_principal > 0 && <> − {fmt$(cv.total_loan_principal)} loans</>}
                 {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
               </p>
-              {cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
+              {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
               <p className="font-semibold tabular-nums">
                 {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}
                 {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
@@ -449,7 +452,7 @@ export default function Dashboard() {
         {dashError ? <>Could not load totals for {fmtFullDate(cardDate)}. <button type="button" onClick={reloadDash} className="underline">Retry</button></> : 'Loading totals…'}
       </div>}
 
-      {snapshot && showExitPreview && (
+      {snapshot && hasPrice && showExitPreview && (
         <div aria-live="polite" aria-atomic="true" className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">
             If you exited on this date
@@ -497,7 +500,7 @@ export default function Dashboard() {
         <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
           totalValue={totalValue} openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
 
-        <details className="space-y-3">
+        {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0) && <details className="space-y-3">
           <summary className="cursor-pointer py-2 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
           <EarningsCards cv={cv} breakdowns={breakdowns}
             openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
@@ -505,11 +508,11 @@ export default function Dashboard() {
           <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
             hasInterestDeduction={hasInterestDeduction}
             openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-        </details>
+        </details>}
       </div>}
 
 
-      {!readOnly && snapshot && <AnnualStockSummary />}
+      {!readOnly && snapshot && hasPastRecords && <AnnualStockSummary />}
 
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction

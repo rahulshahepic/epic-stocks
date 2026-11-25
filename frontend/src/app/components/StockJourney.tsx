@@ -80,7 +80,7 @@ export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: 
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <Eyebrow>Follow the garden path</Eyebrow>
-          <h2 className="mt-1 font-serif text-xl font-semibold text-cs-text sm:text-2xl">Your stock journey</h2>
+          <h2 className="mt-1 font-serif text-xl font-semibold text-cs-text sm:text-2xl">Upcoming stock events</h2>
         </div>
         <p className="text-xs text-cs-muted">Next {milestones.length} milestone{milestones.length === 1 ? '' : 's'}</p>
       </div>

@@ -147,15 +147,19 @@ The demo starts on a fixed fictional date (November 24, 2026) and supports explo
 | ![Demo overview](screenshots/demo-overview-light-mobile.png) | ![Demo sale](screenshots/demo-sale-light-mobile.png) | ![Demo retirement](screenshots/demo-retirement-light-mobile.png) |
 
 
-Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Eureka — no sign-in, no email.
+The empty dashboard recommends **Import from Eureka**; expand **Other ways to start** for an assistant, a first offer, manual entry or workbook restore. Accounts without a price show share counts and a single **Add a price** step; empty financial charts and exit placeholders stay hidden. Annual summaries appear once the account has stock events from a completed year.
+
+Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Eureka — no sign-in, no email. Without a loan statement, the preview labels its headline **Stock value (loans not included)** and keeps the loan balance unknown. The headline also warns that sold shares cannot be subtracted from these files.
 
 What you get is the app itself, running on your numbers in that browser tab:
 
-- a **Dashboard** tab — net worth, vested shares, share price, value, cost basis, income, capital gains, loan balance, estimated tax, next event, and the shares / income-and-gains / share-price charts;
+- a **Dashboard** tab — stock equity (or stock value when loans are unknown), vested shares, share price, value, cost basis, income, capital gains, loan balance, estimated tax, next event, and the shares / income-and-gains / share-price charts;
 - an **Events** tab — the full computed timeline, with everything after your as-of date dimmed as projection;
 - an **as-of date control** (with Today and Last event shortcuts) that moves the whole position to any date you pick.
 
 Tax figures use the same default rates a new account starts with, read straight off the model, so nothing shifts underneath you when you sign up. Nothing is written anywhere — refreshing clears it. If you like what you see, one button carries the computed data into sign-up, so you don't re-upload; it lands in your new account already imported.
+
+First-use checks: [partial preview](screenshots/first-use-trial-light-mobile.png), [empty account](screenshots/first-use-empty-light-mobile.png), [unpriced account](screenshots/first-use-sparse-light-mobile.png).
 
 The preview then says what an account adds that a one-off read cannot: notifications before each vest and payoff, the retirement simulator, the total-comp calculator, your own tax rates, sales history — and [connecting ChatGPT or Claude](#connecting-your-own-ai) to the numbers you are looking at. The sign-in page lists the same things, so the choice between previewing and signing up is answerable before you do either.
 

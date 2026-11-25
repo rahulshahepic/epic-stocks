@@ -23,6 +23,29 @@ def test_public_setup_has_no_auth_or_host_spoofing(client, domain, environment, 
         assert client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}).status_code == 401
 
 
+@pytest.mark.parametrize('domain,staging', [('epic-stocks.com', False), ('staging.epic-stocks.com', True)])
+def test_public_discovery_explains_value_and_first_import(client, domain, staging):
+    with patch.dict('os.environ', {'DOMAIN': domain}):
+        doc = client.get('/mcp/setup.json').json()
+        page = client.get('/mcp-setup').text
+        llms = client.get('/llms.txt').text
+
+    for surface in (page, llms, json.dumps(doc)):
+        assert 'when your shares vest' in surface
+        assert 'if you left Epic' in surface
+        assert 'get_import_guide' in surface
+        if staging:
+            assert 'get_account_context' in surface
+            assert 'fictional documents only' in surface
+        else:
+            assert 'DocuSign' in surface
+            assert 'Stock Loan Statement' in surface
+            assert 'Eureka' in surface
+            assert 'before saving' in surface
+    if not staging:
+        assert doc['first_run']['import']['required_scope'] == 'equity:write'
+
+
 @pytest.mark.parametrize('platform', ['chatgpt', 'claude'])
 def test_staging_public_packages_target_staging_only(client, platform):
     with patch.dict('os.environ', {'DOMAIN': 'staging.epic-stocks.com'}):
@@ -68,6 +91,11 @@ def test_cloudflare_plan_only_exempts_public_documents():
     assert 'http.request.method in {"GET" "HEAD"}' in plan['body']['expression']
     assert not any(p.startswith('/api/') or p in {'/mcp', '/admin-mcp'} for p in plan['public_paths'])
     assert plan['body']['action'] == 'managed_challenge'
+    assert plan['browser_integrity_rule']['expression'] == plan['body']['expression'].removeprefix(
+        '(' + plan['previous_expression'] + ') and not '
+    )
+    assert plan['browser_integrity_rule']['action'] == 'skip'
+    assert plan['browser_integrity_rule']['action_parameters'] == {'products': ['bic']}
 
 
 def test_public_setup_supports_head_and_never_sets_account_cookies(client):

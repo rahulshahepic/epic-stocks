@@ -11,14 +11,21 @@ async function capture(page: Page, file: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   for (const device of ['mobile', 'desktop'] as const) {
-    test(`staging fake account and MCP setup ${theme} ${device}`, async ({ page }) => {
-      test.skip(!(await (await page.request.get('/api/config')).json()).staging_demo, 'Staging-only workflow')
+    test(`public MCP setup ${theme} ${device}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: theme })
       await page.setViewportSize(device === 'mobile' ? { width: 375, height: 812 } : { width: 1280, height: 900 })
       await page.goto('/mcp-setup')
       await expect(page.getByRole('heading', { name: 'Connect an AI assistant' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'After connecting' })).toBeVisible()
+      await expect(page.getByText('get_import_guide', { exact: true })).toBeVisible()
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
       await capture(page, `../screenshots/mcp-public-setup-${theme}-${device}.png`)
+    })
+
+    test(`staging fake account and MCP setup ${theme} ${device}`, async ({ page }) => {
+      test.skip(!(await (await page.request.get('/api/config')).json()).staging_demo, 'Staging-only workflow')
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(device === 'mobile' ? { width: 375, height: 812 } : { width: 1280, height: 900 })
       await page.request.post('/api/auth/test-login', { data: { email: `seed-${theme}-${device}-${test.info().retry}@e2e.test`, name: 'Fictional Test User' } })
       await page.goto('/')
       await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toBeVisible()

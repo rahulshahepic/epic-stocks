@@ -20,5 +20,20 @@
     "/mcp-sitemap.xml",
     "/mcp-setup/plugin/chatgpt",
     "/mcp-setup/plugin/claude"
-  ]
+  ],
+  "browser_integrity_rule": {
+    "action": "skip",
+    "action_parameters": {
+      "products": [
+        "bic"
+      ]
+    },
+    "description": "Browser Integrity Check exception for public MCP discovery",
+    "enabled": true,
+    "expression": "(http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})",
+    "logging": {
+      "enabled": true
+    },
+    "ref": "public_mcp_discovery_bic"
+  }
 }

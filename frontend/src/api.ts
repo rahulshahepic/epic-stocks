@@ -573,7 +573,7 @@ export const api = {
     post<PriceEntry>('/api/flows/annual-price', data),
 
   // User info
-  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null }>('/api/me'),
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null; reviewer_account?: { platform: string; scenario: string; status: string }; staging_account?: { initialized: boolean; synthetic: boolean; scenario: string | null; generation: string | null } }>('/api/me'),
   updateProfile: (body: { date_of_birth?: string | null }, signal?: AbortSignal) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body), ...(signal ? { signal } : {}) }),
   getRetirementParams: () => apiFetch<RetirementParamsResponse>('/api/retirement/params'),
   saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<RetirementParamsResponse>('/api/retirement/params', { params, preserve_planned_expenses: true }, signal),

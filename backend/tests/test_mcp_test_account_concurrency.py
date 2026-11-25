@@ -276,3 +276,39 @@ def test_browser_read_guard_excludes_reset(isolated_database):
             preview = _reset(browser, {'scenario': 'exit'}, browser=True)
             restored = _reset(browser, {'scenario': 'exit', 'confirm': preview['confirm']}, browser=True)
         assert restored['generation'] != initial['generation']
+
+
+def test_directory_reviewers_write_independently_in_parallel(isolated_database):
+    from scaffold import reviewers
+    from scaffold.models import Price, ReviewerAccount
+    from scaffold.synthetic_accounts import synthetic_key
+    factory = isolated_database[0]
+    identities = []
+    with factory() as db:
+        for platform in ('openai', 'anthropic'):
+            _, digest = reviewers.credentials()
+            info = reviewers.grant_access(db, {'platform': platform, 'scenario': 'early', 'days': 30, 'credential_hash': digest})
+            uid = db.get(ReviewerAccount, info['id']).user_id
+            grant = OAuthGrant(user_id=uid, client_id=f'fictional-{platform}', client_name='Fictional directory review',
+                               scope='equity:read equity:write')
+            db.add(grant)
+            db.commit()
+            identities.append((uid, grant.id))
+    barrier = threading.Barrier(2)
+
+    def write(index):
+        barrier.wait()
+        uid, gid = identities[index]
+        with factory() as db:
+            user, grant = db.get(User, uid), db.get(OAuthGrant, gid)
+            ctx = ToolContext(Connector(user, grant, grant.scope.split()), db)
+            db.commit()
+            changes = [{'kind': 'price', 'action': 'create', 'values': {'effective_date': '2044-01-01', 'price': 700 + index * 100}}]
+            with synthetic_key(db, uid):
+                preview = invoke(ctx, 'apply_changes', changes=changes)
+                invoke(ctx, 'apply_changes', changes=changes, confirm=preview['confirm'])
+                price = db.query(Price).filter_by(user_id=uid).order_by(Price.effective_date.desc()).first()
+                return price.price
+
+    with ThreadPoolExecutor(2) as pool:
+        assert list(pool.map(write, range(2))) == [700, 800]

@@ -14,7 +14,7 @@ wins; a grant's vesting is a list of dated rows and can say anything.
 """
 
 START_HERE = """\
-1. Read what the person gives you. Any one document is enough to start; you do
+1. Use only financial fields the person explicitly supplies for this import. Never query or extract host memory, chat history, conversation summaries or user files. For raw documents, direct the person to Epic Stocks /import (or /try before sign-in), where the app parses their files without an LLM. Remove government identifiers, signatures, payment details and credentials before sharing excerpts with an assistant. Any one document is enough to start; you do
    not need every file, and nothing is removed because a document leaves it out.
 2. Read the account first (list_grants, list_loans, list_prices, list_sales, or
    account_now below) so you add to it rather than duplicate it.

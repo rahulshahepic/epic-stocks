@@ -29,6 +29,7 @@ from .settings import (
 
 logger = logging.getLogger(__name__)
 
+REVIEWER_ACCESS = "reviewer_access"
 RESUME_ONBOARDING = "resume_onboarding"
 ADD_RULE = "add_redirect_rule"
 ENABLE_RULE = "enable_redirect_rule"
@@ -38,8 +39,8 @@ END_MAINTENANCE = "end_maintenance"
 SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
 GRANT_CONTENT_ADMIN = "grant_content_admin"
 ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
-           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING)
-TARGET_TYPES = {RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, REVIEWER_ACCESS)
+TARGET_TYPES = {REVIEWER_ACCESS: "reviewer", RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
                 UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
                 END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
                 GRANT_CONTENT_ADMIN: "user"}
@@ -114,6 +115,7 @@ def expire_stale(db: Session) -> None:
 
 
 CONSEQUENCES = {
+    REVIEWER_ACCESS: "Creates or rotates restricted fictional reviewer access for up to 90 days. Existing sessions and connections are invalidated on rotation.",
     RESUME_ONBOARDING: "Resumes optional onboarding attempt collection for users who explicitly opt in; existing opt-outs and Do Not Track still apply.",
     ADD_RULE: ("Assistants that register this redirect address can be sent sign-in codes "
                "after a user approves the consent screen."),
@@ -130,6 +132,9 @@ CONSEQUENCES = {
 
 def describe(row: AdminActionRequest) -> str:
     payload = json.loads(row.payload)
+    if row.action == REVIEWER_ACCESS:
+        target = f"rotate reviewer #{payload['reviewer_id']}" if payload.get('reviewer_id') else 'provision a new reviewer'
+        return f"{payload['platform']}: {target}, {payload['scenario']} fictional data, {payload['days']} days"
     if row.action == RESUME_ONBOARDING:
         return "Resume optional onboarding measurement"
     if row.action == ADD_RULE:
@@ -178,6 +183,9 @@ def _target_id(payload: dict) -> int | None:
 def _validate(db: Session, action: str, args: dict) -> dict:
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock
 
+    if action == REVIEWER_ACCESS:
+        from scaffold.reviewers import validate_access
+        return validate_access(db, args)
     if action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused
         if not paused(db):
@@ -216,6 +224,8 @@ def _validate(db: Session, action: str, args: dict) -> dict:
         if action == UNBLOCK_SENDING:
             if not db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first():
                 raise ValueError("That account is not blocked from sending")
+        elif user.is_synthetic:
+            raise ValueError("Fictional accounts cannot receive administrative privileges")
         elif user.is_content_admin:
             raise ValueError("That account is already a content admin")
         return {"user_id": user.id, "email": user.email}
@@ -359,6 +369,10 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock, User
 
     payload = json.loads(row.payload)
+    if row.action == REVIEWER_ACCESS:
+        from scaffold.reviewers import grant_access
+        result = grant_access(db, payload)
+        return "Reviewer access granted", None, result
     if row.action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused, set_paused
         if not paused(db):
@@ -414,6 +428,8 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         user = db.get(User, payload["user_id"])
         if user is None:
             raise ValueError("That account no longer exists")
+        if user.is_synthetic:
+            raise ValueError("Fictional accounts cannot receive administrative privileges")
         if user.is_content_admin:
             raise ValueError("That account is already a content admin")
         state = {"id": user.id, "email": user.email}

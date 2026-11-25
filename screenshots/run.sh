@@ -4,6 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+SCREENSHOT_BACKEND_PORT=${SCREENSHOT_BACKEND_PORT:-8000}
+export VITE_BACKEND_ORIGIN="http://localhost:$SCREENSHOT_BACKEND_PORT"
 BACKEND_PID=0
 FRONTEND_PID=0
 
@@ -39,12 +41,12 @@ DATABASE_URL="sqlite:///$TMPDB" JWT_SECRET="screenshots-secret" E2E_TEST=1 \
   "$PY" screenshots/seed.py > /tmp/screenshot_token.txt
 TOKEN=$(cat /tmp/screenshot_token.txt)
 
-echo "==> Starting backend on :8000..."
+echo "==> Starting backend on :$SCREENSHOT_BACKEND_PORT..."
 DATABASE_URL="sqlite:///$TMPDB" \
   OIDC_PROVIDERS='[{"name":"google","label":"Google","client_id":"demo.apps.googleusercontent.com","client_secret":"demo-secret","discovery_url":"https://accounts.google.com/.well-known/openid-configuration"}]' \
   ADMIN_EMAIL="demo@example.com;admin@e2e.test" \
   E2E_TEST=1 JWT_SECRET="screenshots-secret" \
-  setsid "$PY" -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend \
+  setsid "$PY" -m uvicorn main:app --host 127.0.0.1 --port "$SCREENSHOT_BACKEND_PORT" --app-dir backend \
   > /tmp/screenshots-backend.log 2>&1 &
 BACKEND_PID=$!
 
@@ -69,7 +71,7 @@ wait_for() {
   tail -40 "$log" >&2 || true
   return 1
 }
-wait_for http://127.0.0.1:8000/api/health backend  /tmp/screenshots-backend.log
+wait_for "http://127.0.0.1:$SCREENSHOT_BACKEND_PORT/api/health" backend  /tmp/screenshots-backend.log
 wait_for http://127.0.0.1:5173            frontend /tmp/screenshots-frontend.log
 echo "    Both services ready."
 

@@ -5,6 +5,7 @@ import { UserDetailModal } from './admin/UserDetailModal.tsx'
 import { ToolsSection } from './admin/ToolsSection.tsx'
 import { OverviewSection } from './admin/OverviewSection.tsx'
 import { SmartTips } from './admin/SmartTips.tsx'
+import { Reviewers } from './admin/Reviewers.tsx'
 import { AiConnections } from './admin/AiConnections.tsx'
 import { TrialFunnel } from './admin/TrialFunnel.tsx'
 import { SystemHealth } from './admin/SystemHealth.tsx'
@@ -195,6 +196,7 @@ export default function Admin() {
       <BlockedEmails blocked={blocked} onChanged={load} onError={setError} />
 
       <AiConnections onError={setError} />
+      <Reviewers />
 
       <ReportsSection reports={reports} onReportsChanged={setReports} />
 

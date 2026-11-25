@@ -936,3 +936,39 @@ register(Tool(name='admin_request_resume_onboarding', title='Request resumption 
     description='File an approval request to resume optional onboarding collection. No change happens until approved with the admin’s one-time push code or in the browser. Never overrides individual opt-out/DNT.',
     input_schema=object_schema({'reason': {'type': 'string', 'maxLength': 300}}),
     scope=ADMIN_WRITE, handler=_request(admin_requests.RESUME_ONBOARDING)))
+
+
+def _reviewers(ctx, args):
+    from scaffold.models import ReviewerAccount
+    from scaffold.reviewers import state
+    return {'reviewers': [state(r) for r in ctx.db.query(ReviewerAccount).order_by(ReviewerAccount.id).all()]}
+
+
+def _reviewer_access(ctx, args):
+    from scaffold.reviewers import credentials
+    raw, digest = credentials()
+    result = _request(admin_requests.REVIEWER_ACCESS)(ctx, {**args, 'credential_hash': digest})
+    return {**result, 'password': raw, 'notice': 'Save this password securely now; it is not retrievable. It works only after human approval. Never paste it into a public issue or repository.'}
+
+
+def _reviewer_manage(action):
+    def handler(ctx, args):
+        from scaffold.routers.reviewers import manage
+        return manage(ctx.db, _id(args, 'reviewer_id'), action, args.get('confirm'), _actor(ctx))
+    return handler
+
+
+register(Tool(name='admin_list_reviewers', title='List fictional reviewer accounts',
+    description='List directory reviewer identities, platform, fixture scenario, expiration and last login. No financial values or credentials.',
+    input_schema=object_schema({}), scope=ADMIN_READ, handler=_reviewers))
+register(Tool(name='admin_request_reviewer_access', title='Request fictional reviewer access',
+    description='Provision an independent OpenAI or Anthropic fictional reviewer, or rotate/extend an existing reviewer. Returns a generated password once. No access is granted until the existing human approval code or browser approval completes. Keep the password private.',
+    input_schema=object_schema({'platform': {'type': 'string', 'enum': ['openai', 'anthropic']},
+        'scenario': {'type': 'string', 'enum': ['early', 'established', 'exit', 'empty']},
+        'days': {'type': 'integer', 'minimum': 1, 'maximum': 90}, 'reviewer_id': _ID, 'reason': _REASON}, ['platform']),
+    scope=ADMIN_WRITE, handler=_reviewer_access, read_only=False, idempotent=False))
+for _action in ('reset', 'revoke', 'delete'):
+    register(Tool(name='admin_' + _action + '_reviewer', title=_action.capitalize() + ' fictional reviewer',
+        description='Preview this action on one fictional reviewer, ask for explicit confirmation, then repeat with the returned confirm token. Reset erases fictional modifications only; revocation invalidates all sessions and OAuth tokens; deletion removes this fictional identity and its data.',
+        input_schema=object_schema({'reviewer_id': _ID, 'confirm': _CONFIRM}, ['reviewer_id']),
+        scope=ADMIN_WRITE, handler=_reviewer_manage(_action), read_only=False, destructive=True, idempotent=False))

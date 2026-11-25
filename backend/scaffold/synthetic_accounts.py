@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import NullPool
 
 from scaffold.crypto import decrypt_user_key, encryption_enabled, get_current_key, set_current_key
-from scaffold.models import MCPTestAccount, User
+from scaffold.models import MCPTestAccount, ReviewerAccount, User
 
 RETENTION_DAYS = 30
 _LOCK_SLOTS = threading.BoundedSemaphore(2)
@@ -100,7 +100,7 @@ def account_lock(db, principal_id, *, shared=False):
 def lifecycle_lock(db, user_id):
     # Production cannot provision fixtures. Historical bindings still need the
     # guard for cleanup, but ordinary production accounts need no lock slot.
-    if not requires_synthetic() and not db.query(MCPTestAccount.id).filter_by(user_id=user_id).first():
+    if not requires_synthetic() and not db.query(MCPTestAccount.id).filter_by(user_id=user_id).first() and not db.query(ReviewerAccount.id).filter_by(user_id=user_id).first():
         yield
         return
     with account_lock(db, user_id):
@@ -133,6 +133,10 @@ def binding(db, user_id, grant_id):
 
 
 def account_context(ctx):
+    from scaffold.reviewers import account as reviewer_account, state
+    reviewer = reviewer_account(ctx.db, ctx.connector.user)
+    if reviewer:
+        return {**state(reviewer), 'environment': environment(), 'synthetic': True, 'initialized': True}
     row = binding(ctx.db, ctx.connector.user.id, ctx.connector.grant.id) if requires_synthetic() else None
     return {'environment': environment(), 'synthetic': bool(row), 'initialized': bool(row) if requires_synthetic() else True,
             'scenario': row.scenario if row else None, 'fixture_version': row.fixture_version if row else None,
@@ -163,6 +167,18 @@ def synthetic_key(db, user_id):
 @contextmanager
 def tool_account(ctx, tool_name, *, read_only=False):
     """All ordinary staging handlers, nested handlers and widget callbacks enter here."""
+    from scaffold.reviewers import identity, active
+    if identity(ctx.connector.user):
+        with account_lock(ctx.db, ctx.connector.user.id, shared=read_only):
+            if not active(ctx.db, ctx.connector.user):
+                raise ValueError('Reviewer access expired or revoked')
+            live = ctx.db.execute(text('SELECT g.user_id, g.session_version, u.session_version FROM oauth_grants g JOIN users u ON u.id=g.user_id WHERE g.id=:gid'), {'gid': ctx.connector.grant.id}).first()
+            if not live or live[0] != ctx.connector.user.id or live[1] != live[2] or live[1] != ctx.connector.grant.session_version:
+                raise ValueError('Reviewer connection was revoked or rotated; reconnect')
+            if tool_name in MANAGEMENT_TOOLS - {'get_account_context'}:
+                raise ValueError('Reviewer datasets are managed deliberately by the administrator')
+            yield account_context(ctx)
+        return
     if not requires_synthetic():
         yield None
         return
@@ -233,7 +249,7 @@ def prune_test_accounts(db):
                     removed += 1
         except ValueError:
             continue  # active call; next maintenance run retries
-    for (uid,) in db.query(User.id).filter(User.is_synthetic.is_(True), ~User.id.in_(db.query(MCPTestAccount.synthetic_id))).all():
+    for (uid,) in db.query(User.id).filter(User.is_synthetic.is_(True), ~User.id.in_(db.query(MCPTestAccount.synthetic_id)), ~User.id.in_(db.query(ReviewerAccount.user_id))).all():
         delete_user(db, uid)
         removed += 1
     db.commit()

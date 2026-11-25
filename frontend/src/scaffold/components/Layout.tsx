@@ -86,10 +86,11 @@ export default function Layout() {
           </nav>
         </header>
       </div>
-      {config && !viewing && !staging && <PushNudge />}
+      {config && !viewing && !staging && !me?.reviewer_account && <PushNudge />}
       <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className="campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 overflow-hidden px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8">
         <CampusCorner variant={motif} className="pointer-events-none absolute -right-5 top-2 h-36 w-52 text-cs-text opacity-70 sm:right-3 lg:h-44 lg:w-64" />
         <div className="relative z-[1]">
+          {me?.reviewer_account && <p role="status" className="mb-4 rounded-xl border border-cs-border bg-cs-surface p-3 text-sm font-semibold">FICTIONAL REVIEW DATA · {me.reviewer_account.platform} · {me.reviewer_account.scenario}. These are invented financial records, not actual Epic prices or personal accounts.</p>}
           {campusWing && <div className="campus-wing-marker max-w-4xl"><span>{campusWing.label}</span><span lang="la" title={campusWing.translation}>{campusWing.motto}</span></div>}
           {!config ? <p role="status">Loading application…</p> : staging && !['/admin', '/content', '/connect-ai'].some(path => location.pathname.startsWith(path)) && !me?.staging_account?.initialized
             ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)

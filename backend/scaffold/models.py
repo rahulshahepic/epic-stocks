@@ -89,6 +89,21 @@ class MCPTestAccount(Base):
                            sqlite_where=text("grant_id IS NULL"), postgresql_where=text("grant_id IS NULL")),)
 
 
+class ReviewerAccount(Base):
+    __tablename__ = "reviewer_accounts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    login: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(12), nullable=False)
+    scenario: Mapped[str] = mapped_column(String(20), nullable=False)
+    fixture_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    generation: Mapped[str] = mapped_column(String(32), nullable=False)
+    credential_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Grant(Base):
     __tablename__ = "grants"
 

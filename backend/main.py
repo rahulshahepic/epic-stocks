@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 import database
 
-from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding
+from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding, reviewers
 from app.routers import demo, interest_checkpoints, changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
@@ -26,7 +26,11 @@ from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_ke
 from database import get_db
 from pydantic import BaseModel, Field
 
+from services.reviewer_fixtures import configure as configure_reviewer_fixtures
+from app.mcp.test_account_tools import _seed as seed_reviewer_fixture
+from app.demo import PROFILES as REVIEWER_PROFILES, VERSION as REVIEWER_FIXTURE_VERSION
 logger = logging.getLogger(__name__)
+configure_reviewer_fixtures(seed_reviewer_fixture, REVIEWER_PROFILES, REVIEWER_FIXTURE_VERSION)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -618,6 +622,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 _fastapi_app.include_router(auth_router.router)
+_fastapi_app.include_router(reviewers.router)
 _fastapi_app.include_router(grants.router)
 _fastapi_app.include_router(loans.router)
 _fastapi_app.include_router(prices.router)
@@ -699,7 +704,18 @@ def client_config(request: Request):
 @_fastapi_app.get("/api/me")
 def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_db)):
     from scaffold.synthetic_accounts import requires_synthetic, account_lock, synthetic_key
-    if requires_synthetic():
+    from scaffold.reviewers import identity as reviewer_identity
+    if reviewer_identity(user):
+        from scaffold.reviewers import account as reviewer_binding, state as reviewer_state
+        row = reviewer_binding(db, user)
+        status = reviewer_state(row)
+        return {'id': user.id, 'email': user.email, 'name': user.name,
+                'is_admin': False, 'is_content_admin': False, 'shared_accounts': [],
+                'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+                'reviewer_account': status,
+                'staging_account': {'initialized': True, 'synthetic': True,
+                                    'scenario': row.scenario, 'generation': row.generation}}
+    if requires_synthetic() and not reviewer_identity(user):
         from scaffold.web_test_accounts import browser_binding, workspace_id
         from scaffold.models import User
         with account_lock(db, user.id, shared=True):

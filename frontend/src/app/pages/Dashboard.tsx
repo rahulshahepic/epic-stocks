@@ -1,14 +1,12 @@
 import ExitDateComparison from '../components/ExitDateComparison.tsx'
-import StarterQuestions from '../components/StarterQuestions.tsx'
 import AnnouncedPrice from '../components/AnnouncedPrice.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import ReminderOffer from '../components/ReminderOffer.tsx'
-import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
 import EquityTerms from '../components/EquityTerms.tsx'
 import PositionTour from '../components/PositionTour.tsx'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
 import { useToday } from '../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice, exitCashLabel, sharePriceBasis, stockValueLabel } from '../format.ts'
@@ -90,6 +88,7 @@ function OwnerPositionTour() {
 export default function Dashboard() {
   const config = useConfig()
   const { viewing } = useViewing()
+  const { hash } = useLocation()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
   const priceEditor = useRef<HTMLDetailsElement>(null)
@@ -343,6 +342,8 @@ export default function Dashboard() {
     setDownloading(false)
   }
 
+  if (hash === '#annual-summary') return <Navigate to="/events#annual-summary" replace />
+
   if (dashLoading && !dash) {
     return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
   }
@@ -372,14 +373,156 @@ export default function Dashboard() {
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
   const showDeductionCard = !!cv && (hasInterestDeduction || hasInterestLoans)
   const hasPrice = cv != null && cv.current_price !== null
-  const hasPastRecords = events?.some(e => e.event_type !== 'Share Price' && e.date < `${today.slice(0, 4)}-01-01`)
   const totalValue = cv?.total_stock_value ?? null
   const outstandingPrincipal = snapshot?.outstanding_loan_balance ?? cv?.total_loan_principal ?? 0
   const datedExit = exitPreview && exitPreview !== 'loading' && exitPreview.date === cardDate ? exitPreview : null
-  const showExitFigure = showExitPreview && (datedExit !== null || exitPreview === 'loading')
+  const hasExitSection = hasPrice && showExitPreview
+  const showExitFigure = hasExitSection && (datedExit !== null || exitPreview === 'loading')
+
+  const headline = cv && grantHoldings && (
+    <HeroCard
+      className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
+    >
+      <img
+        aria-hidden="true"
+        src={campusWatercolor}
+        className="campus-watercolor"
+        alt=""
+      />
+      <span className="campus-sticker" lang="la" title="Through hardship to the stars">Ad astra per aspera</span>
+      <div className="relative z-10 mt-7 grid gap-6 sm:mt-5 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
+        <div>
+          <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
+          <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight sm:text-6xl">
+            {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitFigure ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitFigure ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
+          {showExitFigure && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.'}</p>}
+
+          {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
+            datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
+          {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
+        </div>
+        <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+          <p className="font-bold tabular-nums">
+            {showExitPreview && datedExit ? <>
+              {fmt$(datedExit.gross_vested)} vested shares
+              {datedExit.unvested_cost_proceeds > 0 && <> + {fmt$(datedExit.unvested_cost_proceeds)} unvested at cost</>}
+              {datedExit.outstanding_principal > 0 && <> − {fmt$(datedExit.outstanding_principal)} loans</>}
+              {datedExit.outstanding_accrued_interest > 0 && <> − {fmt$(datedExit.outstanding_accrued_interest)} accrued interest</>}
+              {(datedExit.outstanding_projected_loans ?? 0) > 0 && <> − {fmt$(datedExit.outstanding_projected_loans!)} projected tax loans</>}
+              {(datedExit.projected_payoffs_before_exit ?? 0) > 0 && <> − {fmt$(datedExit.projected_payoffs_before_exit!)} earlier projected payoffs</>}
+              <> − {fmt$(datedExit.liquidation_tax)} est. tax</>
+            </> : <>
+              {totalValue === null ? 'Stock value needs a share price' : cv.net_equity != null && `${fmt$(cv.net_equity)} stock equity before exit taxes`}
+            </>}
+          </p>
+          {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
+            <dl className="space-y-1 text-xs text-white">
+              {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
+                <dt>Outstanding loan principal</dt><dd className="font-semibold tabular-nums">{fmt$(outstandingPrincipal)}</dd>
+              </div>}
+              {cv.accrued_unbooked_interest > 0 && <div className="flex justify-between gap-3">
+                <dt>Accrued interest</dt><dd className="font-semibold tabular-nums">{fmt$(cv.accrued_unbooked_interest)}</dd>
+              </div>}
+            </dl>
+          )}
+          {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
+          <p className="font-semibold tabular-nums">
+            {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}
+            {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
+          </p>
+          {cv.next_event && (
+            <Link to={`/events?date=${cv.next_event.date}`} aria-label="Open next event" className="block w-full border-t border-white/35 pt-3 text-left">
+              <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
+              <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
+              <span className="text-xs"> · {cv.next_event.event_type}</span>
+              {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && (
+                <span className="text-xs"> · estimated price change</span>
+              )}
+            </Link>
+          )}
+        </div>
+      </div>
+    </HeroCard>
+  )
+
+  const deductionControl = showDeductionCard && !readOnly && (() => {
+    const displayEnabled = pendingDeduction ?? savedDeduction
+    const currentSavings = showExitPreview ? datedExit?.deduction_savings : cv?.tax_savings_from_deduction
+    const previewSavings = pendingDeductionChanged
+      ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
+      : null
+    const delta = pendingDeductionChanged
+      ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
+        ? (displayEnabled ? `+${fmt$(previewSavings)}`
+          : currentSavings != null ? `−${fmt$(currentSavings)}` : null)
+        : null)
+      : (displayEnabled && currentSavings != null ? fmt$(currentSavings) : null)
+    const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
+    const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
+    const appliedYears = allYears.filter(y => !excludedYears.has(y))
+    const appliedLabel = appliedYears.length === 0
+      ? 'No years applied.'
+      : appliedYears.length === allYears.length
+        ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
+        : appliedYears.length <= 4
+          ? `Applied to ${appliedYears.join(', ')}.`
+          : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
+    return (
+      <div className="rounded-md bg-cs-raised px-3 py-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-cs-muted">{showExitPreview ? 'Estimated tax savings through exit' : 'Tax savings through this date'}</span>
+          <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-cs-text-2'}`}>
+            {delta ?? '—'}
+          </span>
+          {pendingDeductionChanged && (
+            <>
+              <button
+                onClick={() => applyDeduction(pendingDeduction!)}
+                disabled={savingDeduction || deductionPreview === 'loading'}
+                className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+              >
+                {savingDeduction ? '…' : 'Apply'}
+              </button>
+              <button
+                onClick={() => setPendingDeduction(null)}
+                disabled={savingDeduction}
+                className="text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
+              >
+                ✕
+              </button>
+            </>
+          )}
+          <button
+            role="switch"
+            aria-label="Investment interest deduction"
+            aria-checked={displayEnabled}
+            onClick={() => setPendingDeduction(!displayEnabled)}
+            disabled={savingDeduction}
+            className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cs-text disabled:opacity-50 ${displayEnabled ? 'bg-cs-brand' : 'bg-cs-border-strong '}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        {breakdowns?.interest.booked != null && (
+          <p className="mt-1 text-cs-muted">Interest booked on statements {fmt$(breakdowns.interest.booked)}</p>
+        )}
+        {savedDeduction && !pendingDeductionChanged && (
+          <p className="mt-1 text-[10px] text-cs-muted">
+            {appliedLabel}{' '}
+            <a href="/settings" className="underline hover:text-cs-text">
+              Customize years
+            </a>
+          </p>
+        )}
+      </div>
+    )
+  })()
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
+      <h1 className="sr-only">Dashboard</h1>
       {importSaved && <p role="status" className="text-sm text-cs-text">Your import is saved. Here’s your position.</p>}
       {carryover === 'partial' && <p role="status" className="text-sm text-cs-text">New records from your preview were saved. Existing records were preserved; re-import to review any corrections.</p>}
       {carryover === 'review' && <p role="status" className="text-sm text-cs-text">Your existing records were preserved. Your preview contains corrections that were not saved automatically. <Link to="/import" className="underline">Review those changes in Import</Link>.</p>}
@@ -394,85 +537,6 @@ export default function Dashboard() {
       )}
       {cardDate === today && hasPrice && stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
       {!readOnly && !config?.epic_mode && priceEditorActive && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Update the announced price</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
-      {cv && grantHoldings && (
-        <HeroCard
-          className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
-        >
-          <img
-            aria-hidden="true"
-            src={campusWatercolor}
-            className="campus-watercolor"
-            alt=""
-          />
-          <span className="campus-sticker" lang="la" title="Through hardship to the stars">Ad astra per aspera</span>
-          <div className="relative z-10 mt-7 grid gap-6 sm:mt-5 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
-            <div>
-              <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
-              <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitFigure ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitFigure ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
-              {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Estimated exit cash is unavailable for this date.'}</p>}
-
-              {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
-                datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
-              {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
-            </div>
-            <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
-              <p className="font-bold tabular-nums">
-                {showExitPreview && datedExit ? <>
-                  {fmt$(datedExit.gross_vested)} vested shares
-                  {datedExit.unvested_cost_proceeds > 0 && <> + {fmt$(datedExit.unvested_cost_proceeds)} unvested at cost</>}
-                  {datedExit.outstanding_principal > 0 && <> − {fmt$(datedExit.outstanding_principal)} loans</>}
-                  {datedExit.outstanding_accrued_interest > 0 && <> − {fmt$(datedExit.outstanding_accrued_interest)} accrued interest</>}
-                  {(datedExit.outstanding_projected_loans ?? 0) > 0 && <> − {fmt$(datedExit.outstanding_projected_loans!)} projected tax loans</>}
-                  {(datedExit.projected_payoffs_before_exit ?? 0) > 0 && <> − {fmt$(datedExit.projected_payoffs_before_exit!)} earlier projected payoffs</>}
-                  <> − {fmt$(datedExit.liquidation_tax)} est. tax</>
-                </> : <>
-                  {totalValue === null ? 'Stock value needs a share price' : cv.net_equity != null && `${fmt$(cv.net_equity)} stock equity before exit taxes`}
-                </>}
-              </p>
-              {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
-                <dl className="space-y-1 text-xs text-white">
-                  {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
-                    <dt>Outstanding loan principal</dt><dd className="font-semibold tabular-nums">{fmt$(outstandingPrincipal)}</dd>
-                  </div>}
-                  {cv.accrued_unbooked_interest > 0 && <div className="flex justify-between gap-3">
-                    <dt>Accrued interest</dt><dd className="font-semibold tabular-nums">{fmt$(cv.accrued_unbooked_interest)}</dd>
-                  </div>}
-                </dl>
-              )}
-              {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
-              <p className="font-semibold tabular-nums">
-                {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}
-                {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
-              </p>
-              {cv.next_event && (
-                <Link to={`/events?date=${cv.next_event.date}`} aria-label="Open next event" className="block w-full border-t border-white/35 pt-3 text-left">
-                  <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
-                  <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
-                  <span className="text-xs"> · {cv.next_event.event_type}</span>
-                  {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && (
-                    <span className="text-xs"> · estimated price change</span>
-                  )}
-                </Link>
-              )}
-            </div>
-          </div>
-        </HeroCard>
-      )}
-
-      {importSaved && !readOnly && <OwnerPositionTour />}
-      {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-2xl border border-cs-border bg-cs-surface p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-cs-text">In plain words</summary>
-        <ul className="mt-3 space-y-2 text-sm leading-relaxed text-cs-text-2">{snapshot.summary_sentences.map(s => <li key={s}>{s}</li>)}</ul>
-      </details> : null}
-      {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand">
-        <a href="#exit-details" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Explore leaving</a>
-        <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
-        {config?.ai_connections && <Link to="/connect-ai" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Ask your assistant</Link>}
-      </div>}
-
       {/* Date selector for card values */}
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -516,168 +580,105 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <EquityTerms terms={['vesting', 'basis', 'loan', 'tax', 'exit', 'price']} />
-
-      {!readOnly && cardDate === today && snapshot && <ReminderOffer event={events?.find(e => e.date > today && (e.event_type === 'Vesting' || e.event_type === 'Loan Payoff')) ?? null} />}
-
-      {events && <StockJourney events={events} asOf={cardDate} />}
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}
-
-      </div>
-
       {!snapshot && <div role={dashError ? 'alert' : 'status'} className="text-sm text-cs-muted">
         {dashError ? <>Could not load totals for {fmtFullDate(cardDate)}. <button type="button" onClick={reloadDash} className="underline">Retry</button></> : 'Loading totals…'}
       </div>}
 
-      {snapshot && hasPrice && showExitPreview && (
-        <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 space-y-2">
-          <details><summary className="cursor-pointer rounded-xl border border-cs-border bg-cs-surface p-4 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</summary>
-            {exitPreview === 'loading' ? (
-              <p className="text-xs text-cs-muted">Calculating…</p>
-            ) : exitPreview && exitPreview.date === cardDate ? (
-              <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <button
-                    onClick={() => setExitBreakdownOpen(o => !o)}
-                    aria-expanded={exitBreakdownOpen}
-                    className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
-                  >
-                    <div className="flex items-center justify-between">
-                      <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
-                        <IconTrendUp className="h-4 w-4" />
-                      </IconTile>
-                      <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                      </span>
-                    </div>
-                    <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Cash from exit plus earlier activity</p>
-                    <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
-                    <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
-                  </button>
-                  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" explanation="gross_proceeds" subtitle="Liquidated shares × price" />
-                  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" explanation="debt_settlement" subtitle="Principal + accrued interest" />
-                  <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" explanation="divest_tax" subtitle="Capital gains on liquidation" />
-                </div>
-                {exitBreakdownOpen && <>
-                  <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>
-                  <ExitBreakdownCard s={exitPreview} />
-                </>}
-              </>
-            ) : (
-              <p className="text-xs text-cs-muted">Exit estimate unavailable for this date</p>
-            )}
+      {importSaved && !readOnly && <OwnerPositionTour />}
+      {cv && <section aria-labelledby="dashboard-position" className="space-y-3">
+        <h2 id="dashboard-position" className="text-xl font-semibold text-cs-text">Your position</h2>
+        {!showExitFigure && headline}
+        <div aria-live="polite" aria-atomic="true">
+          <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
+            totalValue={totalValue} headingAs="h3" hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+        </div>
+
+        {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <details className="rounded-xl border border-cs-border bg-cs-surface">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
+          <div className="space-y-3 px-4 pb-4">
+            <EarningsCards cv={cv} breakdowns={breakdowns}
+              openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+            <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
+              hasInterestDeduction={hasInterestDeduction}
+              openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+
+            {deductionControl}
+          </div>
+        </details>}
+
+        {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-xl border border-cs-border bg-cs-surface">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">In plain words</summary>
+          <ul className="space-y-2 px-4 pb-4 text-sm leading-relaxed text-cs-text-2">{snapshot.summary_sentences.map(s => <li key={s}>{s}</li>)}</ul>
+        </details> : null}
+        <EquityTerms terms={['basis', 'loan', 'tax', 'exit', 'price']} />
+      </section>}
+
+      {hasExitSection && <section aria-labelledby="dashboard-exit" className="space-y-3">
+        <h2 id="dashboard-exit" className="text-xl font-semibold text-cs-text">If you leave</h2>
+        {showExitFigure ? headline : <p role="status" className="text-sm text-cs-muted">Estimated exit cash is unavailable for this date.</p>}
+        <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 divide-y divide-cs-border rounded-xl border border-cs-border bg-cs-surface">
+          <details>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</summary>
+            <div className="space-y-3 px-4 pb-4">
+              {exitPreview === 'loading' ? (
+                <p className="text-xs text-cs-muted">Calculating…</p>
+              ) : exitPreview && exitPreview.date === cardDate ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <button
+                      onClick={() => setExitBreakdownOpen(o => !o)}
+                      aria-expanded={exitBreakdownOpen}
+                      className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
+                          <IconTrendUp className="h-4 w-4" />
+                        </IconTile>
+                        <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
+                          <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </span>
+                      </div>
+                      <p className="mt-2.5 text-xs font-medium text-cs-text-2">Cash from exit plus earlier activity</p>
+                      <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
+                      <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
+                    </button>
+                    <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" explanation="gross_proceeds" subtitle="Liquidated shares × price" />
+                    <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" explanation="debt_settlement" subtitle="Principal + accrued interest" />
+                    <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" explanation="divest_tax" subtitle="Capital gains on liquidation" />
+                  </div>
+                  {exitBreakdownOpen && <>
+                    <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>
+                    <ExitBreakdownCard s={exitPreview} />
+                  </>}
+                </>
+              ) : (
+                <p className="text-xs text-cs-muted">Exit estimate unavailable for this date</p>
+              )}
+            </div>
           </details>
           <ExitDateComparison date={cardDate} invitationId={vid} />
         </div>
-      )}
+      </section>}
 
+      {events && <StockJourney events={events} asOf={cardDate} />}
+      {!readOnly && cardDate === today && snapshot && <ReminderOffer event={events?.find(e => e.date > today && (e.event_type === 'Vesting' || e.event_type === 'Loan Payoff')) ?? null} />}
 
-      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
-      {cv && <div aria-live="polite" aria-atomic="true" className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
-
-        <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
-          totalValue={totalValue} hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-
-        {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0) && <details className="space-y-3">
-          <summary className="cursor-pointer py-2 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
-          <EarningsCards cv={cv} breakdowns={breakdowns}
-            openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-
-          <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
-            hasInterestDeduction={hasInterestDeduction}
-            openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-        </details>}
+      {(charts || chartsError) && <section aria-labelledby="dashboard-trends" className="space-y-3">
+        <h2 id="dashboard-trends" className="text-xl font-semibold text-cs-text">Stock over time</h2>
+        {chartsError && <p role="alert" className="text-sm text-cs-muted">Could not load charts. <button type="button" onClick={reloadCharts} className="underline">Retry charts</button></p>}
+        {charts && <DashboardCharts
+          events={events} prices={prices} dash={charts} c={c}
+          range={range} setRange={setRange}
+          rangeInterest={rangeInterest} setRangeInterest={setRangeInterest}
+          rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}
+          maxDate={maxDate} hasFuturePrices={hasFuturePrices} />}
+      </section>}
+      {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand">
+        <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
+        {config?.ai_connections && <Link to="/connect-ai" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Ask your assistant</Link>}
       </div>}
 
-
-      {!readOnly && snapshot && hasPastRecords && <AnnualStockSummary />}
-      {!readOnly && config?.ai_connections && snapshot && <details className="rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-text">Explore with your assistant</summary><div className="mt-3"><StarterQuestions questions={snapshot.starter_questions} /></div></details>}
-
-      {showDeductionCard && !readOnly && (() => {
-        const displayEnabled = pendingDeduction ?? savedDeduction
-        const currentSavings = showExitPreview
-          ? datedExit?.deduction_savings
-          : cv?.tax_savings_from_deduction
-        const previewSavings = pendingDeductionChanged
-          ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
-          : null
-        const delta = pendingDeductionChanged
-          ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
-            ? (displayEnabled ? `+${fmt$(previewSavings)}`
-              : currentSavings != null ? `−${fmt$(currentSavings)}` : null)
-            : null)
-          : (displayEnabled && currentSavings != null ? fmt$(currentSavings) : null)
-        const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
-        const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
-        const appliedYears = allYears.filter(y => !excludedYears.has(y))
-        const appliedLabel = appliedYears.length === 0
-          ? 'No years applied.'
-          : appliedYears.length === allYears.length
-            ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
-            : appliedYears.length <= 4
-              ? `Applied to ${appliedYears.join(', ')}.`
-              : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
-        return (
-          <div className="rounded-md bg-cs-raised px-3 py-2 text-xs">
-            <div className="flex items-center gap-3">
-              <span className="text-cs-muted">{showExitPreview ? 'Estimated tax savings through exit' : 'Tax savings through this date'}</span>
-              <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-cs-text-2'}`}>
-                {delta ?? '—'}
-              </span>
-              {pendingDeductionChanged && (
-                <>
-                  <button
-                    onClick={() => applyDeduction(pendingDeduction!)}
-                    disabled={savingDeduction || deductionPreview === 'loading'}
-                    className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
-                  >
-                    {savingDeduction ? '…' : 'Apply'}
-                  </button>
-                  <button
-                    onClick={() => setPendingDeduction(null)}
-                    disabled={savingDeduction}
-                    className="text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
-                  >
-                    ✕
-                  </button>
-                </>
-              )}
-              <button
-                role="switch"
-                aria-label="Investment interest deduction"
-                aria-checked={displayEnabled}
-                onClick={() => setPendingDeduction(!displayEnabled)}
-                disabled={savingDeduction}
-                className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-cs-border-strong '}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-            {breakdowns?.interest.booked != null && (
-              <p className="mt-1 text-cs-muted">Interest booked on statements {fmt$(breakdowns.interest.booked)}</p>
-            )}
-            {savedDeduction && !pendingDeductionChanged && (
-              <p className="mt-1 text-[10px] text-cs-muted">
-                {appliedLabel}{' '}
-                <a href="/settings" className="underline hover:text-cs-text">
-                  Customize years
-                </a>
-              </p>
-            )}
-          </div>
-        )
-      })()}
-
-      {chartsError && <p role="alert" className="text-sm text-cs-muted">Could not load charts. <button type="button" onClick={reloadCharts} className="underline">Retry charts</button></p>}
-      {charts && <DashboardCharts
-        events={events} prices={prices} dash={charts} c={c}
-        range={range} setRange={setRange}
-        rangeInterest={rangeInterest} setRangeInterest={setRangeInterest}
-        rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}
-        maxDate={maxDate} hasFuturePrices={hasFuturePrices} />}
+      {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}
     </div>
   )
 }

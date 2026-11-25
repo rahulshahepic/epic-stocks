@@ -112,7 +112,7 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     details = notification_details(events)
     details.extend(e["reminder_message"] for e in events if e.get("reminder_message"))
     if set(counts) == {"Annual Stock Summary"}:
-        return {"title": "Your annual stock summary", "body": " ".join(details), "data": {"url": "/#annual-summary"}}
+        return {"title": "Your annual stock summary", "body": " ".join(details), "data": {"url": "/events#annual-summary"}}
     if set(counts) == {"Loan Interest Statement"}:
         return {"title": "Reconcile your loan interest", "body": " ".join(details), "data": {"url": "/settings"}}
     if set(counts) == {PRICE_REMINDER}:

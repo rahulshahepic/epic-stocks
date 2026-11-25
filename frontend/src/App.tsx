@@ -36,7 +36,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   useSessionRefresh()
   const location = useLocation()
   const intent = ['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(location.pathname) ? `?intent=${encodeURIComponent(location.pathname)}` : ''
-  return isLoggedIn() ? <>{children}</> : <Navigate to={`/login${intent}`} replace />
+  const annualSummary = location.hash === '#annual-summary' && ['/', '/events'].includes(location.pathname)
+  const signIn = annualSummary ? `/login?next=${encodeURIComponent('/events#annual-summary')}` : `/login${intent}`
+  return isLoggedIn() ? <>{children}</> : <Navigate to={signIn} replace />
 }
 
 // Wraps financial pages — shows a placeholder during maintenance instead of

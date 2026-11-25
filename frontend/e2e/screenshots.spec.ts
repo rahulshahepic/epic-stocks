@@ -409,7 +409,7 @@ test.describe('Screenshots', () => {
   })
 
   for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
-    test(`rollout checks - ${theme} - ${size}`, async ({ page }) => {
+    test(`rollout checks - ${theme} - ${size}`, async ({ page, browser }) => {
       await authedPage(page, viewport, theme)
       await page.request.post(`${BASE}/api/auth/test-login`, {data: {email: `rollout-${theme}-${size}-${test.info().retry}@e2e.test`, name: 'Fictional employee'}})
       const year = new Date().getFullYear()
@@ -422,15 +422,29 @@ test.describe('Screenshots', () => {
       await page.route('**/api/config', route => route.fulfill({json: {...config, email_notifications_available: true}}))
       await page.goto(BASE)
       await expect(page.getByRole('link', {name: 'Choose reminders'})).toBeVisible()
-      await page.getByText('What changes if I stay one more year?', {exact: true}).click()
-      await expect(page.getByText(/change in modeled total cash through exit/)).toBeVisible()
-      await page.getByText(`Your ${year-1} stock summary`, {exact: true}).click()
-      await expect(page.getByRole('region', {name: 'Annual stock changes'})).toBeVisible()
+      const position = page.getByRole('region', {name: 'Your position'})
+      const exit = page.getByRole('region', {name: 'If you leave'})
+      await expect(position.getByText('Earnings and borrowing costs', {exact: true})).toBeVisible()
+      await expect(position.locator('[data-equity-term="vesting"]')).toHaveCount(1)
+      await expect(page.getByText(/Your \d{4} stock summary/)).toHaveCount(0)
+      await expect(page.getByText('Explore with your assistant', {exact: true})).toHaveCount(0)
+      await exit.getByText('What changes if I stay one more year?', {exact: true}).click()
+      await expect(exit.getByText(/change in modeled total cash through exit/)).toBeVisible()
+      const sections = page.locator('.campus-dashboard > section')
+      await expect(sections.locator(':scope > :is(h1, h2)')).toHaveText([
+        'Your position', 'If you leave', 'Upcoming stock events', 'Stock over time',
+      ])
       expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const audit = await new AxeBuilder({page}).include('.campus-dashboard').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await shoot(page, `rollout-dashboard-${theme}-${size}`, {fullPage: true})
+      await page.goto(`${BASE}/events`)
+      await page.getByText(`Your ${year-1} stock summary`, {exact: true}).click()
+      await expect(page.getByRole('region', {name: 'Annual stock changes'})).toBeVisible()
+      await page.goto(`${BASE}/#annual-summary`)
+      await expect(page).toHaveURL(/\/events#annual-summary$/)
+      await expect(page.getByRole('region', {name: 'Annual stock changes'})).toBeVisible()
       await page.goto(`${BASE}/settings#notifications`)
       const annual = page.getByLabel(/Include an annual stock summary/)
       await expect(annual).not.toBeChecked()
@@ -439,6 +453,13 @@ test.describe('Screenshots', () => {
       expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).annual_summary_enabled).toBe(false)
       expect((await (await page.request.get(`${BASE}/api/notifications/email`)).json()).enabled).toBe(false)
       await page.getByRole('heading', {name: 'Notifications', exact: true}).locator('..').screenshot({path: `${OUT}/reminder-settings-${theme}-${size}.png`})
+      const signedOut = await browser.newPage()
+      try {
+        await signedOut.goto(`${BASE}/events#annual-summary`)
+        await expect(signedOut).toHaveURL(/\/login\?next=%2Fevents%23annual-summary$/)
+      } finally {
+        await signedOut.close()
+      }
       await page.goto(`${BASE}/import`)
       await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
       await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)

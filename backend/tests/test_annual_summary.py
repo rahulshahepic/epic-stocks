@@ -52,7 +52,7 @@ def test_annual_reminder_is_opt_in_seasonal_and_records_only_delivery(client, db
         events = annual_summary_events(user, db_session, date(2027, 1, 1))
         assert events and annual_summary_events(user, db_session, date(2027, 2, 1)) == []
         payload = build_notification_payload(events)
-        assert payload['data']['url'] == '/#annual-summary'
+        assert payload['data']['url'] == '/events#annual-summary'
         assert '$' not in payload['body'] and '1000' not in payload['body']
     with patch('scaffold.email_sender.email_configured', return_value=True), patch('scaffold.email_sender.send_email', return_value=False):
         send_daily_notifications(date(2027, 1, 1), extra_events=annual_summary_events)

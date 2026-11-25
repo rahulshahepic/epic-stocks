@@ -8,8 +8,8 @@ describe('Equity explanations', () => {
   it('can be expanded and distinguishes estimates from records', async () => {
     render(<EquityTerms terms={['vesting', 'price', 'tax']} />)
     await userEvent.click(screen.getByText('What do these terms mean?'))
-    expect(screen.getByText(/An estimate awaiting confirmation/)).toBeVisible()
-    expect(screen.getByText(/Official records and your tax return/)).toBeVisible()
+    expect(screen.getByText(/A price estimate that has not been confirmed/)).toBeVisible()
+    expect(screen.getByText(/This is not a tax bill/)).toBeVisible()
   })
 
   it('shows absent evidence explicitly without financial calculations', () => {

@@ -1,5 +1,6 @@
 import type { ExitSummary } from '../../api.ts'
 import { fmt$, fmtNum, fmtPrice } from '../format.ts'
+import { InlineTerm } from './EquityTerms.tsx'
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
@@ -23,8 +24,14 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
     : ''
 
   return (
-    <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
+    <div data-equity-card="exit" className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
       <h3 className="mb-3 text-sm font-semibold text-cs-text">Exit Breakdown</h3>
+      <p className="mb-3">Selling your vested shares produces {fmt$(s.gross_vested)} before obligations. The modeled total cash after settlement is {fmt$(s.net_cash)}.</p>
+      <InlineTerm term="liquidation" figure={fmt$(s.gross_vested)} />
+      <InlineTerm term="divest_tax" figure={fmt$(s.liquidation_tax)} />
+      <InlineTerm term="accrued_interest" figure={fmt$(s.outstanding_accrued_interest)} />
+      <InlineTerm term="basis" />
+      <InlineTerm term="form_4952" figure={fmt$(s.deduction_savings)} />
 
       <div className="space-y-1">
         <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Liquidation Sale</p>

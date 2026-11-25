@@ -4,6 +4,7 @@ import type { TaxSettings } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import EquityTerms from './EquityTerms.tsx'
 
 const WI_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37,
@@ -30,6 +31,8 @@ export default function AppSettingsSections() {
   const [editingDp, setEditingDp] = useState(false)
   const [taxForm, setTaxForm] = useState<TaxSettings | null>(null)
   const [taxSaving, setTaxSaving] = useState(false)
+  const [confirmSettings, setConfirmSettings] = useState(false)
+  const [taxError, setTaxError] = useState('')
 
   const loadTaxSettings = useCallback(async () => {
     try {
@@ -123,7 +126,7 @@ export default function AppSettingsSections() {
           <h2 className="text-sm font-medium text-cs-text">Tax Rates</h2>
           {!editingTax && (
             <button
-              onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}
+              onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setConfirmSettings(false); setTaxError(''); setEditingTax(true) }}
               className="text-xs text-cs-brand dark:text-rose-300 hover:text-cs-brand-hover "
             >Edit</button>
           )}
@@ -133,9 +136,10 @@ export default function AppSettingsSections() {
         </p>
 
         <p className="mt-2 text-xs text-cs-text-2">Loan repayment sales are app-generated plans until you record a payoff. Edit these settings to choose how shares are selected. Investment interest deductions require itemizing and apply only against gains realized in the year interest is paid; review your eligibility before enabling them.</p>
+        <div className="mt-3"><EquityTerms terms={['tax', 'short_term', 'long_term', 'lot_selection', 'form_4952', 'capitalised_interest', 'election_83b']} title="Understand these settings" /></div>
 
         {taxSettings && !editingTax && (
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <dl className="mt-3 space-y-2 text-xs [&>div]:gap-4 [&_dd]:max-w-[55%] [&_dd]:text-right">
             {[
               ['Federal income', taxSettings.federal_income_rate],
               ['Federal long-term capital gains', taxSettings.federal_lt_cg_rate],
@@ -205,7 +209,7 @@ export default function AppSettingsSections() {
         )}
 
         {editingTax && taxForm && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3" onChangeCapture={() => setConfirmSettings(false)}>
             <div className="grid grid-cols-2 gap-3">
               {([
                 ['Federal income rate', 'federal_income_rate'],
@@ -234,11 +238,12 @@ export default function AppSettingsSections() {
                   onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
                   className={FIELD_INPUT_CLASS}
                 >
-                  <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
+                  <option value="epic_lifo">Epic LIFO — prefer long-term gains (recommended default)</option>
                   <option value="fifo">FIFO — oldest lots first</option>
                   <option value="lifo">LIFO — newest lots first</option>
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
+                <p className="mt-1 text-[11px] text-cs-text-2">Recommended starting choice: Epic LIFO selects newer lots while preferring long-term gains. FIFO sells the oldest lots, LIFO the newest regardless of holding period, and Manual lets you choose each lot. Match the method your actual sale will use.</p>
                 <p className="mt-1 text-[11px] text-cs-text-2">
                   Applies to manual sales only.{taxSettings?.flexible_payoff_enabled ? ' See Loan Payoff Lot Method below for payoff sales.' : ' Loan payoff sales use same-tranche selection by default.'}
                 </p>
@@ -254,11 +259,12 @@ export default function AppSettingsSections() {
                     onChange={e => setTaxForm(f => f ? { ...f, loan_payoff_method: e.target.value as TaxSettings['loan_payoff_method'] } : f)}
                     className={FIELD_INPUT_CLASS}
                   >
-                    <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
+                    <option value="epic_lifo">Epic LIFO — prefer long-term gains (recommended default)</option>
                     <option value="lifo">LIFO — newest lots first</option>
                     <option value="fifo">FIFO — oldest lots first</option>
                     <option value="same_tranche">Same Tranche — shares from originating grant only</option>
                   </select>
+                  <p className="mt-1 text-[11px] text-cs-text-2">Recommended starting choice when flexible repayment is enabled: Epic LIFO. Same Tranche restricts sales to the loan’s grant; FIFO and LIFO choose the oldest or newest lots. This changes the planned sale, never an actual repayment.</p>
                   <p className="mt-1 text-[11px] text-cs-text-2">
                     Applies to loan payoff sales when you have sufficient stock coverage (vested value + unvested cost basis ≥ loan balance). Falls back to same-tranche if coverage is insufficient.
                   </p>
@@ -286,6 +292,7 @@ export default function AppSettingsSections() {
                       Estimate investment interest deduction (Form 4952)
                     </span>
                     <p className="mt-1 text-[11px] text-cs-text-2">
+                      Recommended starting choice: leave this off until you have checked your eligibility.{' '}
                       If you itemize deductions, your loan interest may be deductible against
                       capital gains. Only applies to years where you itemize — not years you take the
                       standard deduction. Consult a tax advisor; this is an estimate only.
@@ -369,29 +376,35 @@ export default function AppSettingsSections() {
                 </p>
               </label>
             </div>
+            <p className="text-xs text-cs-text-2">Starting point: Wisconsin tax estimates, Epic LIFO lots for manual and repayment sales, and interest deduction off. Tax rates should match your situation. Choosing different lots changes estimated gains; repayment choices change planned shares sold. Enabling a deduction changes estimated tax savings, not your tax return.</p>
+            {confirmSettings && <p role="status" className="rounded-lg border border-amber-400 p-3 text-xs">Review these assumptions before saving. Rates change estimated tax, lot selection changes which shares are sold, and repayment/deduction choices change the modeled cash. Saving changes the app's estimates; it does not submit an election or execute a sale.</p>}
+            {taxError && <p role="alert" className="text-xs text-red-700 dark:text-red-300">{taxError}</p>}
             <div className="flex gap-2">
               <button
                 onClick={async () => {
+                  if (!confirmSettings && JSON.stringify(taxForm) !== JSON.stringify(taxSettings)) { setConfirmSettings(true); return }
                   setTaxSaving(true)
+                  setTaxError('')
                   try {
                     const updated = await api.updateTaxSettings(taxForm)
                     setTaxSettings(updated)
                     setEditingTax(false)
-                  } catch { /* ignore */ } finally { setTaxSaving(false) }
+                    setConfirmSettings(false)
+                  } catch (error) { setTaxError(error instanceof Error ? error.message : 'Could not save these assumptions.') } finally { setTaxSaving(false) }
                 }}
                 disabled={taxSaving}
                 className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
               >
-                {taxSaving ? 'Saving...' : 'Save'}
+                {taxSaving ? 'Saving...' : confirmSettings ? 'Confirm and save assumptions' : 'Save'}
               </button>
               <button
-                onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
+                onClick={() => { setTaxForm({ ...WI_DEFAULTS }); setConfirmSettings(false) }}
                 className="rounded-md border border-cs-border-strong px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-cs-raised bg-cs-surface "
               >
                 Reset to WI Defaults
               </button>
               <button
-                onClick={() => setEditingTax(false)}
+                onClick={() => { setEditingTax(false); setConfirmSettings(false) }}
                 className="rounded-md px-3 py-1.5 text-xs text-cs-text-2 hover:text-cs-text-2 "
               >
                 Cancel

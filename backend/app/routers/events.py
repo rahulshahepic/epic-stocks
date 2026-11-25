@@ -942,6 +942,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             "accrued_unbooked_interest": 0,
             "net_equity": None,
         }
+        from app.position_story import position_story
+        empty.update(position_story(empty, cutoff))
         # An empty account must not hand back a different shape from a full one,
         # or a caller reads `total_shares` here and `vested_shares` everywhere else.
         if include_details:
@@ -1129,12 +1131,23 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
                            if stock_value is not None else None),
         })
 
+    from app.dashboard_view import dashboard_details, dashboard_chart_data
+    from app.position_story import position_story
+    story_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection, today=today)
+    details = dashboard_details(payload, cutoff, grants=grants, timeline=timeline, next_timeline=story_events,
+                                holdings_timeline=holdings_timeline, holdings=holdings,
+                                live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
+                                sales=sales_db, sale_results=results, projection=snapshot_projection,
+                                price_rows=inputs.prices)
+    story_exit = (_preview_exit_data(user, None, cutoff.isoformat(), inputs=inputs)
+                  if cutoff >= today and position['valuation_price'] is not None and grants else None)
+    payload.update(position_story(payload, cutoff, active=details['active_loans'], events=story_events,
+                                  exit_preview=story_exit))
     if include_details:
-        from app.dashboard_view import dashboard_details, dashboard_chart_data
         # Charts cover the whole plan, independently of the card date. Reuse
         # the same enriched/taxed event services as /events, including sales
         # between core events and per-sale lot/rate overrides.
-        chart_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection, today=today)
+        chart_events = story_events
         if include_charts:
             overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales_db, ts_row)
             _annotate_sale_taxes(chart_events, timeline, _ts_dict(ts_row),
@@ -1146,11 +1159,6 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             if ts_row.deduct_investment_interest:
                 _apply_interest_deduction(chart_events, projection.interest_paid_by_year(),
                                           excluded_years=set(ts_row.deduction_excluded_years or []))
-        details = dashboard_details(payload, cutoff, grants=grants, timeline=timeline, next_timeline=chart_events,
-                                    holdings_timeline=holdings_timeline, holdings=holdings,
-                                    live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
-                                    sales=sales_db, sale_results=results, projection=snapshot_projection,
-                                    price_rows=inputs.prices)
         if include_charts:
             details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
         return {**payload, 'as_of': cutoff.isoformat(), **details}

@@ -8,6 +8,7 @@ import { fmtFullDate, fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { addCalendarYears, useToday } from '../dateUtils.ts'
+import AnnouncedPrice from '../components/AnnouncedPrice.tsx'
 
 type PriceForm = { effective_date: string; price: number; is_estimate: boolean; expected_announcement_date: string; announced_date: string; version?: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -54,6 +55,11 @@ function computeGrowthPreview(
 }
 
 export default function Prices() {
+  const { viewing } = useViewing()
+  return <PricesAccount key={viewing?.invitationId ?? 'me'} />
+}
+
+function PricesAccount() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
@@ -203,7 +209,7 @@ export default function Prices() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+  if (loading && !prices) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
   if (!prices) return <p className="p-6 text-center text-sm text-red-500">Failed to load prices</p>
 
   // ── Add / Edit form ───────────────────────────────────────────────────────
@@ -395,6 +401,7 @@ export default function Prices() {
   const estimateCount = prices.filter(p => p.is_estimate).length
   return (
     <div className="space-y-4">
+      {!readOnly && !epicMode && <AnnouncedPrice onSaved={reload} />}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-cs-text">Share Prices</h2>
         {!readOnly && (

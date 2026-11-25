@@ -38,6 +38,19 @@ describe('AuthCallback', () => {
     vi.restoreAllMocks()
   })
 
+  it('reports when a preview expires during sign-in', async () => {
+    vi.spyOn(api, 'exchangeCode').mockResolvedValue({ok: true})
+    const apply = vi.spyOn(api, 'applyChanges')
+    setCallbackUrl('?code=abc123&state=st-1')
+    await seedPendingLogin('st-1')
+    await platform.storage.set('trial_draft', JSON.stringify({grants: []}))
+    await platform.storage.set('trial_saved_at', String(Date.now() - 31 * 60000))
+    renderCallback()
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', {replace: true}))
+    expect(await platform.storage.get('trial_carryover_result')).toBe('expired')
+    expect(apply).not.toHaveBeenCalled()
+  })
+
   it('exchanges the code and lands on the dashboard', async () => {
     const exchange = vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
     setCallbackUrl('?code=abc123&state=st-1')

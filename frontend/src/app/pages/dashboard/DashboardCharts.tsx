@@ -173,29 +173,31 @@ export function DashboardCharts({
           <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
         </ChartBox>
       )}
-      {events?.some(e => e.cum_income !== 0 || e.cum_cap_gains !== 0) && (
-        <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
-          <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
-        </ChartBox>
-      )}
-      {prices && prices.length > 0 && (
-        <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
-          <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
-        </ChartBox>
-      )}
-      {dash.charts.tax.some(row => row.estimated !== 0 || row.paid !== 0) && (
-        <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
-          <TaxChart rows={dash.charts.tax} c={c} range={range} />
-        </ChartBox>
-      )}
-      {dash.charts.interest.some(row => row.recorded !== 0 || row.projected !== 0) && (
-        <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
-          <InterestChart rows={dash.charts.interest} c={c} range={rangeInterest} />
-        </ChartBox>
-      )}
-      {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
-        <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
-      )}
+      <details className="md:col-span-2"><summary className="cursor-pointer rounded-xl border border-cs-border bg-cs-surface p-4 text-sm font-semibold text-cs-text">More charts · earnings, prices, tax and loans</summary><div className="mt-4 grid gap-4 md:grid-cols-2">
+        {events?.some(e => e.cum_income !== 0 || e.cum_cap_gains !== 0) && (
+          <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
+            <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {prices && prices.length > 0 && (
+          <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
+            <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {dash.charts.tax.some(row => row.estimated !== 0 || row.paid !== 0) && (
+          <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
+            <TaxChart rows={dash.charts.tax} c={c} range={range} />
+          </ChartBox>
+        )}
+        {dash.charts.interest.some(row => row.recorded !== 0 || row.projected !== 0) && (
+          <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
+            <InterestChart rows={dash.charts.interest} c={c} range={rangeInterest} />
+          </ChartBox>
+        )}
+        {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
+          <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
+        )}
+      </div></details>
     </div>
   )
 }

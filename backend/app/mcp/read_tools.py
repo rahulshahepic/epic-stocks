@@ -18,6 +18,7 @@ from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from services.price_state import price_metadata
 from app.loan_state import loan_is_drawn
+from app.financial_literacy import TERMS as _PLAIN_TERMS
 
 MAX_EVENTS = 2000
 DEFAULT_EVENT_LIMIT = 500
@@ -609,6 +610,10 @@ _TOPICS: dict[str, str] = {
 }
 
 
+for _term, _entry in _PLAIN_TERMS.items():
+    _TOPICS.setdefault(_term, f"{_entry['definition']} {_entry['meaning']}")
+
+
 def _explain(ctx: ToolContext, args: dict):
     topic = args.get("topic")
     if not isinstance(topic, str) or topic.strip().lower() not in _TOPICS:
@@ -618,6 +623,12 @@ def _explain(ctx: ToolContext, args: dict):
     topic = topic.strip().lower()
 
     payload: dict = {"topic": topic, "explanation": _TOPICS[topic]}
+    if topic in _PLAIN_TERMS:
+        payload['plain_language'] = _PLAIN_TERMS[topic]
+        entry = _PLAIN_TERMS[topic]
+        payload['explanation'] = f"{entry['definition']} {entry['meaning']}"
+        if payload['explanation'] != _TOPICS[topic]:
+            payload['scheme_details'] = _TOPICS[topic]
 
     if topic in ("grant_types", "vesting"):
         from app.content_service import load_content

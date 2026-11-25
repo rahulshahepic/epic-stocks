@@ -123,8 +123,8 @@ describe('Layout responsive navigation', () => {
     const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
     expect(mobileNav).toHaveTextContent('Dashboard')
     expect(mobileNav).toHaveTextContent('Events')
-    expect(mobileNav).toHaveTextContent('Plan')
-    expect(mobileNav).toHaveTextContent('Data')
+    expect(mobileNav).toHaveTextContent('Retirement')
+    expect(mobileNav).toHaveTextContent('Grants')
 
     await user.click(screen.getByRole('button', { name: 'More' }))
     expect(within(mobileNav).getByRole('link', { name: 'Comp Calc' })).toBeInTheDocument()

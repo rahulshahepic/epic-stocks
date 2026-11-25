@@ -82,9 +82,9 @@ def test_reset_requires_confirmation_restores_fixture_and_rejects_stale_tokens(b
 def test_same_profile_reset_restores_params_and_diagnostic_has_no_values(browser):
     client, db = browser
     client.post('/api/demo/seed', json={'profile': 'early'})
-    client.put('/api/retirement/params', json={'params': {'defaultSpend': 98765}})
+    assert client.put('/api/retirement/params', json={'params': {'defaultSpend': 9876}}).status_code == 200
     preview = client.post('/api/demo/seed', json={'profile': 'early', 'reset': True}).json()['detail']
-    assert client.get('/api/retirement/params').json()['params']['defaultSpend'] == 98765
+    assert client.get('/api/retirement/params').json()['params']['defaultSpend'] == 9876
     confirmed = client.post('/api/demo/seed', json={'profile': 'early', 'reset': True, 'confirm': preview['confirm']})
     assert confirmed.status_code == 200
     assert client.get('/api/retirement/params').json()['params']['defaultSpend'] == 40

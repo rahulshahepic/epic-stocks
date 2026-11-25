@@ -238,7 +238,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
     expect(screen.getAllByText('$75,000').length).toBeGreaterThan(0)
-    expect(screen.getByText('Mar 1, 2027 — Vesting')).toBeInTheDocument()
+    expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Mar 1, 2027')
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
 
@@ -347,7 +347,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Total Income')).toBeInTheDocument()
     expect(screen.getByText('Total capital gains')).toBeInTheDocument()
     expect(screen.getByText('Loan Principal')).toBeInTheDocument()
-    expect(screen.getByText('Next Event')).toBeInTheDocument()
+    expect(screen.getByText('Next stop')).toBeInTheDocument()
   })
 
   it('renders chart titles', async () => {
@@ -402,29 +402,16 @@ describe('Dashboard', () => {
     expect(startInputs[0]).toHaveValue('2022-01-01')
   })
 
-  it('expands next event details when the Next Event card is tapped', async () => {
+  it('opens the next event directly from the hero without revealing a distant panel', async () => {
     mockApi()
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText('Mar 1, 2027 — Vesting')).toBeInTheDocument()
+      expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Mar 1, 2027')
     })
     expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
 
-    const nextEventButton = screen.getByText('Mar 1, 2027 — Vesting').closest('button')
-    expect(nextEventButton).toBeTruthy()
-    fireEvent.click(nextEventButton!)
-
-    await waitFor(() => {
-      expect(screen.getByText('Vesting shares')).toBeInTheDocument()
-    })
-    expect(screen.getByText('2,000')).toBeInTheDocument()
-
-    // Tapping again collapses the detail panel
-    fireEvent.click(nextEventButton!)
-    await waitFor(() => {
-      expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
-    })
+    expect(screen.getByRole('link', {name: 'Open next event'})).toHaveAttribute('href', '/events?date=2027-03-01')
   })
 
   it('marks an estimated price change as the next event', async () => {
@@ -436,9 +423,9 @@ describe('Dashboard', () => {
     try {
       renderDashboard()
       await waitFor(() => {
-        expect(screen.getByText('Jan 1, 2027 — Share Price (est.)')).toBeInTheDocument()
+        expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Jan 1, 2027')
       })
-      expect(screen.getByText(/announcement expected/i)).toBeInTheDocument()
+      expect(screen.getByText(/estimated price change/i)).toBeInTheDocument()
     } finally {
       MOCK_DASHBOARD_NEXT_OVERRIDE.value = original
     }
@@ -464,7 +451,8 @@ describe('Dashboard stale-price banner', () => {
     mockApi()   // newest real price is from 2021
     renderDashboard()
     expect(await screen.findByText(/Your newest share price is from 2021/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Add a price' })).toHaveAttribute('href', '/prices')
+    await userEvent.click(screen.getByRole('button', { name: 'Add a price' }))
+    expect(screen.getByLabelText('Announced price', {exact: true})).toHaveFocus()
   })
 
   it('stays quiet once this year has a price', async () => {
@@ -606,12 +594,13 @@ it('refreshes the primary exit amount after applying a tax or lot-selection tip'
   await waitFor(() => expect(screen.getByText('Estimated cash from leaving on this date').parentElement).toHaveTextContent('$4,321'))
 })
 
-it('links unpriced holdings to Prices', async () => {
+it('opens an inline price editor for unpriced holdings', async () => {
   MOCK_DASHBOARD_NEXT_OVERRIDE.value = {current_price: null, total_stock_value: null, vested_stock_value: null, net_equity: null}
   mockApi([])
   renderDashboard()
   expect(await screen.findByText(/Price not entered for this date/)).toBeVisible()
-  expect(screen.getByRole('link', {name: 'Add a price'})).toHaveAttribute('href', '/prices')
+  await userEvent.click(screen.getByRole('button', {name: 'Add a price'}))
+  expect(screen.getByLabelText('Announced price', {exact: true})).toHaveFocus()
   expect(screen.getByText(/vested shares · Price not entered/)).toBeVisible()
   expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
   expect(screen.queryByText('If you exited on this date')).not.toBeInTheDocument()

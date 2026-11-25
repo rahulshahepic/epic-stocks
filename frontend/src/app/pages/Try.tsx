@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import EurekaFileGuide from '../components/EurekaFileGuide.tsx'
+import StockFiles from '../components/StockFiles.tsx'
 import { Link, useNavigate } from 'react-router-dom'
 import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
 import { resetMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
@@ -24,6 +25,9 @@ import {
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { vestedBy } from '../vesting.ts'
 import { lastTimelineDate } from './Dashboard.math.ts'
+import { platform } from '../../platform/index.ts'
+import { discardTrialPreview, hasTrialPayload, saveTrialDraft } from '../trialImport.ts'
+import { isLoggedIn } from '../../api.ts'
 
 type Stage = 'upload' | 'analyzing' | 'preview'
 type Tab = 'dashboard' | 'events'
@@ -170,26 +174,29 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun, allowAssist
       <EurekaFileGuide allowAssistant={allowAssistant} />
 
       <div className="mt-4 space-y-3">
-        <div>
-          <label htmlFor="trial-csv" className="text-xs font-medium text-cs-text-2">
-            Data for Stock Workbook (.csv or .xlsx)
-          </label>
-          <input
-            id="trial-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
-            onChange={e => setCsv(e.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-          />
-        </div>
-        <div>
-          <label htmlFor="trial-pdf" className="text-xs font-medium text-cs-text-2">
-            Stock Loan Statement (.pdf)
-          </label>
-          <input
-            id="trial-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
-            onChange={e => setPdf(e.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
-          />
-        </div>
+        <StockFiles csv={csv} pdf={pdf} disabled={busy} onFiles={({workbook, statement}) => { if (workbook) setCsv(workbook); if (statement) setPdf(statement) }} />
+        <details><summary className="cursor-pointer py-2 text-xs text-cs-text-2">Choose or replace files separately</summary>
+          <div>
+            <label htmlFor="trial-csv" className="text-xs font-medium text-cs-text-2">
+              Data for Stock Workbook (.csv or .xlsx)
+            </label>
+            <input
+              id="trial-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
+              onChange={e => setCsv(e.target.files?.[0] ?? null)}
+              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+            />
+          </div>
+          <div>
+            <label htmlFor="trial-pdf" className="text-xs font-medium text-cs-text-2">
+              Stock Loan Statement (.pdf)
+            </label>
+            <input
+              id="trial-pdf" type="file" accept=".pdf,application/pdf" disabled={busy}
+              onChange={e => setPdf(e.target.files?.[0] ?? null)}
+              className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
+            />
+          </div>
+        </details>
         <button
           type="button" onClick={onRun} disabled={(!csv && !pdf) || busy}
           className="w-full rounded-xl bg-cs-brand px-4 py-3 text-sm font-semibold text-white shadow-card hover:bg-cs-brand-hover disabled:opacity-40"
@@ -428,6 +435,16 @@ export default function Try() {
   const [saving, setSaving] = useState(false)
   const [repricing, setRepricing] = useState(false)
   const [pricedAt, setPricedAt] = useState<number | null>(null)
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      if (!await hasTrialPayload()) return
+      const raw = await platform.storage.get('trial_preview')
+      if (!raw || !active) return
+      try { const cached = JSON.parse(raw) as TrialAnalyzeResponse; if (cached.draft && cached.timeline) { setResult(cached); setStage('preview') } } catch { /* damaged local draft */ }
+    })()
+    return () => { active = false }
+  }, [])
   useEffect(() => { if (stage === 'preview' && result) void measurementEvent('preview_viewed', result.measurementSequence) }, [stage, result])
 
   async function run(currentPrice?: number) {
@@ -449,6 +466,7 @@ export default function Try() {
   async function applyCurrentPrice(price: number) {
     setRepricing(true)
     try {
+      if (!csv && !pdf) throw new Error('Choose New files to change this saved preview’s price. Your existing preview is still available to save.')
       const r = await trialAnalyze(csv, pdf, price)
       setResult(r)
       setPricedAt(price)
@@ -459,7 +477,8 @@ export default function Try() {
     }
   }
 
-  function startOver() {
+  async function startOver() {
+    await discardTrialPreview()
     void resetMeasurement()
     setCsv(null)
     setPdf(null)
@@ -473,13 +492,20 @@ export default function Try() {
     if (!result) return
     setSaving(true)
     try {
-      await stashTrialPayload(result.draft)
       await measurementEvent('save_intent', result.measurementSequence)
       pingSaveIntent()
-      navigate('/login')
-    } catch {
+      if (isLoggedIn()) {
+        await discardTrialPreview()
+        await saveTrialDraft(result.draft)
+        navigate('/')
+      } else {
+        await stashTrialPayload(result.draft)
+        await platform.storage.set('trial_preview', JSON.stringify(result))
+        navigate('/login')
+      }
+    } catch (e) {
       setSaving(false)
-      setError('Could not hold onto your data locally — try signing up first, then import again.')
+      setError(e instanceof Error ? e.message : 'Could not save your preview. Your preview is still here; retry or import from your account.')
     }
   }
 

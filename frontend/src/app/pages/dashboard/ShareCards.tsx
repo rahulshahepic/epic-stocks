@@ -5,7 +5,8 @@ import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../../format.ts'
 import type { CardValues, GrantHolding } from '../Dashboard.types.ts'
 
 /** What the person holds, and what it is worth on the chosen date. */
-export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakdowns, toggleBreakdown }: {
+export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakdowns, toggleBreakdown, hideNextEvent = false }: {
+  hideNextEvent?: boolean
   cv: CardValues
   cardDate: string
   grantHoldings: GrantHolding[] | null
@@ -24,6 +25,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
           value={totalValue !== null ? fmt$(totalValue) : '—'}
           variant="value"
+          explanation="stock_value"
           subtitle="Vested at FMV + unvested at cost basis"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
@@ -56,7 +58,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
         />}
-        {cv.next_event && <Card
+        {!hideNextEvent && cv.next_event && <Card
           label="Next Event"
           value={cv.next_event ? `${fmtFullDate(cv.next_event.date)} — ${cv.next_event.event_type}${estimatedPriceChange ? ' (est.)' : ''}` : 'None'}
           variant="event"

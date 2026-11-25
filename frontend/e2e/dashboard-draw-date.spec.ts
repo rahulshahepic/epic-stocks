@@ -24,7 +24,7 @@ test('dashboard excludes a same-year future draw and loads tips with multiple lo
   const tipsResponse = page.waitForResponse(r => r.url().endsWith('/api/tips'))
   await page.reload()
   expect((await tipsResponse).status()).toBe(200)
-  const hero = page.locator('.campus-hero')
+  const hero = page.getByRole('region', {name: 'Your position'}).locator('.campus-hero')
   await expect(hero).toContainText('Stock value before loans and taxes')
   await expect(hero).toContainText('$100,000')
   const principal = hero.getByText('Outstanding loan principal', {exact: true}).locator('..')

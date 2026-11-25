@@ -2,7 +2,7 @@ import { Card, IconTile, type TileTone } from '../../scaffold/components/ui/Card
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp, IconPieChart, IconDocument, IconCompass } from '../../scaffold/components/ui/icons.tsx'
 import { InlineTerm } from './EquityTerms.tsx'
-import { EQUITY_TERMS, type EquityTerm } from '../equityTerms.ts'
+import type { EquityTerm } from '../equityTerms.ts'
 
 const CARD_TERMS: Record<string, EquityTerm> = {price: 'fmv', shares: 'vesting', unvested: 'vesting', income: 'ordinary_income', gains: 'capital_gains', loans: 'loan', interest: 'interest', event: 'timeline', tax: 'tax', cash: 'exit', value: 'fmv', costbasis: 'basis'}
 
@@ -27,7 +27,7 @@ const CARD_STYLES: Record<string, { tone: TileTone; icon: React.ReactNode }> = {
   costbasis: { tone: 'slate', icon: <IconDocument className="h-4 w-4" /> },
 }
 
-export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded, className = '', explanation }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean; className?: string; explanation?: EquityTerm }) {
+export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded, className = '', showExplanation = true, explanation }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean; className?: string; showExplanation?: boolean; explanation?: EquityTerm }) {
   const s = CARD_STYLES[variant] ?? CARD_STYLES.event
   const clickable = !!onClick
   const term = explanation ?? CARD_TERMS[variant]
@@ -41,10 +41,10 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
           </span>
         )}
       </div>
-      <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">{label}</p>
+      <p className="mt-2.5 text-xs font-medium text-cs-text-2">{label}</p>
       <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{value}</p>
       {subvalue && <p className="mt-0.5 text-sm font-medium tabular-nums text-cs-text-2">{subvalue}</p>}
-      {subtitle && <p className="mt-1 text-[11px] leading-tight text-cs-muted">{subtitle}</p>}
+      {subtitle && <p className="mt-1 text-xs text-cs-muted">{subtitle}</p>}
     </>
   )
   const card = clickable ? (
@@ -59,6 +59,6 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
   ) : <Card pad="md">{content}</Card>
   return <div className={`min-w-0 ${className}`} data-equity-card={term}>
     {card}
-    {term && <>{['costbasis', 'loans', 'tax', 'cash'].includes(variant) && <p className="mt-2 text-[11px] leading-relaxed text-cs-muted">{EQUITY_TERMS[term].meaning}</p>}<InlineTerm term={term} figure={value} /></>}
+    {term && showExplanation && <InlineTerm term={term} figure={value} />}
   </div>
 }

@@ -266,25 +266,25 @@ The preview then says what an account adds that a one-off read cannot: notificat
 |--------|---------|
 | ![Dashboard Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Desktop](screenshots/dashboard-light-desktop.png) |
 
-The dashboard is split into two stacked sections that share a single **As of** date picker (**Today** and **Last event** quick buttons). Dark mode is supported and follows your system preference.
+Pick a date to see **Your position**, including your shares, earnings and borrowing costs. **If you leave** shows estimated departure cash, the breakdown and the effect of staying another year. **Upcoming stock events** and **Stock over time** show what comes next and how your position has changed.
 
 **Last event** ignores tentative share-price estimates, so extending price assumptions
 does not move that shortcut past your last vesting, payment or sale. Confirmed
 price updates still count. Estimates remain visible in the timeline and charts.
 
-#### "Up to this date"
+#### Your position
 
 Summary cards showing everything that has happened through the selected date:
 
 | Card group | What it shows |
 |-----------|--------------|
-| **Your Shares** | Value today (vested shares at current FMV + unvested shares at cost basis), total cost basis, current share price, vested shares, unvested shares, next scheduled event |
+| **Your shares** | Value today (vested shares at current FMV + unvested shares at cost basis), total cost basis, current share price, vested shares and unvested shares |
 | **Earnings** | Total ordinary income recognized from vesting, total capital gains from sales, net cash received |
-| **Costs** | Outstanding loan principal, total interest accrued, estimated taxes paid |
+| **Costs** | Total amount borrowed, active loan balances in the principal breakdown, total interest accrued and estimated taxes paid |
 
-Tap any card marked **▼ see breakdown** to see how the number was computed — per-grant, per-sale, or per-loan detail. Open breakdowns persist across visits.
+Tap a card with a chevron to see the grant, sale, or loan details behind its figure. Open breakdowns persist across visits.
 
-The dashboard also includes **Your stock journey**, a responsive milestone path
+**Upcoming stock events** is a responsive milestone path
 showing the next five upcoming event types by date. Same-day events of one type
 share a milestone: vesting adds all tranche shares, their individual market values,
 and their individual gains or income; loan payoffs add amounts due; sales add gross
@@ -298,16 +298,16 @@ the financial data.
 
 The **Export** button in the date bar downloads a formatted Excel holdings report for the selected date, useful for financial or estate planners. The report distinguishes shares vested by the award schedule from **Shares Held** after sales and down-payment exchanges.
 
-#### "If you exited on this date"
+#### If you leave
 
 This section appears for today or any future date. It shows what would happen if you sold all vested shares and paid off all loans on that date:
 
-- **Net Cash at Exit** — take-home after gross proceeds, loans paid off, and estimated divest tax
+- **Estimated cash if you left** — take-home after gross proceeds, loans paid off, and estimated divest tax
 - **Gross Proceeds** — total sale value at the current share price
 - **Loans Paid Off** — outstanding balances that would be repaid, plus the interest and tax loans your statements have not booked yet (see below)
 - **Est. Divest Tax** — estimated capital gains and income tax on liquidation
 
-Tap **Net Cash at Exit** to expand the full exit breakdown, including prior-sale contributions and any interest deduction tax savings.
+Open **Exit breakdown and earlier cash** below the headline to see proceeds, loan settlement and estimated taxes. The **Cash from exit plus earlier activity** card expands to show prior sales and modeled deduction savings. Open **What changes if I stay one more year?** to compare that date with leaving one year later.
 
 #### Unbooked interest and tax loans
 
@@ -343,7 +343,7 @@ Implementation: `backend/app/routers/interest_checkpoints.py` provides owner-sco
 
 #### Investment interest deduction toggle
 
-The **investment interest deduction** toggle lives directly on the dashboard. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
+On the dashboard, open **Your position → Earnings and borrowing costs** for the **investment interest deduction** toggle. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
 
 ---
 
@@ -895,7 +895,7 @@ Epic requires an 83(b) election with every purchase, so a grant bought at a pric
 
 ### Understanding the dashboard
 
-The dashboard leads with **estimated cash from leaving on the selected date**, from the same exit service used by the API and connector. It excludes proceeds from prior sales. If obligations exceed liquidation proceeds, it shows **additional cash needed to settle** rather than concealing the shortfall behind a zero. Historical dates show stock equity before exit taxes instead. The separate **Total Cash Through Exit** includes modeled prior sales and deduction savings; it is not a current account balance. Gross proceeds, principal, interest and tax remain in the exit breakdown. Earnings and borrowing details are expandable. **What changes if I stay one more year?** compares two canonical exit calculations, including leap-day handling, using only saved records and prices. It shows applicable prices and explicitly excludes future grants and salary; the difference is a projection, not promised compensation. Shared viewers use the same comparison service. All amounts depend on saved records, selected dates, applicable price estimates and tax/settlement settings.
+The dashboard’s **If you leave** section shows estimated cash from leaving on the selected date, from the same exit service used by the API and connector. It excludes proceeds from prior sales. If obligations exceed liquidation proceeds, it shows **additional cash needed to settle** rather than concealing the shortfall behind a zero. Historical dates show stock equity before exit taxes instead. The separate **Total Cash Through Exit** includes modeled prior sales and deduction savings; it is not a current account balance. Gross proceeds, principal, interest and tax remain in the exit breakdown. Earnings and borrowing details are expandable. **What changes if I stay one more year?** compares two canonical exit calculations, including leap-day handling, using only saved records and prices. It shows applicable prices and explicitly excludes future grants and salary; the difference is a projection, not promised compensation. Shared viewers use the same comparison service. All amounts depend on saved records, selected dates, applicable price estimates and tax/settlement settings.
 
 ### Importing from Eureka
 
@@ -1900,7 +1900,7 @@ The admin MCP exposes `admin_onboarding_funnel` (aggregates and recommended acti
 
 New accounts start with email notifications **off**. After a useful dashboard, an actual upcoming vesting or loan payoff offers **Choose reminders**, which opens Settings without enabling anything. Existing notification preferences are preserved; the migration preserves prior choices to stop notification offers. The account-level **Stop offering notifications** preference also suppresses the contextual offer, including on other devices. Already-enabled channels suppress this offer; browser dismissal suppresses further offers there. Settings describes push on the current device, and the existing push flow handles permission/install requirements. Notification previews omit financial values.
 
-**Your annual stock summary** on Dashboard uses the server’s last completed calendar year, avoiding browser time-zone rollover errors, and compares December 31 positions reconstructed through the canonical dated dashboard service. It labels estimates, tentative prices, missing figures, and historical changes caused by corrected records. The optional **annual stock summary** checkbox in Settings is off by default, independent of email/push channel opt-in. When selected, the scheduler offers a January reminder through enabled channels, marks the year only after delivery succeeds, and catches up later in January. Prior statements are never treated as proof of current accrued-interest balances; year-end reconciliation keeps using the existing checkpoint/reminder service.
+**Your annual stock summary** on Events uses the server’s last completed calendar year, avoiding browser time-zone rollover errors, and compares December 31 positions reconstructed through the canonical dated dashboard service. It labels estimates, tentative prices, missing figures, and historical changes caused by corrected records. The optional **annual stock summary** checkbox in Settings is off by default, independent of email/push channel opt-in. When selected, the scheduler offers a January reminder through enabled channels, marks the year only after delivery succeeds, and catches up later in January. Prior statements are never treated as proof of current accrued-interest balances; year-end reconciliation keeps using the existing checkpoint/reminder service.
 
 Implementation: `app/annual_summary.py`, the existing event/notification routers and scheduler, `ReminderOffer` and `AnnualStockSummary`. No new notification loop or server LLM is introduced.
 

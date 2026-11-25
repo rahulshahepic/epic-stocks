@@ -61,6 +61,19 @@ describe('Events', () => {
     expect(screen.getByText(/^2 events/)).toBeInTheDocument()
   })
 
+  it.each([true, false])('shows the annual summary according to past stock activity: %s', async historical => {
+    const year = new Date().getFullYear()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify([
+      {...MOCK_EVENTS[0], date: `${year-2}-01-01`, event_type: 'Share Price'},
+      {...MOCK_EVENTS[1], date: `${historical ? year-1 : year}-01-01`},
+    ]), {status: 200}))
+    renderEvents('/events')
+    await screen.findByRole('heading', {name: 'Events Timeline'})
+    const summary = screen.queryByText(/Your \d{4} stock summary/)
+    if (historical) expect(summary).toBeVisible()
+    else expect(summary).not.toBeInTheDocument()
+  })
+
   it('renders event type badges', async () => {
     mockApi()
     renderEvents()

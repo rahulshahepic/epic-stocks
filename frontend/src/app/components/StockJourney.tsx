@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { TimelineEvent } from '../../api.ts'
 import { fmt$, fmtNum } from '../format.ts'
-import { Card, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { localToday } from '../dateUtils.ts'
 
 const MILESTONE_TONES = ['bg-cs-brand', 'bg-[#087A55]', 'bg-[#1769AA]', 'bg-[#71358A]', 'bg-[#B25B00]']
@@ -80,43 +80,38 @@ export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: 
   if (milestones.length === 0) return null
 
   return (
-    <Card as="section" className="campus-map overflow-hidden border-cs-border-strong">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <Eyebrow>Follow the garden path</Eyebrow>
-          <h2 className="mt-1 font-serif text-xl font-semibold text-cs-text sm:text-2xl">Upcoming stock events</h2>
-        </div>
-        <p className="text-xs text-cs-muted">Next {milestones.length} milestone{milestones.length === 1 ? '' : 's'}</p>
-      </div>
-
-      <ol className="relative mt-5 grid gap-3 sm:min-h-40 sm:grid-cols-5 sm:items-start sm:gap-2">
-        <div
-          className="campus-route absolute bottom-5 left-[1.05rem] top-5 w-0.5 bg-cs-border-strong sm:bottom-auto sm:left-[10%] sm:right-[10%] sm:top-[1.05rem] sm:h-20 sm:w-auto sm:bg-transparent"
-          aria-hidden="true"
-        />
-        {milestones.map((group, index) => (
-          <li
-            key={`${group[0].date}-${group[0].event_type}`}
-            className={`campus-stop campus-stop-${index + 1} relative grid grid-cols-[2.25rem_1fr] items-start gap-3 sm:block sm:text-center`}
-          >
-            <span
-              className={`campus-marker relative z-10 flex h-9 w-9 items-center justify-center border-4 border-cs-surface text-sm font-bold text-white shadow-sm ${MILESTONE_TONES[index % MILESTONE_TONES.length]}`}
-              aria-hidden="true"
+    <section aria-labelledby="dashboard-upcoming" className="space-y-3">
+      <h2 id="dashboard-upcoming" className="text-xl font-semibold text-cs-text">Upcoming stock events</h2>
+      <Card className="campus-map overflow-hidden border-cs-border-strong">
+        <ol className="relative grid gap-3 sm:min-h-40 sm:grid-cols-5 sm:items-start sm:gap-2">
+          <div
+            className="campus-route absolute bottom-5 left-[1.05rem] top-5 w-0.5 bg-cs-border-strong sm:bottom-auto sm:left-[10%] sm:right-[10%] sm:top-[1.05rem] sm:h-20 sm:w-auto sm:bg-transparent"
+            aria-hidden="true"
+          />
+          {milestones.map((group, index) => (
+            <li
+              key={`${group[0].date}-${group[0].event_type}`}
+              className={`campus-stop campus-stop-${index + 1} relative grid grid-cols-[2.25rem_1fr] items-start gap-3 sm:block sm:text-center`}
             >
-              {index + 1}
-            </span>
-            <div className="min-w-0 pt-0.5 sm:mt-3 sm:pt-0">
-              <p className="text-sm font-bold leading-tight text-cs-text">{eventLabel(group)}</p>
-              <p className="mt-1 text-xs font-semibold text-cs-text-2">{shortDate(group[0].date)}</p>
-              {details[index] && <p className="mt-0.5 text-xs text-cs-muted">{details[index]}</p>}
-              {group.some(e => e.is_generated && e.date > localToday()) && <Link to="/settings#loans" className="text-xs text-cs-brand underline">Repayment settings</Link>}
-              {group.length === 1 && group[0].grant_year && (
-                <p className="mt-0.5 text-xs text-cs-muted">{group[0].grant_year} {group[0].grant_type}</p>
-              )}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </Card>
+              <span
+                className={`campus-marker relative z-10 flex h-9 w-9 items-center justify-center border-4 border-cs-surface text-sm font-bold text-white shadow-sm ${MILESTONE_TONES[index % MILESTONE_TONES.length]}`}
+                aria-hidden="true"
+              >
+                {index + 1}
+              </span>
+              <div className="min-w-0 pt-0.5 sm:mt-3 sm:pt-0">
+                <p className="text-sm font-bold leading-tight text-cs-text">{eventLabel(group)}</p>
+                <p className="mt-1 text-xs font-semibold text-cs-text-2">{shortDate(group[0].date)}</p>
+                {details[index] && <p className="mt-0.5 text-xs text-cs-muted">{details[index]}</p>}
+                {group.some(e => e.is_generated && e.date > localToday()) && <Link to="/settings#loans" className="text-xs text-cs-brand underline">Repayment settings</Link>}
+                {group.length === 1 && group[0].grant_year && (
+                  <p className="mt-0.5 text-xs text-cs-muted">{group[0].grant_year} {group[0].grant_type}</p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Card>
+    </section>
   )
 }

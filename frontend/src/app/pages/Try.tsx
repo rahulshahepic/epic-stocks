@@ -243,7 +243,7 @@ function AsOfControl({ asOf, setAsOf, lastEventDate }: {
   )
 }
 
-function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: string }) {
+function DashboardTab({ result, asOf, hasLoanStatement }: { result: TrialAnalyzeResponse; asOf: string; hasLoanStatement: boolean }) {
   const c = useChartColors()
   const today = useToday()
   // The preview shows every chart whole. Per-chart range pickers are a second
@@ -256,9 +256,9 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
   return (
     <div className="space-y-4">
       <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
-        <Eyebrow className="text-white">Net worth · as of {fmtFullDate(asOf)}</Eyebrow>
+        <Eyebrow className="text-white">{hasLoanStatement ? 'Stock equity' : 'Stock value (loans not included)'} · as of {fmtFullDate(asOf)}</Eyebrow>
         <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
-          {fmt$(v.netWorth)}
+          {fmt$(hasLoanStatement ? v.netWorth : v.value)}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
           <span><span className="font-semibold">{fmtNum(v.shares)}</span> vested shares</span>
@@ -268,8 +268,9 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
           <span><span className="font-semibold">{fmtPrice(v.price)}</span> / share</span>
         </div>
         <p className="mt-1 text-sm text-white">
-          {fmt$(v.value)} in shares − {fmt$(v.loanBalance)} loans
+          {fmt$(v.value)} in shares · {hasLoanStatement ? `${fmt$(v.loanBalance)} loans` : 'Loans: not uploaded'}
         </p>
+        <p className="mt-3 text-xs text-white">This preview cannot subtract shares you have sold. Vested shares and stock value may be overstated.</p>
       </HeroCard>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -284,7 +285,7 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
           subtitle="All grants, vested or not" />
         <StatCard variant="income" label="Income to date" value={fmt$(v.income)} />
         <StatCard variant="gains" label="Capital gains" value={fmt$(v.capGains)} />
-        <StatCard variant="loans" label="Loan balance" value={fmt$(v.loanBalance)} />
+        <StatCard variant="loans" label="Loan balance" value={hasLoanStatement ? fmt$(v.loanBalance) : 'Not uploaded'} />
         <StatCard
           variant="tax" label="Est. tax so far" value={fmt$(v.estTax)}
           subtitle="At default rates — an account uses yours"
@@ -578,7 +579,6 @@ export default function Try() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
-        <Link to="/demo" className="block rounded-xl border border-cs-border-strong p-4 text-sm font-semibold text-cs-text">No files handy? Explore a fictional employee demo →</Link>
         {(!csv || !pdf) && (
           <Card>
             <p className="text-sm text-cs-text-2">
@@ -622,7 +622,7 @@ export default function Try() {
         )}
 
         {tab === 'dashboard'
-          ? <DashboardTab result={result} asOf={asOf} />
+          ? <DashboardTab result={result} asOf={asOf} hasLoanStatement={!!pdf} />
           : <EventsTab result={result} asOf={asOf} />}
 
         <WhyAnAccount

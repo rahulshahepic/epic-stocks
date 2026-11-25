@@ -22,7 +22,7 @@ describe('StockJourney', () => {
         event(`2027-0${index + 1}-01`, 'Vesting', { vested_shares: 100 + index })),
     ]
     render(<StockJourney events={events} asOf="2026-09-07" />)
-    expect(screen.getByRole('heading', { name: 'Your stock journey' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Upcoming stock events' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(5)
     expect(screen.queryByText('Mar 1, 2025')).not.toBeInTheDocument()
     expect(screen.getByText('100 shares vest')).toBeInTheDocument()

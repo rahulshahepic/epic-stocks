@@ -28,7 +28,7 @@ test.describe('No-account trial (/try)', () => {
     await page.getByRole('button', { name: 'See my numbers' }).click()
 
     // A dashboard a person recognizes, not a file dump.
-    await expect(page.getByText('Net worth · as of', { exact: false })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('Stock equity · as of', { exact: false })).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText('Preview · nothing saved')).toBeVisible()
     await expect(page.getByText('Vested shares', { exact: true })).toBeVisible()
     await expect(page.getByText('Loan balance', { exact: true })).toBeVisible()
@@ -66,7 +66,7 @@ test.describe('No-account trial (/try)', () => {
     await page.locator('#trial-csv').setInputFiles(CSV_PATH)
     await page.locator('#trial-pdf').setInputFiles(PDF_PATH)
     await page.getByRole('button', { name: 'See my numbers' }).click()
-    await expect(page.getByText('Net worth · as of', { exact: false })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('Stock equity · as of', { exact: false })).toBeVisible({ timeout: 20_000 })
 
     const shares = page.getByText('Vested shares', { exact: true }).locator('..')
     const atToday = await shares.textContent()

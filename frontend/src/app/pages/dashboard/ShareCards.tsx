@@ -20,7 +20,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
     <section className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card
+        {totalValue !== null && <Card
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
           value={totalValue !== null ? fmt$(totalValue) : '—'}
           variant="value"
@@ -28,7 +28,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
           className="col-span-2 min-h-36 bg-gradient-to-br from-cs-surface to-cs-brand-subtle sm:col-span-2"
-        />
+        />}
         <Card
           label="Total Cost Basis"
           value={fmt$(cv.total_cost_basis)}
@@ -37,17 +37,17 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
         />
-        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={(cv.current_price === null ? '—' : fmtPrice(cv.current_price))} variant="price" subtitle="Price per share on this date" />
+        {cv.current_price !== null && <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={(cv.current_price === null ? '—' : fmtPrice(cv.current_price))} variant="price" subtitle="Price per share on this date" />}
         <Card
           label="Vested Shares"
           value={fmtNum(cv.total_shares)}
-          subvalue={(cv.vested_stock_value === null ? '—' : fmt$(cv.vested_stock_value)) + (cv.price_is_estimate ? ' (est.)' : '')}
+          subvalue={cv.vested_stock_value === null ? undefined : fmt$(cv.vested_stock_value) + (cv.price_is_estimate ? ' (est.)' : '')}
           variant="shares"
-          subtitle={`Value at ${(cv.current_price === null ? '—' : fmtPrice(cv.current_price))}/share`}
+          subtitle={cv.current_price === null ? undefined : `Value at ${fmtPrice(cv.current_price)}/share`}
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
         />
-        <Card
+        {cv.unvested_shares > 0 && <Card
           label="Unvested Shares"
           value={fmtNum(cv.unvested_shares)}
           subvalue={fmt$(cv.purchased_unvested_stock_value)}
@@ -55,8 +55,8 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           subtitle="Value at purchase price"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
-        />
-        <Card
+        />}
+        {cv.next_event && <Card
           label="Next Event"
           value={cv.next_event ? `${fmtFullDate(cv.next_event.date)} — ${cv.next_event.event_type}${estimatedPriceChange ? ' (est.)' : ''}` : 'None'}
           variant="event"
@@ -66,7 +66,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
           expanded={openBreakdowns.has('nextEvent')}
           className="col-span-2 sm:col-span-1"
-        />
+        />}
       </div>
       {openBreakdowns.has('nextEvent') && cv.next_event_detail && (
         <BreakdownShell title="Next Event">

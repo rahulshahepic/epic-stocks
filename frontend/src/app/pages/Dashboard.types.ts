@@ -39,7 +39,7 @@ export interface Breakdowns {
   }
   income: {groups: {key: string; year: number; type: string; income: number; events: number}[]; total: number}
   capGains: {vestingGroups: {key: string; year: number; type: string; amount: number}[]; vestingTotal: number; priceTotal: number; total: number}
-  interest: {rows: {id: string; label: string; amount: number; note?: string}[]; total: number}
+  interest: {rows: {id: string; label: string; amount: number; note?: string}[]; total: number; booked?: number}
   tax: {taxLoans: number; vestingIncomeTax: number; cgTaxFromSales: number; deductionSavings: number; total: number}
 }
 export interface DashboardSnapshot extends DashboardData {

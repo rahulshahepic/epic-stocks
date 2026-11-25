@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant
+from scaffold.models import User
 from scaffold.auth import get_current_user
 from app.sales_engine import compute_sale_tax
 from app.date_utils import to_date as _to_date
@@ -724,21 +724,35 @@ def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_e
 def preview_deduction(
     enabled: bool = Query(..., description="Whether to apply investment interest deduction"),
     exclude_past: bool = Query(False, description="Auto-exclude years before the current year"),
+    as_of: date | None = None,
+    include_exit: bool = Query(False, description="Include a hypothetical exit on as_of"),
+    past_year_cutoff: int | None = Query(None, ge=1, le=9999),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Compute investment interest deduction impact without saving the setting."""
-    from app.tax_settings import tax_settings_or_defaults
-    ts_row = tax_settings_or_defaults(user, db)
+    inputs = load_calculation_inputs(user, db)
+    ts_row = inputs.tax
     if not ts_row:
         return None
     excl = set(ts_row.deduction_excluded_years or [])
     if exclude_past and not excl:
-        this_year = date.today().year
-        grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
+        this_year = past_year_cutoff or (inputs.today or date.today()).year
         from services.vesting import vest_years
-        excl = {y for g in grants_db for y in vest_years(g) if y < this_year}
-    ctx = _projected_events(user, db, deduction_enabled=enabled, excluded_years=excl)
+        excl = {y for g in inputs.grants for y in vest_years(g) if y < this_year}
+    if as_of is not None:
+        if include_exit:
+            summary = _preview_exit_data(user, db, as_of.isoformat(), inputs=inputs,
+                                         deduction_enabled=enabled, excluded_years=excl)
+            if summary is None:
+                return None
+            return {"interest_deduction_total": summary["interest_deducted"],
+                    "tax_savings_from_deduction": summary["deduction_savings"]}
+        snapshot = _get_dashboard_data(user, db, as_of, inputs=inputs,
+                                       deduction_enabled=enabled, excluded_years=excl)
+        return {key: snapshot.get(key, 0.0)
+                for key in ("interest_deduction_total", "tax_savings_from_deduction")}
+    ctx = _projected_events(user, db, inputs=inputs, deduction_enabled=enabled, excluded_years=excl)
     if db is not None:
         db.close()
     if ctx is None:
@@ -747,7 +761,8 @@ def preview_deduction(
     return {"interest_deduction_total": used, "tax_savings_from_deduction": saved}
 
 
-def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None):
+def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None,
+                       deduction_enabled=None, excluded_years=None):
     """Core preview-exit logic. Used by both the direct endpoint and the
     /sharing/view/{invitation_id}/preview-exit endpoint, so it must operate
     on an arbitrary User (not just the current request user)."""
@@ -760,7 +775,8 @@ def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None):
     from services.price_state import price_metadata
 
     inputs = inputs if inputs is not None else load_calculation_inputs(user, db)
-    ctx = _projected_events(user, db, horizon_date=preview_date, inputs=inputs)
+    ctx = _projected_events(user, db, horizon_date=preview_date, inputs=inputs,
+                            deduction_enabled=deduction_enabled, excluded_years=excluded_years)
     if db is not None:
         db.close()
     if ctx is None:
@@ -879,7 +895,9 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     return payload
 
 
-def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False, include_charts=True, inputs=None) -> dict:
+def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *,
+                        include_details=False, include_charts=True, inputs=None,
+                        deduction_enabled=None, excluded_years=None) -> dict:
     """Shared accounting for HTTP, shared views and MCP. Dated HTTP snapshots
     include server-prepared cards and breakdowns; undated callers retain their
     legacy cumulative fields. Position fields always use the requested cutoff.
@@ -1076,7 +1094,11 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
     # against gains actually realized by then (the sales above).
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
-    if ts_row and ts_row.deduct_investment_interest and sale_specs:
+    if deduction_enabled is None:
+        deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
+    if ts_row and deduction_enabled and sale_specs:
+        if excluded_years is None:
+            excluded_years = set(ts_row.deduction_excluded_years or [])
         paid: dict[int, float] = {}
         for po in projection.payoffs:
             if po.date <= cutoff:
@@ -1085,7 +1107,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             ({"date": spec["date"], "event_type": "Sale",
               "st_gain": results[spec["id"]]["st_gain"], "lt_gain": results[spec["id"]]["lt_gain"]}
              for spec in sale_specs), key=lambda e: e["date"])
-        _apply_interest_deduction(realized, paid, excluded_years=set(ts_row.deduction_excluded_years or []))
+        _apply_interest_deduction(realized, paid, excluded_years=excluded_years)
         interest_deduction_total, tax_savings_from_deduction = _deduction_totals(realized, _ts_dict(ts_row))
 
     # Whether the price these figures rest on is one the user projected rather

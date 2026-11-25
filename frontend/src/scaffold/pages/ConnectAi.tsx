@@ -121,6 +121,7 @@ export default function ConnectAi() {
         </select>
 
         <div className="mt-3" aria-live="polite">
+          {guide.note && <p className="mb-2 text-xs text-cs-text-2">{guide.note}</p>}
           <ol className="space-y-1.5 text-xs text-cs-text-2">
             {guide.steps.map((step, i) => (
               <li key={i} className="flex gap-2.5">
@@ -142,8 +143,6 @@ export default function ConnectAi() {
               </div>
             </div>
           )}
-
-          {guide.note && <p className="mt-2 text-xs text-cs-muted">{guide.note}</p>}
 
           {guide.plugin && (
             <p className="mt-2 text-xs text-cs-text-2">

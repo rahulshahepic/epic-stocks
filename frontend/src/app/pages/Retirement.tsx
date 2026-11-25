@@ -1669,7 +1669,6 @@ function RetirementAccount() {
         )}
         {result && result.preRetirementFundingGapM <= 1e-9 && (
           <>
-            <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
             <HeroCard
               className="campus-observatory-hero"
               watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}
@@ -1681,6 +1680,7 @@ function RetirementAccount() {
               <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">{fmtPct(1 - result.pctRuin, 1)} fully funded</p>
               <p className="mt-2 text-xs text-white">Through age {resultEndAge} · {result.finalWealth.length.toLocaleString()} simulations · amounts in {resultDollarYear} dollars</p>
             </HeroCard>
+            <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
             <div className="grid grid-cols-2 gap-3">
               <StatCard
                 label="Ended richer than you started"

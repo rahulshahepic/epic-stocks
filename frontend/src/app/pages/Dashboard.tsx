@@ -44,7 +44,7 @@ import campusWatercolor from '../../assets/campus-watercolor.webp'
  * be a year or more old, with nothing on screen to say so. Dismissal is keyed to
  * the stale year, so it stays gone until a new year makes it true again.
  */
-function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: boolean }) {
+function StalePriceBanner({ latest, readOnly, onAddPrice }: { latest: PriceEntry; readOnly: boolean; onAddPrice?: () => void }) {
   const key = `stale-price-dismissed-${latest.effective_date.slice(0, 4)}`
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(key) === '1' } catch { return false }
@@ -61,7 +61,7 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
         {!readOnly && ' Record this year\'s announcement to confirm the price.'}
       </p>
       {!readOnly && (
-        <Link
+        onAddPrice ? <button type="button" onClick={onAddPrice} className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link
           to="/prices#announced-price"
           className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover"
         >
@@ -92,6 +92,13 @@ export default function Dashboard() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const priceEditor = useRef<HTMLDetailsElement>(null)
+  function openPriceEditor() {
+    if (!priceEditor.current) return
+    priceEditor.current.open = true
+    priceEditor.current.scrollIntoView?.({ block: 'start' })
+    priceEditor.current.querySelector('input')?.focus()
+  }
   const today = useToday()
   const [importSaved, setImportSaved] = useState(false)
   const [carryover, setCarryover] = useState('')
@@ -373,10 +380,10 @@ export default function Dashboard() {
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
-          {!readOnly && <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>}
+          {!readOnly && (!config?.epic_mode ? <button type="button" onClick={openPriceEditor} className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>)}
         </div>
       )}
-      {!readOnly && !config?.epic_mode && <details className="rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Enter an announced price here</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
+      {!readOnly && !config?.epic_mode && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Enter an announced price here</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
       {cv && grantHoldings && (
         <HeroCard
           className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
@@ -497,7 +504,7 @@ export default function Dashboard() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}
-        {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
+        {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
       </div>
 
       {!snapshot && <div role={dashError ? 'alert' : 'status'} className="text-sm text-cs-muted">

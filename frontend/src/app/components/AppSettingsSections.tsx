@@ -238,11 +238,12 @@ export default function AppSettingsSections() {
                   onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
                   className={FIELD_INPUT_CLASS}
                 >
-                  <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
+                  <option value="epic_lifo">Epic LIFO — prefer long-term gains (recommended default)</option>
                   <option value="fifo">FIFO — oldest lots first</option>
                   <option value="lifo">LIFO — newest lots first</option>
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
+                <p className="mt-1 text-[11px] text-cs-text-2">Recommended starting choice: Epic LIFO selects newer lots while preferring long-term gains. FIFO sells the oldest lots, LIFO the newest regardless of holding period, and Manual lets you choose each lot. Match the method your actual sale will use.</p>
                 <p className="mt-1 text-[11px] text-cs-text-2">
                   Applies to manual sales only.{taxSettings?.flexible_payoff_enabled ? ' See Loan Payoff Lot Method below for payoff sales.' : ' Loan payoff sales use same-tranche selection by default.'}
                 </p>
@@ -258,11 +259,12 @@ export default function AppSettingsSections() {
                     onChange={e => setTaxForm(f => f ? { ...f, loan_payoff_method: e.target.value as TaxSettings['loan_payoff_method'] } : f)}
                     className={FIELD_INPUT_CLASS}
                   >
-                    <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
+                    <option value="epic_lifo">Epic LIFO — prefer long-term gains (recommended default)</option>
                     <option value="lifo">LIFO — newest lots first</option>
                     <option value="fifo">FIFO — oldest lots first</option>
                     <option value="same_tranche">Same Tranche — shares from originating grant only</option>
                   </select>
+                  <p className="mt-1 text-[11px] text-cs-text-2">Recommended starting choice when flexible repayment is enabled: Epic LIFO. Same Tranche restricts sales to the loan’s grant; FIFO and LIFO choose the oldest or newest lots. This changes the planned sale, never an actual repayment.</p>
                   <p className="mt-1 text-[11px] text-cs-text-2">
                     Applies to loan payoff sales when you have sufficient stock coverage (vested value + unvested cost basis ≥ loan balance). Falls back to same-tranche if coverage is insufficient.
                   </p>
@@ -290,6 +292,7 @@ export default function AppSettingsSections() {
                       Estimate investment interest deduction (Form 4952)
                     </span>
                     <p className="mt-1 text-[11px] text-cs-text-2">
+                      Recommended starting choice: leave this off until you have checked your eligibility.{' '}
                       If you itemize deductions, your loan interest may be deductible against
                       capital gains. Only applies to years where you itemize — not years you take the
                       standard deduction. Consult a tax advisor; this is an estimate only.

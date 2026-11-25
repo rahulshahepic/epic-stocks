@@ -2039,8 +2039,9 @@ dashboard charts and cumulative exit details expand on request. The garden path
 and campus artwork remain part of the dashboard.
 
 The yearly **Record announced price** flow is available on Prices and inline on
-the dashboard outside company-managed Epic mode. It checks a blank, user-entered
-price against the current position before an explicit save, confirms the record
+the dashboard outside company-managed Epic mode. Dashboard **Add a price** prompts
+open and focus that editor in place. It checks a blank, user-entered price against
+the current position before an explicit save, confirms the record
 applicable from January 1, and preserves a known actual announcement date. Its
 before/after comparison holds the account records constant; it is not presented
 as a year's investment return. Existing notification preferences control annual

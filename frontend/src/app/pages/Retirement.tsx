@@ -59,6 +59,7 @@ import {
   type GlidePoint,
   type RiskOfRuinTable,
   type Scenario,
+  type PlannedEvent,
   type SimParams,
   type SimResult,
 } from './Retirement.math.ts'
@@ -523,8 +524,9 @@ function RetirementAccount() {
     completedRun.exitMode !== exitMode ||
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
-  const expenseSavePending = useRef(false)
-  const expensesEdited = useRef(false)
+  const expenseSaveRequest = useRef(0)
+  const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [expenseSaveError, setExpenseSaveError] = useState('')
   const [saveRetry, setSaveRetry] = useState(0)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState('')
@@ -556,7 +558,6 @@ function RetirementAccount() {
     paramsLoadedRef.current = false
     setParamsLoaded(false)
     setParamsError(false)
-    expensesEdited.current = false
     setCompletedRun(null)
     setLifeEventComparison(null)
     setHasRun(false)
@@ -748,20 +749,29 @@ function RetirementAccount() {
     }
   }, [vid])
 
-  // Save form typing after a pause. The expense editor submits discrete edits,
-  // so queue them immediately and let the write finish after navigation.
-  useEffect(() => {
+  function saveExpenses(events: PlannedEvent[]) {
     if (vid || !paramsLoadedRef.current) return
-    const immediate = expenseSavePending.current
-    expenseSavePending.current = false
-    if (!immediate && !expenseRetirementDate && !retirementEdited) return
+    const request = ++expenseSaveRequest.current
+    setExpenseSaveStatus('saving')
+    setExpenseSaveError('')
+    retirementSaveQueue = retirementSaveQueue.then(() => api.savePlannedExpenses(events)).then(() => {
+      if (request === expenseSaveRequest.current) setExpenseSaveStatus('saved')
+    }).catch((err: unknown) => {
+      if (request !== expenseSaveRequest.current) return
+      setExpenseSaveStatus('error')
+      setExpenseSaveError(err instanceof Error ? err.message : 'Unable to save planned expenses')
+    })
+  }
+
+  useEffect(() => {
+    if (vid || !paramsLoadedRef.current || !retirementEdited) return
     const request = ++saveRequestRef.current
     const controller = new AbortController()
-    let active = true
     setSaveStatus('saving')
     setSaveError('')
-    const save = () => {
+    const timer = setTimeout(() => {
       const savedParams: Record<string, unknown> = { ...params }
+      delete savedParams.plannedEvents
       // Do not persist an outdated exit projection as the new date's amount.
       if (exitMode === 'auto' && !legacyExitHeld && (exitPreviewLoading || exitError)) delete savedParams.epicExit
       const payload = {
@@ -771,25 +781,16 @@ function RetirementAccount() {
         spouseDOB,
       }
       retirementSaveQueue = retirementSaveQueue.then(() => {
-        if (controller.signal.aborted) return
-        return immediate && !expenseRetirementDate
-          ? api.savePlannedExpenses(params.plannedEvents ?? [])
-          : api.saveRetirementParams(payload, controller.signal)
+        if (!controller.signal.aborted) return api.saveRetirementParams(payload, controller.signal)
       }).then(() => {
-        if (active && request === saveRequestRef.current) setSaveStatus('saved')
+        if (!controller.signal.aborted && request === saveRequestRef.current) setSaveStatus('saved')
       }).catch((err: unknown) => {
-        if (!active || request !== saveRequestRef.current) return
-        setSaveError(err instanceof Error ? err.message : 'Unable to save planning inputs')
+        if (controller.signal.aborted || request !== saveRequestRef.current) return
+        setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
         setSaveStatus('error')
       })
-    }
-    const timer = immediate ? undefined : setTimeout(save, 500)
-    if (immediate) save()
-    return () => {
-      active = false
-      clearTimeout(timer)
-      if (!immediate) controller.abort()
-    }
+    }, 500)
+    return () => { clearTimeout(timer); controller.abort() }
   }, [params, expenseRetirementDate, retirementEdited, spouseDOB, vid, exitMode, exitPreviewLoading, exitError, legacyExitHeld, saveRetry])
 
   const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
@@ -991,10 +992,12 @@ function RetirementAccount() {
             <h1 className="font-serif text-2xl font-semibold text-cs-text">Planning</h1>
           </div>
         </div>
-        {(!showExpenses || expensesEdited.current || vid) && <span className="text-[11px] text-cs-muted">
+        {(!showExpenses || expenseSaveStatus !== 'idle' || vid) && <span aria-live="polite" className="text-[11px] text-cs-muted">
           {vid
             ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
-            : !showExpenses && exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
+            : showExpenses
+              ? { idle: '', saving: 'Saving expenses…', saved: 'Expenses saved', error: 'Save failed' }[expenseSaveStatus]
+              : exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
               ? (saveStatus === 'saved' ? 'Inputs saved — exit projection pending' : saveStatus === 'error' ? 'Save failed' : 'Saving inputs — exit projection pending')
               : saveStatus === 'saving'
                 ? 'Saving…'
@@ -1006,12 +1009,12 @@ function RetirementAccount() {
         </span>}
       </div>
 
-      {saveStatus === 'error' && !vid && (
+      {!vid && (showExpenses ? expenseSaveStatus : saveStatus) === 'error' && (
         <p role="alert" className="rounded-lg border border-red-500 p-3 text-sm text-red-600">
-          Plan changes could not be saved. {saveError}{' '}
+          {showExpenses ? 'Planned expenses could not be saved.' : 'Retirement inputs could not be saved.'} {showExpenses ? expenseSaveError : saveError}{' '}
           <button type="button" className="font-semibold underline" onClick={() => {
-            if (!expenseRetirementDate && expensesEdited.current) expenseSavePending.current = true
-            setSaveRetry(n => n + 1)
+            if (showExpenses) saveExpenses(params.plannedEvents ?? [])
+            else setSaveRetry(n => n + 1)
           }}>Try saving again</button>
         </p>
       )}
@@ -1087,9 +1090,8 @@ function RetirementAccount() {
             events={params.plannedEvents ?? []}
             retirementDate={expenseRetirementDate}
             onChange={events => {
-              expensesEdited.current = true
-              expenseSavePending.current = true
               update('plannedEvents', events)
+              saveExpenses(events)
               setLifeEventComparison(null)
             }}
             comparison={null}

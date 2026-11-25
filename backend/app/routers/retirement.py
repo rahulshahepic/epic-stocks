@@ -21,6 +21,7 @@ class _Params(BaseModel):
     # Loose dict so we don't have to migrate every time we add a slider.
     # The frontend owns the schema; backend just stores/retrieves the blob.
     params: dict[str, Any]
+    preserve_planned_expenses: bool = False
 
 
 @retirement_router.get("/params")
@@ -37,6 +38,8 @@ def save_my_retirement_params(
     if not isinstance(body.params, dict):
         raise HTTPException(status_code=422, detail="params must be an object")
     from app.retirement_simulation import MILLIONS, THOUSANDS, validate_changes
+    if body.preserve_planned_expenses:
+        db.refresh(user, with_for_update=True)
     previous = user.retirement_params or {}
     # A legacy value can be carried forward while unrelated inputs are saved.
     # New and changed amounts must satisfy the current limits.
@@ -61,9 +64,14 @@ def save_my_retirement_params(
             validate_planned_events(body.params['plannedEvents'])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    user.retirement_params = body.params
+    params = dict(body.params)
+    if body.preserve_planned_expenses:
+        params.pop("plannedEvents", None)
+        if "plannedEvents" in previous:
+            params["plannedEvents"] = previous["plannedEvents"]
+    user.retirement_params = params
     db.commit()
-    return {"params": body.params}
+    return {"params": params}
 
 
 class _PlannedExpenses(BaseModel):

@@ -540,7 +540,7 @@ export const api = {
   getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null }>('/api/me'),
   updateProfile: (body: { date_of_birth?: string | null }, signal?: AbortSignal) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body), ...(signal ? { signal } : {}) }),
   getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
-  saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }, signal),
+  saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params, preserve_planned_expenses: true }, signal),
   savePlannedExpenses: (plannedEvents: PlannedEvent[]) =>
     apiFetch<{ params: Record<string, unknown> }>('/api/retirement/params', { method: 'PATCH', body: JSON.stringify({ plannedEvents }) }),
   getCompEntries: () => apiFetch<{ entries: unknown }>('/api/retirement/comp-entries'),

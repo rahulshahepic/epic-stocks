@@ -746,6 +746,46 @@ it('saves only the new expense when there is no retirement date', async () => {
   expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/retirement/params' && init?.method === 'PUT')).toBe(false)
 })
 
+it('updates only expenses when a sparse retirement plan already has a date', async () => {
+  mockApi({ savedParams: { retirementDate: '2033-01-01' } })
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(await screen.findByText('Expenses saved')).toBeVisible()
+  const writes = vi.mocked(fetch).mock.calls.filter(([url, init]) => url === '/api/retirement/params' && init?.method)
+  expect(writes.map(([, init]) => init?.method)).toEqual(['PATCH'])
+})
+
+it('shows a failed expense save and supports retry after a background tax refresh', async () => {
+  mockApi({ savedParams: {} })
+  const fetchOtherEndpoints = vi.mocked(fetch).getMockImplementation()!
+  let releaseTaxRefresh = () => {}
+  let releaseExpenseSave = () => {}
+  const taxRefresh = new Promise<void>(resolve => { releaseTaxRefresh = resolve })
+  const expenseSave = new Promise<void>(resolve => { releaseExpenseSave = resolve })
+  let writes = 0
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (input === '/api/tax-settings') await taxRefresh
+    if (input === '/api/retirement/params' && init?.method === 'PATCH' && ++writes === 1) {
+      await expenseSave
+      return new Response(JSON.stringify({ detail: 'Temporary save failure' }), { status: 500 })
+    }
+    return fetchOtherEndpoints(input, init)
+  })
+
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(await screen.findByText('Saving expenses…')).toBeVisible()
+  releaseTaxRefresh()
+  releaseExpenseSave()
+  fireEvent.click(await screen.findByRole('button', { name: 'Try saving again' }))
+  expect(await screen.findByText('Expenses saved')).toBeVisible()
+  expect(writes).toBe(2)
+})
+
 it('waits for an expense save when reopening Planning during the write', async () => {
   mockApi({ savedParams: {} })
   const fetchOtherEndpoints = vi.mocked(fetch).getMockImplementation()!

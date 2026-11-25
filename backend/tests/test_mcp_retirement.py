@@ -280,6 +280,20 @@ def test_expense_only_save_preserves_unsupplied_retirement_fields(client):
     assert client.put("/api/retirement/params", json={"params": expected}).status_code == 200
 
 
+def test_web_retirement_save_preserves_latest_planned_expenses(client):
+    register_user(client)
+    expense = {"id": "car", "title": "Car", "kind": "vehicle",
+               "date": "2033-01-01", "amountM": 0.04}
+    assert client.patch("/api/retirement/params", json={"plannedEvents": [expense]}).status_code == 200
+    changed = client.put("/api/retirement/params", json={
+        "params": {"retirementDate": "2032-01-01", "defaultSpend": 120},
+        "preserve_planned_expenses": True,
+    })
+    assert changed.json()["params"] == {
+        "retirementDate": "2032-01-01", "defaultSpend": 120, "plannedEvents": [expense],
+    }
+
+
 def test_retirement_api_rejects_invalid_planned_events(client):
     register_user(client)
     invalid = {"id": "trip", "title": "Trip", "kind": "travel",

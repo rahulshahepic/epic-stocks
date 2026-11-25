@@ -1,3 +1,4 @@
+import { claimMeasurement, measurementEvent, measurementToken } from '../onboarding.ts'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useReportProblem } from '../components/reportContext.ts'
@@ -76,14 +77,20 @@ export default function AuthCallback() {
       const trialDraft = await takeStashedTrialPayload()
       if (trialDraft) {
         try {
+          await claimMeasurement()
           const { changes, blocked } = await api.draftChanges(trialDraft)
           const additions = changes.filter(c => c.action === 'create')
           if (!blocked && additions.length) {
             const preview = await api.previewChanges(additions)
-            if (preview.confirm) await api.applyChanges(additions, preview.confirm)
+            if (preview.confirm) {
+              const token = await measurementToken()
+              if (token) await api.applyChanges(additions, preview.confirm, token)
+              else await api.applyChanges(additions, preview.confirm)
+              pingConverted()
+            }
           }
-          pingConverted()
         } catch {
+          void measurementEvent('carryover_failed')
           // Save failed — they still have a working account; they can import again.
         }
       }

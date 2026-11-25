@@ -142,6 +142,20 @@ def run_due(now: datetime | None = None) -> dict[str, str]:
         db = database.SessionLocal()
         try:
             initialize_master_key(db)
+            try:
+                from scaffold.onboarding import cleanup
+                cleanup(db)
+                cleanup_stamp = db.get(SystemSettings, 'onboarding_cleanup_last_at')
+                if cleanup_stamp is None:
+                    db.add(SystemSettings(key='onboarding_cleanup_last_at', value=now.isoformat()))
+                else:
+                    cleanup_stamp.value = now.isoformat()
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.warning('onboarding_cleanup_failed')
+                result['onboarding_cleanup'] = 'failed'
+
         finally:
             db.close()
         for name, start, lock_id, action in _JOBS:

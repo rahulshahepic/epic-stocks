@@ -71,13 +71,15 @@ Do not guess the internal navigation path.
 
 ## Measurement boundaries (#671)
 
-The product's daily counters count requests, not distinct employees or linked
-journeys. Retries can increase multiple counters; signup may occur on a later
-day; opt-out/DNT omits requests; discarded drafts and return visits cannot be
-joined to earlier uploads. Consequently, dividing daily signup counts by
-preview counts is a workload ratio, not a cohort conversion rate. Processing
-under five seconds is server latency, not an accurate position within five
-minutes. The scorer supplies first-attempt stage/accuracy/reminder/return
-measurements for the human pilot without adding person tracking to the app.
-Full production activation measurement remains open until an approved privacy
-model defines its units, deduplication and anonymous-to-account boundary.
+The product now measures explicitly opted-in attempts using a random tab key,
+24-hour hashed linkage and UTC start-day cohorts. Retries do not inflate the
+attempt denominator. Confirmed saves require actual successful writes, and
+source-checked previews within five minutes are distinct from merely rendered
+previews. The admin MCP exposes aggregate counts, health and pause/cleanup/
+human-approved resume actions. See README → Optional onboarding measurement.
+
+These counts describe an opt-in sample of attempts, not distinct employees or
+returning people. Source agreement is not independently verified accuracy.
+Document discovery time, real-world correctness and later return visits still
+require the human pilot (#667); do not infer them from successful imports or
+sign-ins. Legacy request totals remain separate from the cohort report.

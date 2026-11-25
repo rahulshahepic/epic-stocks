@@ -1,3 +1,4 @@
+import { measurementEvent } from '../onboarding.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
@@ -82,6 +83,7 @@ export function usePush(vapidPublicKey: string, enabled = true) {
     try {
       const registration = await platform.push.register(vapidPublicKey)
       await api.pushSubscribe(registration)
+      void measurementEvent('reminder_enabled')
       await refresh()
     } catch {
       // Denied, or the push service refused. refresh() reads the permission

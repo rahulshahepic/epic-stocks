@@ -162,3 +162,14 @@ def test_runner_retains_safe_failures_and_recovery(db_session, monkeypatch):
     db_session.expire_all()
     history = json.loads(db_session.get(SystemSettings, SCHEDULER_HISTORY_KEY).value)
     assert [row['event_code'] for row in history] == ['notifications_failed', 'notifications_recovered']
+
+
+def test_optional_measurement_cleanup_failure_does_not_stop_daily_jobs(setup_db, monkeypatch):
+    from scaffold import onboarding
+    calls = []
+    monkeypatch.setattr(onboarding, 'cleanup', lambda _db: (_ for _ in ()).throw(RuntimeError('optional cleanup unavailable')))
+    monkeypatch.setattr(jobs, '_JOBS', (('notifications', jobs.time(7), 555555555, calls.append),
+                                       ('admin_digest', jobs.time(7), 555555556, calls.append)))
+    result = jobs.run_due(_at(8))
+    assert result == {'onboarding_cleanup': 'failed', 'notifications': 'completed', 'admin_digest': 'completed'}
+    assert len(calls) == 2

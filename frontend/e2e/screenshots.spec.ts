@@ -314,9 +314,9 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, theme)
     await page.request.post(`${BASE}/api/trial/analyze`, {multipart: {share_csv: {name: 'fictional.csv', mimeType: 'text/csv', buffer: readFileSync(TRIAL_CSV)}}})
     await page.goto(`${BASE}/admin`)
-    const panel = page.getByRole('heading', {name: 'No-account preview (/try)', exact: true}).locator('..')
-    await expect(panel.getByText('Import requests', {exact: true})).toBeVisible()
-    await panel.screenshot({path: `${OUT}/trial-metrics-${theme}-mobile.png`})
+    const panel = page.getByRole('heading', {name: 'Onboarding attempts', exact: true}).locator('..')
+    await expect(panel.getByText('Import attempts', {exact: true})).toBeVisible()
+    await panel.screenshot({style: '.sticky, header, [aria-label="Mobile navigation"] { visibility: hidden !important }', path: `${OUT}/trial-metrics-${theme}-mobile.png`})
   })
 
   test('admin - light - mobile', async ({ page }) => {

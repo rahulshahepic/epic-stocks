@@ -1,3 +1,4 @@
+import { claimMeasurement, measurementEvent, measurementToken } from '../../scaffold/onboarding.ts'
 import { useMemo, useState } from 'react'
 import { api, type Change, type ChangePosition, type ChangeResult } from '../../api.ts'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
@@ -62,7 +63,10 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
     if (!preview?.confirm) return
     setBusy(true); setError('')
     try {
-      const result = await api.applyChanges(chosen, preview.confirm)
+      await measurementEvent('save_intent')
+      await claimMeasurement()
+      const token = await measurementToken()
+      const result = token ? await api.applyChanges(chosen, preview.confirm, token) : await api.applyChanges(chosen, preview.confirm)
       setDone(result)
       onApplied?.(result)
     } catch (e) {

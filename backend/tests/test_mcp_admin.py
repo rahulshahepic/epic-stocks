@@ -13,8 +13,9 @@ from tests.test_mcp_tools import Mcp
 from tests.test_oauth_server import code_from, pkce_pair
 
 
-ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
+ADMIN_TOOLS = {"admin_onboarding_funnel", "admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
 ADMIN_WRITE_TOOLS = {
+    "admin_pause_onboarding", "admin_cleanup_onboarding", "admin_request_resume_onboarding",
     "admin_resolve_errors", "admin_set_report_status", "admin_dismiss_refused_redirect",
     "admin_prune_connector_tables", "admin_recompute_account", "admin_send_test_notification",
     "admin_disable_redirect_rule", "admin_pause_ai_connections", "admin_revoke_connection",

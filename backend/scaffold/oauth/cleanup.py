@@ -58,6 +58,9 @@ def prune(db: Session) -> dict[str, int]:
 
     from scaffold.synthetic_accounts import prune_test_accounts
     synthetic = prune_test_accounts(db)
+    from scaffold.onboarding import cleanup
+    cleanup(db)
+    db.commit()
     entries = audit.prune(db)
     from . import admin_journal
     journal = admin_journal.prune(db)

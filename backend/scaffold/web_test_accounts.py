@@ -19,7 +19,7 @@ def financial_path(path):
         return False
     return not any(path == prefix or path.startswith(prefix + '/') for prefix in (
         '/api/auth', '/api/admin', '/api/oauth', '/api/demo', '/api/content', '/api/ai', '/api/report',
-        '/api/trial', '/api/unsubscribe', '/api/internal',
+        '/api/trial', '/api/onboarding', '/api/unsubscribe', '/api/internal',
     ))
 
 

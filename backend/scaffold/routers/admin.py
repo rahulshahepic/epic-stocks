@@ -205,6 +205,7 @@ class TrialFunnelReport(TrialFunnelQuality):
     save_clicked: int
     signups_from_trial: int
     conversion_rate: float | None = None
+    activation: dict | None = None
 
 
 @router.get("/trial-funnel", response_model=TrialFunnelReport)
@@ -216,6 +217,7 @@ def trial_funnel(days: int = 30, admin: User = Depends(get_admin_user),
     and nothing that identifies a visitor.
     """
     from scaffold.models import TrialDailyStat
+    from scaffold.onboarding import report as activation_report
 
     days = max(1, min(days, 365))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date()
@@ -226,6 +228,7 @@ def trial_funnel(days: int = 30, admin: User = Depends(get_admin_user),
 
     previews = sum(r.previews for r in rows)
     return TrialFunnelReport(
+        activation=activation_report(db, min(180, days)),
         days=[TrialFunnelDay(day=r.day.isoformat(), previews=r.previews,
                              save_clicked=r.save_clicked,
                              signups_from_trial=r.signups_from_trial,
@@ -1774,3 +1777,27 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             yield sse("done", "Rotation complete. New key is live on all replicas.")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.get('/onboarding-funnel')
+def onboarding_funnel(days: int = 30, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    from scaffold.onboarding import report
+    if not 1 <= days <= 180:
+        raise HTTPException(422, 'days must be from 1 to 180')
+    return report(db, days)
+
+
+class OnboardingAction(BaseModel):
+    model_config = {'extra': 'forbid'}
+    action: str
+    confirm: bool = False
+
+
+@router.post('/onboarding-action')
+def onboarding_action(body: OnboardingAction, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    from scaffold.oauth import admin_actions
+    actor = admin_actions.Actor(via='browser', email=admin.email)
+    if body.action not in ('pause', 'resume', 'cleanup') or not body.confirm:
+        raise HTTPException(422, 'Choose pause, resume or cleanup and explicitly confirm')
+    return {'result': {'pause': admin_actions.pause_onboarding, 'resume': admin_actions.resume_onboarding,
+                       'cleanup': admin_actions.cleanup_onboarding}[body.action](db, actor)}

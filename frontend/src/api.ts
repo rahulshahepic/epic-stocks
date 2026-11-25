@@ -467,8 +467,8 @@ export const api = {
 
   // Change sets: several edits previewed, then applied all or nothing.
   previewChanges: (changes: Change[]) => post<ChangeResult>('/api/changes/preview', { changes }),
-  applyChanges: (changes: Change[], confirm: string) =>
-    post<ChangeResult>('/api/changes/apply', { changes, confirm }),
+  applyChanges: (changes: Change[], confirm: string, onboardingToken?: string) =>
+    post<ChangeResult>('/api/changes/apply', { changes, confirm, ...(onboardingToken ? {onboarding_token: onboardingToken} : {}) }),
   draftChanges: (draft: Record<string, unknown>) =>
     post<DraftChanges>('/api/epic-import/changes', { draft }),
   deleteGrant: (id: number) => del(`/api/grants/${id}`),
@@ -665,6 +665,8 @@ export const api = {
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
   adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
+  adminOnboardingFunnel: (days = 30) => apiFetch<OnboardingFunnel>(`/api/admin/onboarding-funnel?days=${days}`),
+  adminOnboardingAction: (action: 'pause' | 'resume' | 'cleanup') => post('/api/admin/onboarding-action', {action, confirm: true}),
   adminTrialFunnel: (days = 30) => apiFetch<TrialFunnelReport>(`/api/admin/trial-funnel?days=${days}`),
 
   // Email & invitation admin
@@ -804,7 +806,26 @@ export interface TipsReport {
 }
 
 /** Anonymous daily totals for the no-account preview funnel (/try). */
+export interface OnboardingFunnel {
+  schema_version: number
+  window_days: number
+  collection_paused: boolean
+  attempt_ttl_hours: number
+  aggregate_retention_days: number
+  cleanup_last_at: string | null
+  last_measurement_failure_at: string | null
+  active_attempts: number
+  expired_attempts: number
+  attempt_capacity: number
+  totals: Record<string, number>
+  rates_per_attempt: Record<string, number | null>
+  cohorts: {day: string; entrypoint: string; provisional: boolean; counts: Record<string, number>}[]
+  actions: {action: string; tool: string | null; requires_approval: boolean}[]
+  definitions: Record<string, string>
+}
+
 export interface TrialFunnelReport {
+  activation?: OnboardingFunnel
   import_starts?: number
   valid_uploads?: number
   source_checks_passed?: number

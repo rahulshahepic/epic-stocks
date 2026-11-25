@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
@@ -756,7 +757,7 @@ export default function Sales() {
               </div>
               {/* Line 2: Shares + Price */}
               <div className="mt-1 text-cs-text-2">
-                {s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app to repay loan {s.loan_id} — not a recorded sale. <a href="/settings#loans" className="text-cs-brand underline">Repayment settings</a></p>}<span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
+                {s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app for loan repayment — not a recorded sale. <Link to="/settings#loans" className="text-cs-brand underline">Repayment settings</Link></p>}<span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
               </div>
               {/* Line 3: Gross + Tax */}
               <div className="mt-1 flex items-center justify-between">
@@ -817,7 +818,7 @@ export default function Sales() {
                 return (
                   <>
                     <tr key={s.id} className="bg-cs-surface">
-                      <td className="px-3 py-2 text-cs-text-2">{fmtFullDate(s.date)}{s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app to repay loan {s.loan_id} — not a recorded sale. <a href="/settings#loans" className="text-cs-brand underline">Repayment settings</a></p>}</td>
+                      <td className="px-3 py-2 text-cs-text-2">{fmtFullDate(s.date)}{s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app for loan repayment — not a recorded sale. <Link to="/settings#loans" className="text-cs-brand underline">Repayment settings</Link></p>}</td>
                       <td className="px-3 py-2">
                         {s.loan_id != null ? (
                           <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">

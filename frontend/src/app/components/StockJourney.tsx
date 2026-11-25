@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { TimelineEvent } from '../../api.ts'
 import { fmt$, fmtNum } from '../format.ts'
 import { Card, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
@@ -108,7 +109,7 @@ export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: 
               <p className="text-sm font-bold leading-tight text-cs-text">{eventLabel(group)}</p>
               <p className="mt-1 text-xs font-semibold text-cs-text-2">{shortDate(group[0].date)}</p>
               {details[index] && <p className="mt-0.5 text-xs text-cs-muted">{details[index]}</p>}
-              {group.some(e => e.is_generated && e.date > localToday()) && <a href="/settings#loans" className="text-xs text-cs-brand underline">Repayment settings</a>}
+              {group.some(e => e.is_generated && e.date > localToday()) && <Link to="/settings#loans" className="text-xs text-cs-brand underline">Repayment settings</Link>}
               {group.length === 1 && group[0].grant_year && (
                 <p className="mt-0.5 text-xs text-cs-muted">{group[0].grant_year} {group[0].grant_type}</p>
               )}

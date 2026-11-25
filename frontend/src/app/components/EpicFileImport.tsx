@@ -178,7 +178,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
               ? 'The statement does not add up to its own totals — some of it was misread.'
               : counts.errors > 0
                 ? `${counts.errors} figure(s) do not agree between your two files.`
-                : 'No blocking discrepancies found. Review the checks and missing evidence above before saving.'}
+                : 'No blocking discrepancies found. Review Needs you, FYI checks and any missing evidence before saving.'}
           </p>
 
           <FindingList findings={result.findings} grouped collapseAll={!result.blocked && counts.errors === 0 && !result.changes.length && !answered.length} />

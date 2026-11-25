@@ -257,7 +257,7 @@ it('explains future generated repayments without mislabeling confirmed payoffs',
     {...MOCK_SALES[1], date: '2090-01-01', loan_id: 22, is_generated: true},
   ]})
   renderSales()
-  expect(await screen.findByText(/Planned by the app to repay loan 22/)).toBeInTheDocument()
-  expect(screen.queryByText(/Planned by the app to repay loan 11/)).not.toBeInTheDocument()
+  expect(await screen.findByText(/Planned by the app for loan repayment/)).toBeInTheDocument()
+  expect(screen.getAllByText(/Planned by the app for loan repayment/)).toHaveLength(1)
   expect(screen.getByRole('link', {name: 'Repayment settings'})).toHaveAttribute('href', '/settings#loans')
 })

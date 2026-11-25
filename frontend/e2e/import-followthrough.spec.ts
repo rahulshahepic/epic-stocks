@@ -37,7 +37,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.evaluate(() => new Promise<void>(resolve => {window.scrollTo(0, 0); requestAnimationFrame(() => requestAnimationFrame(() => resolve()))}))
     await page.screenshot({path: `../screenshots/import-saved-${theme}-${device}.png`, fullPage: true})
     await page.goto('/sales')
-    await expect(page.getByText(/Planned by the app to repay loan/).first()).toBeVisible()
+    await expect(page.getByText(/Planned by the app for loan repayment/).first()).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.getByRole('link', {name: 'Repayment settings'}).first().click()
     await expect(page.getByRole('heading', {name: 'Tax Rates'})).toBeVisible()

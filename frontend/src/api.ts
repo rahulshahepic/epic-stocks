@@ -1,7 +1,7 @@
 import type { PlannedEvent } from './app/pages/Retirement.math.ts'
 import type { DashboardSnapshot, DashboardChartsData } from './app/pages/Dashboard.types.ts'
 import { apiUrl } from './config.ts'
-import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
+import { logApiFailure, noteErrorRef, recordFailedWorkflow } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
@@ -236,6 +236,7 @@ export async function apiFetch<T>(
   fallbackLabel?: string,
 ): Promise<T> {
   const resp = await apiFetchRaw(path, init)
+  if (!resp.ok && typeof window !== 'undefined') recordFailedWorkflow(path, init, resp.status)
   await throwForStatus(resp, fallbackLabel, path, init?.method)
   const result = resp.status === 204 ? undefined : await resp.json()
   if (typeof window !== 'undefined' && ['POST', 'PUT', 'DELETE'].includes(init?.method ?? 'GET')) {
@@ -482,10 +483,17 @@ export interface ReportPayload {
  * it has to work on the login page, and it has to work when the session is the
  * thing that is broken.
  */
-export function submitReport(body: ReportPayload) {
-  return apiFetch<{ id: number; error_ref: string | null }>('/api/report', {
+export interface ReportConsent {
+  share_diagnostics: boolean
+  attach_documents: boolean
+  workflow?: string
+  documents: { name: string; base64: string }[]
+}
+
+export function submitReport(body: ReportPayload, consent?: ReportConsent) {
+  return apiFetch<{ id: number; error_ref: string | null }>(consent ? '/api/report/with-consent' : '/api/report', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, ...consent }),
   }, 'Could not send report')
 }
 
@@ -722,6 +730,13 @@ export const api = {
   adminClearErrors: () => del('/api/admin/errors'),
   adminReports: (status = '', limit = 50) =>
     apiFetch<UserReportEntry[]>(`/api/admin/reports?limit=${limit}${status ? `&status=${status}` : ''}`),
+  adminPrivateReport: (id: number, signal?: AbortSignal) =>
+    apiFetch<PrivateReport>(`/api/admin/reports/${id}/sensitive`, { signal, cache: 'no-store' }),
+  adminPrivateReportDocument: (id: number, documentId: number) =>
+    apiFetchBlob(`/api/admin/reports/${id}/sensitive/documents/${documentId}`, 'Could not download document', { cache: 'no-store' }),
+  adminPrivateReportText: (id: number, documentId: number, signal?: AbortSignal) =>
+    apiFetch<{ text: string; truncated: boolean }>(`/api/admin/reports/${id}/sensitive/documents/${documentId}?as_text=true`, { signal, cache: 'no-store' }),
+  adminPurgePrivateReport: (id: number) => del(`/api/admin/reports/${id}/sensitive`),
   adminSetReportStatus: (id: number, status: 'new' | 'resolved') =>
     apiFetch<void>(`/api/admin/reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   adminDeleteReport: (id: number) => del(`/api/admin/reports/${id}`),
@@ -1087,7 +1102,25 @@ export interface UserReportEntry {
   app_version: string | null
   client_log: string | null
   status: 'new' | 'resolved'
+  has_sensitive_material: boolean
   error_traceback: string | null
+}
+
+export interface PrivateReport {
+  expires_at_utc: string
+  details: {
+    message: string
+    email: string | null
+    account?: { id?: number; email?: string; environment?: string }
+    path: string | null
+    app_version: string | null
+    error_ref: string | null
+    error_shown?: string | null
+    user_agent?: string | null
+    recent_activity?: string | null
+    workflow?: string | null
+  }
+  documents: { id: number; name: string; size: number; mime_type: string; sha256: string }[]
 }
 
 export interface ErrorLogEntry {

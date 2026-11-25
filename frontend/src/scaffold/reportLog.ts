@@ -5,16 +5,60 @@
  * Rules this module exists to enforce:
  *  - memory only. Nothing is persisted, and nothing leaves the tab unless the
  *    person ticks "include details" and presses Send.
- *  - shape only, never content. Routes and API calls are recorded as
+ *  - the activity trail is shape only. Routes and API calls are recorded as
  *    method + path + status. Query strings and fragments are stripped before
  *    anything is stored — they carry OIDC codes and tokens — and request or
- *    response bodies are never touched, which is what keeps financial data out.
+ *    response bodies are never logged. A separate in-memory slot holds selected
+ *    inputs from a failed financial request for the consented diagnostics preview.
  */
 
 const MAX_ENTRIES = 12
 
 let entries: string[] = []
 let lastErrorRef: string | null = null
+let failureContext: { page: string; text: string } | null = null
+
+const REPLAYABLE = /^\/api\/(?:grants|loans|prices|sales|loan-payments|loan-interest-checkpoints)(?:\/\d+)?(?:\/(?:with-payoff|execute-payoff))?$/
+const REPLAY_FIELDS = [
+  'year', 'type', 'shares', 'price', 'effective_date', 'is_estimate', 'expected_announcement_date',
+  'announced_date', 'vest_start', 'periods', 'exercise_date', 'dp_shares', 'election_83b',
+  'grant_year', 'grant_type', 'loan_type', 'amount', 'interest_rate', 'date', 'disbursed_on',
+  'due_date', 'loan_id', 'price_per_share', 'accrued_through', 'accrued_interest', 'payoff_date',
+]
+
+/** Keep one failed operation on this screen. Never read auth, sharing, or support requests. */
+export function recordFailedWorkflow(path: string, init: RequestInit | undefined, status: number): void {
+  const route = scrubPath(path)
+  if (route.startsWith('/api/report') || route.startsWith('/api/admin')) return
+  failureContext = null
+  const request = new URL(path, window.location.href)
+  const fields: Record<string, string | boolean | number | null> = {}
+  if (REPLAYABLE.test(route) && typeof init?.body === 'string' && init.body.length <= 24_000) {
+    try {
+      const input = JSON.parse(init.body)
+      for (const field of REPLAY_FIELDS) {
+        const value = input?.[field]
+        if (value === null || typeof value === 'boolean' || typeof value === 'number') fields[field] = value
+        if (typeof value === 'string' && value.length <= 80) fields[field] = value
+      }
+    } catch { /* the request can be described without its inputs */ }
+  }
+  if (route === '/api/dashboard' || route === '/api/preview-exit') {
+    for (const field of ['as_of', 'date']) {
+      const value = request.searchParams.get(field)
+      if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) fields[field] = value
+    }
+  }
+  if (!Object.keys(fields).length) return
+  failureContext = {
+    page: scrubPath(window.location.pathname),
+    text: `${init?.method ?? 'GET'} ${route} failed (${status})\n${JSON.stringify(fields, null, 2)}`,
+  }
+}
+
+export function getFailedWorkflow(path: string) {
+  return failureContext?.page === path ? failureContext.text : null
+}
 
 /** Drop the query string and fragment from a URL or path. */
 export function scrubPath(raw: string): string {
@@ -66,6 +110,7 @@ export function getClientLog(): string {
 export function resetReportLog(): void {
   entries = []
   lastErrorRef = null
+  failureContext = null
 }
 
 /**
@@ -75,12 +120,6 @@ export function resetReportLog(): void {
  */
 export function installGlobalErrorCapture(): void {
   if (typeof window === 'undefined') return
-  window.addEventListener('error', (e) => {
-    logReportEvent(`js error: ${e.message ?? 'unknown'}`)
-  })
-  window.addEventListener('unhandledrejection', (e) => {
-    const reason = e.reason
-    const msg = reason instanceof Error ? reason.message : String(reason ?? 'unknown')
-    logReportEvent(`unhandled rejection: ${msg}`)
-  })
+  window.addEventListener('error', () => logReportEvent('JavaScript error'))
+  window.addEventListener('unhandledrejection', () => logReportEvent('Unhandled request error'))
 }

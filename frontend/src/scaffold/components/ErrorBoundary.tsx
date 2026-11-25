@@ -24,8 +24,8 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
     return { error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    logReportEvent(`render crash: ${error.message}`)
+  componentDidCatch(_error: Error, info: ErrorInfo) {
+    logReportEvent('Render crash')
     this.setState({ componentStack: (info.componentStack ?? '').slice(0, 1500) })
   }
 

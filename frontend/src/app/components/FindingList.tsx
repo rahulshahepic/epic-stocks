@@ -1,4 +1,4 @@
-import { useReportProblem } from '../../scaffold/components/reportContext.ts'
+import { useReportProblem, type ReportPrefill } from '../../scaffold/components/reportContext.ts'
 import type { Finding } from '../epicImport.ts'
 import { summariseFindings } from './findingSummary.ts'
 
@@ -50,10 +50,14 @@ export function ReportFindingsButton({
   findings,
   blocked = false,
   className = '',
+  documents,
+  workflow,
 }: {
   findings: Finding[]
   blocked?: boolean
   className?: string
+  documents?: ReportPrefill['documents']
+  workflow?: string
 }) {
   const { openReport } = useReportProblem()
   return (
@@ -61,7 +65,11 @@ export function ReportFindingsButton({
       type="button"
       onClick={() => openReport({
         source: 'import',
-        errorMessage: summariseFindings(findings, blocked),
+        publicSafeSummary: summariseFindings(findings, blocked),
+        documents,
+        workflow: [workflow, 'Import findings', ...findings.slice(0, 20).map(
+          finding => `${finding.code} (${finding.severity}) ${finding.subject ?? ''} ${finding.message}`,
+        )].filter(Boolean).join('\n'),
         message: 'The import got this wrong: ',
       })}
       className={`text-xs font-medium text-cs-brand underline underline-offset-2 hover:text-cs-brand-hover ${className}`}

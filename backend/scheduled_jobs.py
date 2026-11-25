@@ -39,6 +39,7 @@ def _maintenance(_day: date) -> None:
     from main import _aggregate_old_metrics
     from app.routers.prices import _cleanup_epic_past_estimates
     from scaffold.oauth.cleanup import prune
+    from scaffold.sensitive_reports import expire_reports
 
     _aggregate_old_metrics()
     from app.routers.loans import resize_generated_payoff_sales
@@ -48,6 +49,7 @@ def _maintenance(_day: date) -> None:
         _cleanup_epic_past_estimates(db)
         db.commit()
         prune(db)
+        expire_reports(db)
         resize_generated_payoff_sales(db)
     finally:
         db.close()

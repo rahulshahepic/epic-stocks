@@ -204,7 +204,7 @@ def test_workbook_open_error_does_not_echo_library_internals(client):
 
 def test_extract_lines_refuses_a_pdf_with_too_many_pages(monkeypatch):
     """Text extraction is per page and this endpoint takes no session."""
-    import app.epic_import.pdf_statement as ps
+    from scaffold import safe_pdf as ps
 
     class _FakePage:
         def extract_text(self):
@@ -460,7 +460,7 @@ def test_dense_pdf_inside_the_page_cap_is_still_rejected():
 
     16 pages is under MAX_PDF_PAGES, but dense enough to have cost ~250 MB.
     """
-    from app.epic_import.pdf_statement import MAX_PDF_PAGES, extract_lines
+    from scaffold.safe_pdf import MAX_PDF_PAGES, extract_lines
     from app.epic_import import StatementUnreadable
 
     pdf = _pdf([_text_page(95) for _ in range(MAX_PDF_PAGES)])
@@ -470,7 +470,7 @@ def test_dense_pdf_inside_the_page_cap_is_still_rejected():
 
 
 def test_too_many_pages_rejected():
-    from app.epic_import.pdf_statement import MAX_PDF_PAGES, extract_lines
+    from scaffold.safe_pdf import MAX_PDF_PAGES, extract_lines
     from app.epic_import import StatementUnreadable
 
     pdf = _pdf([_text_page(1) for _ in range(MAX_PDF_PAGES + 1)])
@@ -481,7 +481,7 @@ def test_too_many_pages_rejected():
 
 def test_content_stream_bomb_rejected():
     """One page whose content stream expands far beyond its upload size."""
-    from app.epic_import.pdf_statement import extract_lines
+    from scaffold.safe_pdf import extract_lines
     from app.epic_import import StatementUnreadable
 
     # ~25 MB of operators, deflating to a couple of hundred KB.
@@ -494,7 +494,7 @@ def test_content_stream_bomb_rejected():
 def test_a_realistic_statement_still_parses():
     """The bounds are worthless if they reject the documents they exist for."""
     from app.epic_import import parse_statement_lines
-    from app.epic_import.pdf_statement import extract_lines
+    from scaffold.safe_pdf import extract_lines
 
     row = "100001 2020 Grant - Purchase Loan $500,000.00 1.00% $10.00 7/15/2029"
     ops = ["BT /F1 9 Tf",
@@ -510,7 +510,7 @@ def test_a_realistic_statement_still_parses():
 
 def test_parse_slots_shed_load_instead_of_queueing():
     """A bounded parse is still ~65 MB, and a sync endpoint has 40 threads."""
-    import app.epic_import.pdf_statement as ps
+    from scaffold import safe_pdf as ps
     from app.epic_import import StatementParserBusy
 
     held = [ps._parse_slots.acquire(blocking=False) for _ in range(ps.PDF_PARSE_SLOTS)]
@@ -527,7 +527,7 @@ def test_parse_slots_shed_load_instead_of_queueing():
 
 def test_parse_slot_is_released_after_a_rejection():
     """A refused PDF must not leak the slot it took."""
-    import app.epic_import.pdf_statement as ps
+    from scaffold import safe_pdf as ps
     from app.epic_import import StatementUnreadable
 
     for _ in range(ps.PDF_PARSE_SLOTS + 2):
@@ -543,7 +543,7 @@ def test_parse_slot_is_released_after_a_rejection():
 
 def test_trial_endpoint_rejects_a_dense_pdf_without_parsing_it(client):
     """End to end, on the route that takes no session at all."""
-    from app.epic_import.pdf_statement import MAX_PDF_PAGES
+    from scaffold.safe_pdf import MAX_PDF_PAGES
 
     pdf = _pdf([_text_page(95) for _ in range(MAX_PDF_PAGES)])
     resp = client.post("/api/trial/analyze",

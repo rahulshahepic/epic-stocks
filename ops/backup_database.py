@@ -179,7 +179,9 @@ def config(env=os.environ, settings=None):
 
 def dump_command(deploy_path):
     return ["docker", "compose", "--project-directory", str(deploy_path), "exec", "-T", "db",
-            "pg_dump", "-U", "postgres", "-Fc", "vesting"]
+            "pg_dump", "-U", "postgres", "-Fc",
+            "--exclude-table-data=public.sensitive_reports",
+            "--exclude-table-data=public.sensitive_report_documents", "vesting"]
 
 
 def encrypted_dump(cmd, recipient, dest):

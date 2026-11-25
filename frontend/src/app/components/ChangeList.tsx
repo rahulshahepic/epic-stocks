@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type Change, type ChangePosition, type ChangeResult } from '../../api.ts'
 import { stockValueLabel } from '../format.ts'
+import type { ReportPrefill } from '../../scaffold/components/reportContext.ts'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 
 const NO_EXTRA: Change[] = []
@@ -37,13 +38,14 @@ function groupOf(c: Change): NonNullable<Change['group']> {
  * Apply previews the rest exactly as the app would store it, then saves them
  * all together — or none, if any one is refused.
  */
-export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBusyChange, disabled = false }: {
+export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBusyChange, disabled = false, reportInputs }: {
   changes: Change[]
   /** Edits added on the page itself, such as sales the person dated and priced. */
   extra?: Change[]
   onApplied?: (result: ChangeResult) => void
   onBusyChange?: (busy: boolean) => void
   disabled?: boolean
+  reportInputs?: Pick<ReportPrefill, 'documents' | 'workflow'>
 }) {
   const [selections, setSelections] = useState<Record<string, boolean>>({})
   const rowKeys = useMemo(() => {
@@ -58,6 +60,7 @@ export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBus
   const [checked, setChecked] = useState<{ selection: Change[]; result: ChangeResult } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [failedWorkflow, setFailedWorkflow] = useState('')
   const confirmation = useRef<HTMLHeadingElement>(null)
   const [done, setDone] = useState<{ source: Change[]; result: ChangeResult } | null>(null)
 
@@ -74,7 +77,10 @@ export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBus
     onBusyChange?.(true)
     setBusy(true); setError('')
     try { setChecked({ selection: chosen, result: await api.previewChanges(chosen) }) }
-    catch (e) { setError(e instanceof Error ? e.message : 'These changes could not be checked') }
+    catch (e) {
+      setError(e instanceof Error ? e.message : 'These changes could not be checked')
+      setFailedWorkflow(`Preview selected changes (${chosen.length})\n${JSON.stringify(chosen).slice(0, 8_000)}`)
+    }
     finally { setBusy(false); onBusyChange?.(false) }
   }
 
@@ -91,6 +97,7 @@ export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBus
       onApplied?.(result)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'These changes could not be saved')
+      setFailedWorkflow(`Save selected changes (${chosen.length})\n${JSON.stringify(chosen).slice(0, 8_000)}`)
       setChecked(null)
     } finally { setBusy(false); onBusyChange?.(false) }
   }
@@ -130,7 +137,8 @@ export default function ChangeList({ changes, extra = NO_EXTRA, onApplied, onBus
 
       {error && (
         <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/30">
-          <ReportableError message={error} source="import" className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400" />
+          <ReportableError message={error} source="import" documents={reportInputs?.documents}
+            workflow={[reportInputs?.workflow, failedWorkflow].filter(Boolean).join('\n')} className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400" />
         </div>
       )}
 

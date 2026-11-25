@@ -188,7 +188,8 @@ def _token_from_request(request: Request) -> str | None:
     return None
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+def get_session_user(request: Request, db: Session) -> User:
+    """Authenticate a session without loading its financial encryption key."""
     token = _token_from_request(request)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -212,6 +213,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     # "Sign out everywhere" bumps session_version, invalidating older tokens.
     if token_sv != int(user.session_version):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+    return user
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user = get_session_user(request, db)
     # Refresh admin flag on every request so env changes take effect immediately
     is_admin = user.email.lower() in get_admin_emails()
     if bool(user.is_admin) != is_admin:

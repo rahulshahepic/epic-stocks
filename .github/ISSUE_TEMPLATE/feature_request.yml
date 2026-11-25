@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement to Epic Stocks
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Keep confidential financial information, Epic share prices, financial documents, and unredacted screenshots out of it. Use Report a problem in Epic Stocks for private feedback.
+  - type: textarea
+    attributes:
+      label: What are you trying to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What would make this easier?
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Privacy
+      options:
+        - label: I have removed personal and confidential financial information.
+          required: true

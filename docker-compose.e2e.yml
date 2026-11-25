@@ -22,6 +22,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:e2e-pass@e2e-db:5432/vesting_e2e
       JWT_SECRET: e2e-test-secret
+      KEY_ENCRYPTION_KEY: ${E2E_KEY_ENCRYPTION_KEY:-}
       OIDC_PROVIDERS: "[]"
       E2E_TEST: "1"
       APP_ENV: ${E2E_APP_ENV:-development}

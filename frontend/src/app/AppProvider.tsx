@@ -76,16 +76,15 @@ const PrivacyDataCollected = (
     </Sub>
     <Sub title="Anonymous counts (no account needed)">
       <P>
-        The no-account preview at <strong>/try</strong> keeps daily request totals for import attempts, valid files, source checks, format refusals, processing-time buckets, previews, save clicks and signup carryover reports. You can turn counting off on the upload form; Do Not Track is respected. Rows older than 180 days are removed when counting next runs. No IP address, no browser or device details, no
-        identifier of any kind, and nothing that could group one visitor's actions
-        together or link them to an account. They exist so the feature can be judged on
-        whether it helps anyone.
+        Import measurement is off until you opt in on the upload form. If enabled, a random key in this tab joins an import attempt’s parse, preview, sign-in, confirmed save and reminder steps for up to 24 hours. The server stores only a hash of that key, stage flags, timing and fixed error categories. At sign-in it uses a per-attempt keyed digest to prevent another account claiming the same attempt; no account ID, email, IP, device details, file text, document fingerprint or financial values are kept in measurement tables. This is temporary attempt linkage, not a profile across visits or attempts.
+        Turning counting off stops future events and deletes the temporary key. Do Not Track is respected. Keys stop working after 24 hours and expired rows are deleted on the next scheduled cleanup (normally within 15 minutes). Anonymous daily start-day cohorts remain for 180 days; opting out does not subtract already aggregated counts. Admins and a separately consented admin AI connection can see aggregate reports and manage collection, never individual attempt keys. Legacy unlinked request totals are retained separately under the same aggregate retention limit.
+
       </P>
     </Sub>
     <Sub title="What we don't collect">
       <Ul>
         <li>Passwords (authentication is handled entirely by your identity provider)</li>
-        <li>Per-person analytics or usage tracking — no profiles, no sessions, no journeys, no third-party analytics service. The only counting we do is the anonymous daily totals described above</li>
+        <li>Per-person or cross-visit analytics profiles, cross-site tracking, or third-party analytics services. Optional temporary attempt measurement is described above</li>
         <li>The files you upload to the preview — they are read, computed from, and discarded; nothing from them is stored unless you sign up and save</li>
         <li>Cookies beyond the authentication session token</li>
         <li>Data from other users</li>

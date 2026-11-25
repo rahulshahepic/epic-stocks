@@ -29,6 +29,7 @@ from .settings import (
 
 logger = logging.getLogger(__name__)
 
+RESUME_ONBOARDING = "resume_onboarding"
 ADD_RULE = "add_redirect_rule"
 ENABLE_RULE = "enable_redirect_rule"
 UNBLOCK_EMAIL = "unblock_email"
@@ -37,8 +38,8 @@ END_MAINTENANCE = "end_maintenance"
 SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
 GRANT_CONTENT_ADMIN = "grant_content_admin"
 ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
-           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN)
-TARGET_TYPES = {ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING)
+TARGET_TYPES = {RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
                 UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
                 END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
                 GRANT_CONTENT_ADMIN: "user"}
@@ -113,6 +114,7 @@ def expire_stale(db: Session) -> None:
 
 
 CONSEQUENCES = {
+    RESUME_ONBOARDING: "Resumes optional onboarding attempt collection for users who explicitly opt in; existing opt-outs and Do Not Track still apply.",
     ADD_RULE: ("Assistants that register this redirect address can be sent sign-in codes "
                "after a user approves the consent screen."),
     ENABLE_RULE: ("Clients registered under this rule can authorize and refresh again, and new "
@@ -128,6 +130,8 @@ CONSEQUENCES = {
 
 def describe(row: AdminActionRequest) -> str:
     payload = json.loads(row.payload)
+    if row.action == RESUME_ONBOARDING:
+        return "Resume optional onboarding measurement"
     if row.action == ADD_RULE:
         return f"Allow {payload['match_type']} redirect {payload['pattern']} as “{payload['label']}”"
     if row.action == ENABLE_RULE:
@@ -174,6 +178,11 @@ def _target_id(payload: dict) -> int | None:
 def _validate(db: Session, action: str, args: dict) -> dict:
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock
 
+    if action == RESUME_ONBOARDING:
+        from scaffold.onboarding import paused
+        if not paused(db):
+            raise ValueError("Onboarding measurement is not paused")
+        return {}
     if action == ADD_RULE:
         label = _clean(args.get("label"), 60)
         if not label:
@@ -350,6 +359,12 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
     from scaffold.models import BlockedEmail, GrantProgramSettings, InviteSendingBlock, User
 
     payload = json.loads(row.payload)
+    if row.action == RESUME_ONBOARDING:
+        from scaffold.onboarding import paused, set_paused
+        if not paused(db):
+            raise ValueError('Onboarding measurement is no longer paused')
+        set_paused(db, False, commit=False)
+        return 'Optional onboarding measurement resumed', {'collection_paused': True}, {'collection_paused': False}
     if row.action == ADD_RULE:
         kind, pattern = normalize_rule(payload["pattern"], payload["match_type"])
         rule = add_redirect_rule(db, payload["label"], kind, pattern, commit=False)

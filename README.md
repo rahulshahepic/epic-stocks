@@ -1833,11 +1833,17 @@ counts and timing), alongside the shared `Retirement.math.ts` simulator and
 category-specific `LifeEventsPlanner.tsx` editor. The implementation scope and
 validation checklist are recorded in [the planning workflow plan](docs/planning-workflow-plan.md).
 
-### Anonymous onboarding measurement
+### Optional onboarding measurement
 
-Admin → No-account preview shows only daily integer request counters: import requests, valid parses, source checks without warnings, format refusals, processing-time buckets, previews, save clicks and signup-carryover reports. No filenames, figures, document text, IP/device/account identifiers or per-visitor linkage are stored in this table. **Share anonymous daily usage counts** on `/try` controls counting; Do Not Track is also honored. Counters older than 180 days are pruned on the next measured event.
+Admin → Onboarding attempts reports explicitly opted-in import attempts from `/try` and signed-in imports. Counting is off by default and honors Do Not Track. A random tab key groups retries and the preview → save → sign-in → confirmed-write journey for at most 24 hours. The server stores its hash and a different HMAC account binding for each attempt, never account IDs, IPs, filenames, document text or financial values. Account deletion erases that account's live bindings. No unique-person, cross-attempt or retention rates are inferred.
 
-These are attempt counts: retries and repeated save/carryover reports can count again, and events can cross midnight. The legacy carryover/previews ratio is not a unique-user conversion probability. Opted-out requests are outside the denominator. Processing time covers server work, not document discovery or signup. Source agreement does not prove a complete current position; measure the five-minute accurate-position target in the usability pilot rather than infer it from a successful render. Targets remain hypotheses. There is no anonymous-to-account join, cohort retention measurement or third-party analytics.
+Daily UTC cohorts use the attempt's start day, so retries and midnight do not change the denominator. Usable previews, source-checked previews within five minutes, confirmed saves and enabled configured reminder channels are separate stages. Source checks compare supplied totals without warnings or stale prices; they do not independently prove current holdings or accrued-interest accuracy. Human validation remains part of the [first-use pilot](docs/first-use-pilot.md). Recent cohorts remain provisional for 24 hours.
+
+Temporary keys expire after 24 hours; scheduled cleanup normally removes them within another 15 minutes. Aggregate cohorts and legacy request totals expire after 180 days. Collection is capped at 10,000 active keys. Optional measurement failures have a 500 ms client deadline and never prevent importing or saving. The admin report exposes capacity, expired rows, cleanup status and fixed-code write failures. Legacy request totals remain separate and are not cohort conversion rates.
+
+The admin MCP exposes `admin_onboarding_funnel` (aggregates and recommended actions), `admin_pause_onboarding`, `admin_cleanup_onboarding`, and `admin_request_resume_onboarding`. Pause/cleanup preview unless confirmed; pause removes temporary keys while preserving aggregates. Resuming collection through MCP requires the existing human approval flow; it cannot override individual opt-out or DNT. Browser admins also have explicit confirmation controls. All changes use the admin action journal.
+
+![Onboarding attempt report](screenshots/onboarding-funnel-light-mobile.png)
 
 ### Event reminders and annual summaries
 

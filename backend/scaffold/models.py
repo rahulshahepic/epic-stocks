@@ -623,9 +623,8 @@ class TrialDailyStat(Base):
     """Anonymous daily counts for the no-account preview funnel.
 
     Integer counters per day and nothing else: no IP, no user agent, no
-    per-visitor row, nothing that could be tied back to a person. This is
-    arithmetic about the service, not a record of anyone using it — which is
-    the only kind of counting the privacy policy permits.
+    per-visitor row or account linkage. These legacy request totals remain
+    separate from the new, explicitly opted-in attempt cohorts.
     """
     __tablename__ = "trial_daily_stats"
 
@@ -639,3 +638,27 @@ class TrialDailyStat(Base):
     previews: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     save_clicked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     signups_from_trial: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class OnboardingAttempt(Base):
+    """24-hour attempt linkage only; no identity, financial data or document hash."""
+    __tablename__ = 'onboarding_attempts'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    entrypoint: Mapped[str] = mapped_column(String(8), nullable=False)
+    flags: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    checked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    claim_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class OnboardingDailyStat(Base):
+    """Start-day cohorts of attempts, never counts of unique people."""
+    __tablename__ = 'onboarding_daily_stats'
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    entrypoint: Mapped[str] = mapped_column(String(8), primary_key=True)
+    metric: Mapped[str] = mapped_column(String(40), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

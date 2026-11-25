@@ -411,6 +411,7 @@ const REQUEST_TITLES: Record<string, string> = {
   unblock_email: 'Unblock an address',
   unblock_invite_sending: 'Let an account send invitations again',
   end_maintenance: 'End maintenance mode',
+  resume_onboarding: 'Resume optional onboarding measurement',
   set_flexible_payoff: 'Change flexible loan payoff',
   grant_content_admin: 'Make an account a content admin',
 }

@@ -22,13 +22,13 @@ function renderPolicy() {
 describe('Privacy policy', () => {
   it('discloses the anonymous daily counts the preview keeps', () => {
     renderPolicy()
-    expect(screen.getByText(/keeps daily request totals/i)).toBeInTheDocument()
-    expect(screen.getByText(/import attempts, valid files, source checks/i)).toBeInTheDocument()
+    expect(screen.getByText(/Import measurement is off until you opt in/i)).toBeInTheDocument()
+    expect(screen.getByText(/parse, preview, sign-in, confirmed save and reminder steps/i)).toBeInTheDocument()
   })
 
   it('is explicit that the counts carry nothing identifying', () => {
     renderPolicy()
-    expect(screen.getByText(/No IP address, no browser or device details, no\s+identifier of any kind/i))
+    expect(screen.getByText(/no account ID, email, IP, device details, file text, document fingerprint or financial values/i))
       .toBeInTheDocument()
   })
 
@@ -41,8 +41,8 @@ describe('Privacy policy', () => {
 
   it('still rules out per-person tracking and third-party analytics', () => {
     renderPolicy()
-    expect(screen.getByText(/Per-person analytics or usage tracking/i)).toBeInTheDocument()
-    expect(screen.getByText(/no third-party analytics service/i)).toBeInTheDocument()
+    expect(screen.getByText(/Per-person or cross-visit analytics profiles/i)).toBeInTheDocument()
+    expect(screen.getByText(/third-party analytics services/i)).toBeInTheDocument()
   })
 
   it('says uploaded preview files are discarded rather than stored', () => {

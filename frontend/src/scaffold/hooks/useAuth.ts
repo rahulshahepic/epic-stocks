@@ -3,6 +3,7 @@ import { apiFetchRaw, isLoggedIn } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
 import { resetMeCache } from './useMe.ts'
 import { resetConfigCache } from './useConfig.ts'
+import { resetMeasurement } from '../onboarding.ts'
 
 function clearLocalSessionState() {
   resetMeCache()
@@ -18,6 +19,7 @@ export function useAuth() {
   const [authenticated, setAuthenticated] = useState<boolean>(isLoggedIn)
 
   const logout = useCallback(async () => {
+    await resetMeasurement()
     clearLocalSessionState()
     await apiFetchRaw('/api/auth/logout', { method: 'POST' }).catch(() => {})
     await platform.auth.clearSession()
@@ -26,6 +28,7 @@ export function useAuth() {
   }, [])
 
   const logoutEverywhere = useCallback(async () => {
+    await resetMeasurement()
     clearLocalSessionState()
     await apiFetchRaw('/api/auth/logout-everywhere', { method: 'POST' }).catch(() => {})
     await platform.auth.clearSession()

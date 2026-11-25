@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
+import { claimMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
+import { useEffect, useMemo, useState } from 'react'
 import ImportEvidence from './ImportEvidence.tsx'
 import EurekaFileGuide from './EurekaFileGuide.tsx'
 import ChangeList from './ChangeList.tsx'
@@ -34,6 +36,9 @@ export default function EpicFileImport({ allowAssistant = false }: { allowAssist
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('idle')
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
+  useEffect(() => {
+    if (stage === 'result' && result) void measurementEvent('preview_viewed', result.measurementSequence).then(claimMeasurement)
+  }, [stage, result])
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -139,6 +144,7 @@ export default function EpicFileImport({ allowAssistant = false }: { allowAssist
         </button>
       </div>
 
+      <MeasurementChoice />
       {error && (
         <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
           <ReportableError

@@ -109,8 +109,15 @@ def _delete_user(db, user_id: int) -> None:
     through rolls the whole deletion back rather than leaving a half-erased
     account.
     """
+    from sqlalchemy import select
+    from scaffold.models import User
+    # Serialize with onboarding claims through transaction completion, before
+    # scanning attempt bindings. No account identifier is added to those rows.
+    db.execute(select(User.id).where(User.id == user_id).with_for_update()).first()
     from scaffold.synthetic_accounts import delete_test_accounts
     delete_test_accounts(db, user_id=user_id)
+    from scaffold.onboarding import delete_account_linkage
+    delete_account_linkage(db, user_id)
     _clear_self_references(db, user_id)
 
     for table, col in USER_OWNED_TABLES:

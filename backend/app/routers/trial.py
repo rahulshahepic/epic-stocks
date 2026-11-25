@@ -4,9 +4,9 @@
                               after signup goes to /api/epic-import/changes
 
 No account and no auth — this is the no-signup on-ramp. None of the
-uploaded data is written anywhere; the only thing that touches the
-database is a daily counter keyed by the date alone (see _bump), so the
-funnel can be measured without recording anything about a visitor.
+uploaded financial data is written anywhere. Legacy request counters remain
+separate from explicitly opted-in, bounded attempt measurement (see
+app.onboarding_measurement); neither stores file contents or financial values.
 
 It reuses the same parsing/reconciliation rules as /api/epic-import/analyze
 but skips the paste-out repair loop: if a file can't be fully read, the fix
@@ -28,6 +28,7 @@ from schemas import TaxSettingsRead
 from scaffold.auth import get_current_user
 from scaffold.models import TaxSettings, TrialDailyStat, User
 from app.content_service import load_content
+from app.epic_import.evidence import reconciliation_evidence
 from app.core import compute_timeline, generate_all_events
 from services.vesting import core_grant
 from app.date_utils import to_date as _to_date
@@ -111,6 +112,7 @@ def _serialize_event(e: dict) -> dict:
 
 
 class TrialAnalyzeResponse(BaseModel):
+    files_parsed: bool = False
     # The draft, kept by the browser until signup, then turned into changes.
     draft: dict
     # The same flat grant/loan/price shapes the signed-in app renders from, so
@@ -128,10 +130,10 @@ class TrialAnalyzeResponse(BaseModel):
     findings: list[dict]
     blocked: bool
     reconciles: bool
+    reconciliation: list[dict] = []
 
 
-@router.post("/analyze", response_model=TrialAnalyzeResponse)
-def analyze(
+def _analyze(
     request: Request,
     share_csv: UploadFile | None = File(default=None),
     statement_pdf: UploadFile | None = File(default=None),
@@ -216,6 +218,7 @@ def analyze(
             _bump(db, "source_checks_passed")
 
     return TrialAnalyzeResponse(
+        files_parsed=bool(rows or statement) and not any(f.severity == "error" for f in parse_findings),
         draft={**wizard_payload, "statement_date": draft.statement_date.isoformat() if draft.statement_date else None},
         grants=prefill["grants"],
         loans=prefill["loans"],
@@ -227,6 +230,7 @@ def analyze(
         findings=[x.as_dict() for x in findings],
         blocked=blocked,
         reconciles=reconciles,
+        reconciliation=reconciliation_evidence(statement, rows, findings, _date.today()),
     )
 
 
@@ -258,3 +262,13 @@ def converted(request: Request, user: User = Depends(get_current_user), db: Sess
     if request.headers.get("dnt") != "1":
         _bump(db, "signups_from_trial")
     return Response(status_code=204)
+
+
+@router.post('/analyze', response_model=TrialAnalyzeResponse)
+def analyze(request: Request, share_csv: UploadFile | None = File(default=None),
+            statement_pdf: UploadFile | None = File(default=None), current_price: float | None = Form(default=None),
+            measure_usage: bool = Form(default=True), attempt_token: str | None = Form(default=None, max_length=48),
+            attempt_sequence: int = Form(default=1, ge=1, le=500), db: Session = Depends(get_db)):
+    from app.onboarding_measurement import analyze as observe
+    return observe(db, request, attempt_token, attempt_sequence, measure_usage,
+                   lambda: _analyze(request, share_csv, statement_pdf, current_price, measure_usage, db))

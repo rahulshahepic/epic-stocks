@@ -10,6 +10,8 @@ import { apiFetch } from '../api.ts'
 import type {
   GrantEntry, LoanEntry, PriceEntry, TaxSettings, TimelineEvent,
 } from '../api.ts'
+import { beginAnalysis, measurementAllowed } from '../scaffold/onboarding.ts'
+export { measurementAllowed } from '../scaffold/onboarding.ts'
 import { platform } from '../platform/index.ts'
 
 export interface TrialFinding {
@@ -29,6 +31,7 @@ export interface TrialSummary {
 }
 
 export interface TrialAnalyzeResponse {
+  measurementSequence?: number
   /** True when the newest price in the files is from an earlier year. */
   price_is_stale: boolean
   draft: Record<string, unknown>
@@ -45,22 +48,22 @@ export interface TrialAnalyzeResponse {
   reconciles: boolean
 }
 
-export function measurementAllowed(): boolean {
-  try { return navigator.doNotTrack !== '1' && localStorage.getItem('trial_measurement') !== 'off' } catch { return false }
-}
 
-export function trialAnalyze(
+export async function trialAnalyze(
   shareCsv: File | null,
   statementPdf: File | null,
   /** Today's share price, when the files only carry older ones. */
   currentPrice?: number,
 ): Promise<TrialAnalyzeResponse> {
+  const attempt = await beginAnalysis('trial')
   const body = new FormData()
+  if (attempt) { body.append('attempt_token', attempt.token); body.append('attempt_sequence', String(attempt.sequence)) }
   body.append('measure_usage', String(measurementAllowed()))
   if (shareCsv) body.append('share_csv', shareCsv)
   if (statementPdf) body.append('statement_pdf', statementPdf)
   if (currentPrice != null && currentPrice > 0) body.append('current_price', String(currentPrice))
-  return apiFetch<TrialAnalyzeResponse>('/api/trial/analyze', { method: 'POST', body }, 'Could not read those files')
+  const result = await apiFetch<TrialAnalyzeResponse>('/api/trial/analyze', { method: 'POST', body }, 'Could not read those files')
+  return {...result, measurementSequence: attempt?.sequence}
 }
 
 /**

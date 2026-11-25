@@ -76,7 +76,7 @@ export default function TipCarousel({ onApply }: Props) {
               {tip.type === 'deduction' ? 'Potential saving: ' : 'Save '}{fmt$(tip.savings)}
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-cs-text-2">{tip.type === 'deduction' ? 'You may be able to deduct investment interest if you itemize. Savings depend on gains realized in the year interest is paid. Review eligibility and tax settings before enabling this.' : tip.description}</p>
+          <p className="mt-0.5 text-xs text-cs-text-2">{tip.type === 'deduction' ? 'You may be able to deduct investment interest if you itemize. The estimate depends on realized gains and your selected investment interest method. Review eligibility and tax settings before enabling this.' : tip.description}</p>
           <div className="mt-2.5 flex items-center gap-3">
             {tip.type === 'deduction' ? <Link to="/settings#tax" className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">Learn more</Link> : <button
               onClick={handleApply}

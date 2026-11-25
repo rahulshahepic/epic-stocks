@@ -568,26 +568,24 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
 _TAXABLE_EVENT_TYPES = frozenset({'Sale', 'Liquidation (projected)'})
 
 
-def _apply_interest_deduction(enriched: list, interest_paid_by_year: dict[int, float],
+def _apply_interest_deduction(enriched: list, interest_by_year: dict[int, float],
                               excluded_years: set[int] | None = None) -> None:
     """
     Annotate realized-gain events with the investment-interest deduction.
 
-    Interest is deductible in the year it is paid — an Interest loan when it
-    is repaid, accrued interest when its loan is — and only against gains
-    actually realized that year (Form 4952); the unused part carries forward.
+    The selected accounting method determines the year interest enters the
+    pool. The estimate offsets realized gains and carries unused amounts forward.
     It offsets short-term gains first, then long-term, so each dollar saves
-    the rate of the gain it offsets. Interest paid in an excluded year (one
-    the user did not itemize) is forfeited.
+    the rate of the gain it offsets. Excluded years do not add to the pool.
 
-    `interest_paid_by_year` comes from `Projection.interest_paid_by_year()`.
+    `interest_by_year` comes from `Projection.interest_for_deduction()`.
     Sale events need `st_gain`/`lt_gain` from `_annotate_sale_taxes`.
 
     Adds to every event:
       interest_deduction_applied, interest_deduction_on_stcg,
       interest_deduction_on_ltcg, adjusted_total_cap_gains, adjusted_cum_cap_gains
     """
-    pool = interest_paid_by_year
+    pool = interest_by_year
     sorted_years = sorted(pool)
     year_idx = 0
     available = 0.0
@@ -714,8 +712,9 @@ def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_e
                              sale_overrides=overrides, sale_loan_ids=sale_loan_ids,
                              sale_lot_overrides=lot_overrides)
         if deduction_enabled:
-            paid = (ctx["exit_projection"] if horizon_date is not None else proj).interest_paid_by_year()
-            _apply_interest_deduction(enriched, paid, excluded_years=excluded_years)
+            deduction_projection = ctx["exit_projection"] if horizon_date is not None else proj
+            interest = deduction_projection.interest_for_deduction(ts_row.investment_interest_method)
+            _apply_interest_deduction(enriched, interest, excluded_years=excluded_years)
     ctx["enriched"] = enriched
     return ctx
 
@@ -738,8 +737,10 @@ def preview_deduction(
     excl = set(ts_row.deduction_excluded_years or [])
     if exclude_past and not excl:
         this_year = past_year_cutoff or (inputs.today or date.today()).year
+        from app.tax_settings import investment_interest_years
         from services.vesting import vest_years
-        excl = {y for g in inputs.grants for y in vest_years(g) if y < this_year}
+        years = investment_interest_years((y for g in inputs.grants for y in vest_years(g)), inputs.loans)
+        excl = {y for y in years if y < this_year}
     if as_of is not None:
         if include_exit:
             summary = _preview_exit_data(user, db, as_of.isoformat(), inputs=inputs,
@@ -796,6 +797,7 @@ def _preview_exit_data(user: User, db: Session, date_str: str, *, inputs=None,
     return {
         "date": preview_date.isoformat(),
         **summary,
+        "investment_interest_method": ctx["ts_row"].investment_interest_method,
         **(price_metadata(price, ctx["today"]) if price is not None else {}),
     }
 
@@ -1090,8 +1092,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *,
                     next_event.update(price_metadata(row, cutoff))
             break
 
-    # Investment interest deduction: interest actually paid by the cutoff,
-    # against gains actually realized by then (the sales above).
+    # Interest eligible by the cutoff under the selected accounting method,
+    # applied to gains actually realized by then.
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
     if deduction_enabled is None:
@@ -1099,15 +1101,14 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *,
     if ts_row and deduction_enabled and sale_specs:
         if excluded_years is None:
             excluded_years = set(ts_row.deduction_excluded_years or [])
-        paid: dict[int, float] = {}
-        for po in projection.payoffs:
-            if po.date <= cutoff:
-                paid[po.date.year] = paid.get(po.date.year, 0.0) + po.interest_paid
+        method = ts_row.investment_interest_method
+        interest = (projection.interest_paid_by_year(cutoff) if method == "cash"
+                    else snapshot_projection.interest_for_deduction(method))
         realized = sorted(
             ({"date": spec["date"], "event_type": "Sale",
               "st_gain": results[spec["id"]]["st_gain"], "lt_gain": results[spec["id"]]["lt_gain"]}
              for spec in sale_specs), key=lambda e: e["date"])
-        _apply_interest_deduction(realized, paid, excluded_years=excluded_years)
+        _apply_interest_deduction(realized, interest, excluded_years=excluded_years)
         interest_deduction_total, tax_savings_from_deduction = _deduction_totals(realized, _ts_dict(ts_row))
 
     # Whether the price these figures rest on is one the user projected rather
@@ -1190,7 +1191,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *,
                                  sale_overrides=overrides, sale_loan_ids=sale_loan_ids,
                                  sale_lot_overrides=lot_overrides)
             if ts_row.deduct_investment_interest:
-                _apply_interest_deduction(chart_events, projection.interest_paid_by_year(),
+                interest = projection.interest_for_deduction(ts_row.investment_interest_method)
+                _apply_interest_deduction(chart_events, interest,
                                           excluded_years=set(ts_row.deduction_excluded_years or []))
         if include_charts:
             details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)

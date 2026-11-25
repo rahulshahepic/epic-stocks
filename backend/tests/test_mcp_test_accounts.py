@@ -350,3 +350,19 @@ def test_notice_aware_widget_resource_versions_invalidate_cached_templates(stagi
         resource = staging.rpc('resources/read', {'uri': uri})['result']['contents'][0]
         assert resource['uri'] == uri
         assert 'FICTIONAL TEST ACCOUNT' in resource['text']
+
+
+
+def test_investment_interest_method_write_stays_in_the_fixture(staging, db_session):
+    read_actual = text(
+        "SELECT investment_interest_method FROM tax_settings JOIN users ON tax_settings.user_id = users.id "
+        "WHERE users.is_synthetic = :synthetic"
+    )
+    before = db_session.execute(read_actual, {"synthetic": False}).all()
+    staging.call("setup_test_account", scenario="established")
+    assert staging.call("get_investment_interest_method")["method"] == "accrual"
+    written = staging.call("set_investment_interest_method", method="cash")
+    assert written["method"] == "cash"
+    assert written["account_context"]["synthetic"] is True
+    assert staging.call("get_investment_interest_method")["method"] == "cash"
+    assert db_session.execute(read_actual, {"synthetic": False}).all() == before

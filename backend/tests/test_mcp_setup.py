@@ -34,6 +34,7 @@ def test_public_discovery_explains_value_and_first_import(client, domain, stagin
         assert 'when your shares vest' in surface
         assert 'if you left Epic' in surface
         assert 'get_import_guide' in surface
+        assert 'Enable Equity editing before previewing or saving changes.' in surface
         if staging:
             assert 'get_account_context' in surface
             assert 'fictional documents only' in surface

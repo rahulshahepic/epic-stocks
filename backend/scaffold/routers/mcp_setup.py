@@ -43,6 +43,7 @@ def setup_document():
                 'review': ('Check for existing records, preview changes with apply_changes, explain any assumptions, '
                            'and ask the user to approve the preview before saving. Read back the saved result.'),
                 'required_scope': 'equity:write',
+                'permission': 'Enable Equity editing before previewing or saving changes.',
             },
         },
         'data_notice': ('Staging isolates every MCP connection in a persistent fictional account. Financial tools refuse access until setup_test_account succeeds. Never sync these numbers '
@@ -66,8 +67,8 @@ def setup_page():
     import_steps = first_run['import']
     seed = f'<p>{escape(first_run["staging_setup"])}</p>' if 'staging_setup' in first_run else ''
     onboarding = (f'<h2>After connecting</h2>{seed}<p>{escape(import_steps["documents"])}</p>'
-                  '<p>Ask your assistant to help import it. It will use <code>get_import_guide</code> '
-                  'and show what would change before saving. Approve equity editing when you want to save the import.</p>')
+                  '<p>Ask your assistant for help with the import. It will use <code>get_import_guide</code> '
+                  f'and show what would change before saving. {escape(import_steps["permission"])}</p>')
     body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect an AI assistant · {heading}</title><link rel="stylesheet" href="/mcp-setup.css"><link rel="alternate" type="application/json" href="/mcp/setup.json"></head><body><main><a href="/login?intent=%2Fconnect-ai">Epic Stocks Unofficial</a><h1>Connect an AI assistant</h1><p>{escape(doc["purpose"])}</p><p>{escape(doc['data_notice'])}</p><h2>Your connection address</h2><p>Select and copy this address into your assistant’s connection settings:</p><p><code>{escape(doc['server_url'])}</code></p><h2>ChatGPT</h2><ol><li>Open Settings → Apps and look for the option to add a custom app or connector. Availability depends on your plan and workspace.</li><li>Paste the connection address above. If asked for authentication, choose OAuth; you do not need an API key.</li><li>Connect, sign in to Epic Stocks and review the permissions before approving.</li><li>In a chat, select Epic Stocks and ask: “Help me get started with my stock account.”</li></ol><h2>Claude</h2><ol><li>Open Settings → Connectors and add a custom connector.</li><li>Paste the connection address above, then connect and sign in to Epic Stocks.</li><li>Review the permissions, then select Epic Stocks in your conversation and ask about your account.</li></ol><p>Start with read permissions for questions and analysis. Allow editing only if you want your assistant to save changes. You can disconnect it in Epic Stocks Settings → AI connections.</p>{onboarding}<details><summary>Technical setup and assistant discovery</summary><p>Streamable HTTP · OAuth with PKCE · no API key</p><ol>{steps}</ol><h2>Download a connector</h2><p><a href="/mcp-setup/plugin/chatgpt">Download ChatGPT plugin ZIP</a> · <a href="/mcp-setup/plugin/claude">Download Claude plugin ZIP</a></p><p>Packages contain public configuration only, never credentials.</p><ul><li><a href="/mcp/setup.json">Machine-readable setup JSON</a></li><li><a href="/.well-known/oauth-protected-resource/mcp">OAuth protected resource metadata</a></li><li><a href="/.well-known/oauth-authorization-server">OAuth authorization server metadata</a></li></ul><p>{escape(doc['automatic_setup_limit'])}</p></details><p><a href="/demo">Explore fictional profiles</a> · <a href="/privacy">Privacy</a></p></main></body></html>'''
     return HTMLResponse(body, headers={'Cache-Control': 'public, max-age=300'})
 
@@ -107,7 +108,8 @@ def llms():
     lines += [
         f'- {first_run["account_overview"]}',
         f'- {import_steps["read_guide"]} {import_steps["documents"]}',
-        f'- {import_steps["review"]} Saving needs `{import_steps["required_scope"]}`.',
+        f'- {import_steps["permission"]} The scope is `{import_steps["required_scope"]}`.',
+        f'- {import_steps["review"]}',
         '', doc['data_notice'], doc['automatic_setup_limit'], '',
     ]
     return PlainTextResponse('\n'.join(lines))

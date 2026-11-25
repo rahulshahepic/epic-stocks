@@ -1183,6 +1183,9 @@ test.describe('Screenshots', () => {
   })
 })
 
+test.describe('Directory reviewer screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+
 test('directory reviewer login - light - mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/reviewer-login')
@@ -1218,4 +1221,6 @@ test('directory reviewer fictional portfolio and loans', async ({ page }) => {
   await page.goto(BASE)
   await page.waitForLoadState('networkidle')
   await page.screenshot({ path: `${OUT}/directory-equity-light-mobile.png`, fullPage: true })
+})
+
 })

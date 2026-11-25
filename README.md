@@ -2143,6 +2143,8 @@ revocation and deletion require confirmation. The admin MCP exposes the same
 management; widening access follows the existing human approval queue.
 [Architecture and secure operating instructions](docs/DIRECTORY_REVIEWERS.md).
 No reviewer identities or credentials are created automatically on deployment.
+Sign-in audits use separate bounded daily counters (90-day retention), so
+anonymous attempts cannot evict administrator management history.
 
 New implementation locations: `scaffold/reviewers.py` (restricted identities),
 `scaffold/routers/reviewers.py` (separate login/admin API),

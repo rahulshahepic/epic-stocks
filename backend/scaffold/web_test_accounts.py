@@ -64,15 +64,18 @@ def request_workspace(db, token, path, method):
     from scaffold.models import User
     from scaffold.synthetic_accounts import account_lock
     from scaffold.reviewers import identity, restrict_request
+    protected = (path.startswith('/api/') and path not in ('/api/auth/logout', '/api/auth/providers', '/api/config', '/api/health', '/api/status')) or path in ('/mcp', '/admin-mcp') or path.startswith('/admin-oauth/')
+    if not protected and not path.startswith('/oauth/authorize'):
+        yield None
+        return
     try:
         reviewer = db.get(User, int(decode_jwt(token or '')['sub']))
     except (ValueError, KeyError, TypeError):
         reviewer = None
-    protected = (path.startswith('/api/') and path not in ('/api/auth/logout', '/api/auth/providers', '/api/config', '/api/health', '/api/status')) or path in ('/mcp', '/admin-mcp') or path.startswith('/admin-oauth/')
     if identity(reviewer) and (protected or path.startswith('/oauth/authorize')):
         if protected:
             restrict_request(db, reviewer, path, method)
-        if financial_path(path) or path.startswith('/oauth/authorize') or path == '/api/auth/refresh':
+        if financial_path(path) or path.startswith('/oauth/authorize') or path in ('/api/auth/refresh', '/api/auth/logout-everywhere'):
             with account_lock(db, reviewer.id, shared=method in ('GET', 'HEAD', 'OPTIONS')):
                 yield None
         else:

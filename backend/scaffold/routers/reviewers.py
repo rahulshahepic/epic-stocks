@@ -14,7 +14,7 @@ from scaffold import reviewers
 from scaffold.auth import create_token, get_admin_user, set_session_cookies, cookie_secure
 from scaffold.client_ip import client_ip
 from scaffold.models import ReviewerAccount, User
-from scaffold.oauth import admin_actions, admin_journal
+from scaffold.oauth import admin_actions
 from scaffold.rate_limit import check_rate_ip_shared, check_rate_shared
 
 router = APIRouter(tags=['Directory reviewers'])
@@ -59,13 +59,14 @@ def login(request: Request, login: str = Form(..., max_length=80), password: str
     row = db.query(ReviewerAccount).filter_by(login=login).first()
     guard = account_lock(db, row.user_id) if row else nullcontext()
     with guard:
-        journal = admin_journal.begin(db, via='reviewer', action='reviewer_login', actor_email=None)
+        user_id = row.user_id if row else None
+        reviewers.audit_login(db, user_id, 'attempt')
         try:
             user = reviewers.authenticate(db, login, password)
         except HTTPException:
-            admin_journal.finish(db, journal, outcome=admin_journal.FAILED, detail='Invalid or expired credentials')
+            reviewers.audit_login(db, user_id, 'failure')
             raise
-        admin_journal.finish(db, journal, outcome=admin_journal.OK, target_id=user.id)
+        reviewers.audit_login(db, user.id, 'success')
         response = RedirectResponse(safe_next(next), status_code=303, headers=NO_STORE)
         set_session_cookies(response, create_token(user.id, user.session_version))
         response.delete_cookie('reviewer_csrf', path='/reviewer-login')

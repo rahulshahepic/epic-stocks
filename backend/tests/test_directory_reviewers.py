@@ -282,3 +282,55 @@ def test_reviewer_cannot_receive_content_admin_or_use_oidc_namespace(client, db_
             actor_email='owner@example.invalid')
     with pytest.raises(Exception, match='external sign-in provider'):
         _upsert_user(SimpleNamespace(provider_name=reviewers.PROVIDER), db_session)
+
+
+def test_unknown_login_flood_cannot_evict_management_journal(client, db_session):
+    from scaffold.oauth import admin_journal
+    from scaffold.oauth.models import AdminActionJournal
+    from scaffold.models import ReviewerLoginAudit
+    entry = admin_journal.begin(db_session, via='browser', action='important_management_action', actor_email='owner@example.invalid')
+    page = client.get('/reviewer-login')
+    csrf = page.text.split('name="csrf" value="')[1].split('"')[0]
+    for index in range(50):
+        response = client.post('/reviewer-login', data={'login': f'unknown-{index}', 'password': 'wrong', 'csrf': csrf})
+        assert response.status_code == 401
+    assert db_session.get(AdminActionJournal, entry) is not None
+    assert db_session.query(AdminActionJournal).count() == 1
+    rows = db_session.query(ReviewerLoginAudit).all()
+    assert len(rows) == 2
+    assert {r.outcome: r.count for r in rows} == {'attempt': 50, 'failure': 50}
+    assert all(r.user_id is None for r in rows)
+
+
+def test_reviewer_auth_counters_are_bounded_and_have_no_supplied_text(db_session):
+    from scaffold.models import ReviewerLoginAudit
+    from datetime import datetime, timezone
+    row = ReviewerLoginAudit(bucket='unknown:2000-01-01:failure', outcome='failure', count=1,
+                             last_at=datetime(2000, 1, 1, tzinfo=timezone.utc))
+    db_session.add(row)
+    db_session.commit()
+    reviewers.audit_login(db_session, None, 'attempt')
+    assert db_session.query(ReviewerLoginAudit).count() == 1
+    assert set(ReviewerLoginAudit.__table__.columns.keys()) == {'bucket', 'user_id', 'outcome', 'count', 'last_at'}
+
+
+def test_reviewer_can_report_privately_and_sign_out_everywhere(client, db_session):
+    info, raw = provision(db_session)
+    sign_in(client, info, raw)
+    tokens = connect(client)
+    report = client.post('/api/report', json={'message': 'Fictional reviewer test problem', 'include_details': False})
+    assert report.status_code == 200, report.text
+    from scaffold.models import UserReport
+    assert db_session.get(UserReport, report.json()['id']).user_id is None
+    assert client.post('/api/auth/logout-everywhere').status_code == 200
+    assert rpc(client, tokens['access_token'], 'get_dashboard').status_code == 401
+
+
+def test_nightly_cleanup_expires_auth_buckets_without_further_logins(db_session):
+    from scaffold.models import ReviewerLoginAudit
+    from scaffold.oauth.cleanup import prune
+    db_session.add(ReviewerLoginAudit(bucket='unknown:2000-01-01:failure', outcome='failure', count=1,
+                                     last_at=reviewers.now() - timedelta(days=91)))
+    db_session.commit()
+    assert prune(db_session)['reviewer_auth_buckets'] == 1
+    assert db_session.query(ReviewerLoginAudit).count() == 0

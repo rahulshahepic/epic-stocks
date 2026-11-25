@@ -104,6 +104,16 @@ class ReviewerAccount(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ReviewerLoginAudit(Base):
+    """Bounded daily auth counters, separate from the management journal."""
+    __tablename__ = "reviewer_login_audit"
+    bucket: Mapped[str] = mapped_column(String(80), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    outcome: Mapped[str] = mapped_column(String(10), nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class Grant(Base):
     __tablename__ = "grants"
 

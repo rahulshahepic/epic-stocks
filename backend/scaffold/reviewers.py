@@ -146,9 +146,45 @@ def restrict_request(db, user, path, method):
             '/api/admin', '/admin-mcp', '/admin-oauth', '/api/sharing', '/api/push',
             '/api/notifications', '/api/ai', '/api/onboarding', '/api/trial')):
         raise HTTPException(403, 'Unavailable to fictional reviewer identities')
-    if path.startswith('/api/auth/') and path not in ('/api/auth/logout', '/api/auth/refresh', '/api/auth/revoke'):
+    if path.startswith('/api/auth/') and path not in ('/api/auth/logout', '/api/auth/refresh', '/api/auth/logout-everywhere'):
         raise HTTPException(403, 'Reviewer identity cannot change authentication provider')
-    if path in ('/api/me', '/api/report') and method not in ('GET', 'HEAD'):
+    if path == '/api/me' and method not in ('GET', 'HEAD'):
         raise HTTPException(403, 'Manage reviewer identities through the admin reviewer console')
     if path.startswith('/api/content') and method not in ('GET', 'HEAD'):
         raise HTTPException(403, 'Reviewers cannot modify global content')
+
+
+def audit_login(db, user_id, outcome):
+    """Unknown usernames share one daily bucket: anonymous input cannot grow
+    cardinality or evict administrative history. Count updates are atomic.
+    """
+    from scaffold.models import ReviewerLoginAudit
+    if outcome not in ('attempt', 'success', 'failure'):
+        raise ValueError('Unknown reviewer authentication outcome')
+    at = now()
+    bucket = f"{user_id if user_id is not None else 'unknown'}:{at.date().isoformat()}:{outcome}"
+    if db.get_bind().dialect.name == 'postgresql':
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    statement = insert(ReviewerLoginAudit).values(bucket=bucket, user_id=user_id, outcome=outcome, count=1, last_at=at)
+    db.execute(statement.on_conflict_do_update(index_elements=['bucket'],
+        set_={'count': ReviewerLoginAudit.count + 1, 'last_at': at}))
+    prune_login_audit(db)
+    db.commit()
+
+
+def login_activity(db, user_id):
+    from scaffold.models import ReviewerLoginAudit
+    from sqlalchemy import func
+    rows = db.query(ReviewerLoginAudit.outcome, func.sum(ReviewerLoginAudit.count)).filter(
+        ReviewerLoginAudit.user_id == user_id, ReviewerLoginAudit.last_at >= now() - timedelta(days=7)
+    ).group_by(ReviewerLoginAudit.outcome).all()
+    return {outcome: int(count) for outcome, count in rows}
+
+
+def prune_login_audit(db):
+    from scaffold.models import ReviewerLoginAudit
+    return db.query(ReviewerLoginAudit).filter(
+        ReviewerLoginAudit.last_at < now() - timedelta(days=90)
+    ).delete(synchronize_session=False)

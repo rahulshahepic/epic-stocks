@@ -940,8 +940,8 @@ register(Tool(name='admin_request_resume_onboarding', title='Request resumption 
 
 def _reviewers(ctx, args):
     from scaffold.models import ReviewerAccount
-    from scaffold.reviewers import state
-    return {'reviewers': [state(r) for r in ctx.db.query(ReviewerAccount).order_by(ReviewerAccount.id).all()]}
+    from scaffold.reviewers import state, login_activity
+    return {'reviewers': [{**state(r), 'login_activity_last_7_days': login_activity(ctx.db, r.user_id)} for r in ctx.db.query(ReviewerAccount).order_by(ReviewerAccount.id).all()]}
 
 
 def _reviewer_access(ctx, args):

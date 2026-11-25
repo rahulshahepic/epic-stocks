@@ -18,7 +18,11 @@ domain-separated keyed HMAC verifier. The generated secret appears once in the
 admin browser response or admin MCP request result. Never log or commit it.
 The reviewer login uses a separate CSRF-protected HTML form, HttpOnly secure
 session cookie, IP/network flood protection and per-login shared rate limiting.
-Redis makes limits shared across replicas; its existing in-process fallback
+Authentication attempts use separate atomic daily counters for attempt/success/failure,
+with all unknown usernames sharing one bucket per day/outcome. Counters expire after
+90 days and cannot evict the management journal. Admin MCP listing includes the
+last seven days of counts per reviewer. No supplied username, password or IP is
+stored in these counters. Redis makes limits shared across replicas; its existing in-process fallback
 is weaker during Redis outages and deploys. Operations should monitor Redis.
 
 The ordinary OAuth discovery, DCR, S256 PKCE, explicit scope consent, resource
@@ -39,7 +43,7 @@ preserves data; it does not silently reset it. Automatic staging cleanup exclude
 reviewer bindings. Deletion uses the single user-deletion service.
 
 Reviewer HTTP sessions cannot use admin/content writes, sharing/invitations,
-notifications, reporting attachments, onboarding analytics or authentication
+notifications, onboarding analytics or authentication
 provider changes. MCP resolves only `account: me`. Company share prices are
 never seeded or fetched; fixtures use invented round numbers. Reviewer accounts
 have no admin or content-admin permissions, even if their address is mistakenly
@@ -77,3 +81,16 @@ or reviewer users are created by migration, startup or deployment. There are no
 new production secrets or environment switches. Provision production accounts
 only after approved deployment; test production discovery without real data.
 Production validation is not implied by passing local/staging tests.
+
+
+The admin MCP returns each newly generated reviewer password in its private tool
+result so the administrator can supply it to a reviewer without a separate
+browser retrieval step. The assistant provider's conversation/log retention
+therefore applies to that credential (up to the selected 90-day maximum access
+window). The human approval gate still controls activation. Prefer browser-only
+provisioning when the credential should not enter an assistant transcript;
+rotate/revoke promptly after review and never copy it into public artifacts.
+
+Reviewers can file the ordinary opt-in problem report and sign out everywhere
+for their own fictional identity. Sign-out and token refresh serialize with
+credential rotation. Public/static requests do not trigger reviewer lookups.

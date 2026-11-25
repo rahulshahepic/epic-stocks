@@ -372,7 +372,9 @@ export default function Dashboard() {
   const hasPrice = cv != null && cv.current_price !== null
   const hasPastRecords = events?.some(e => e.event_type !== 'Share Price' && e.date < `${today.slice(0, 4)}-01-01`)
   const totalValue = cv?.total_stock_value ?? null
+  const outstandingPrincipal = snapshot?.outstanding_loan_balance ?? cv?.total_loan_principal ?? 0
   const datedExit = exitPreview && exitPreview !== 'loading' && exitPreview.date === cardDate ? exitPreview : null
+  const showExitFigure = showExitPreview && (datedExit !== null || exitPreview === 'loading')
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
@@ -405,10 +407,10 @@ export default function Dashboard() {
             <div>
               <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
+                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitFigure ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
               </p>
-              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitPreview ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
-              {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
+              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitFigure ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
+              {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Estimated exit cash is unavailable for this date.'}</p>}
 
               {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
                 datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
@@ -428,6 +430,16 @@ export default function Dashboard() {
                   {totalValue === null ? 'Stock value needs a share price' : cv.net_equity != null && `${fmt$(cv.net_equity)} stock equity before exit taxes`}
                 </>}
               </p>
+              {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
+                <dl className="space-y-1 text-xs text-white">
+                  {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
+                    <dt>Outstanding loan principal</dt><dd className="font-semibold tabular-nums">{fmt$(outstandingPrincipal)}</dd>
+                  </div>}
+                  {cv.accrued_unbooked_interest > 0 && <div className="flex justify-between gap-3">
+                    <dt>Accrued interest</dt><dd className="font-semibold tabular-nums">{fmt$(cv.accrued_unbooked_interest)}</dd>
+                  </div>}
+                </dl>
+              )}
               {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
               <p className="font-semibold tabular-nums">
                 {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}

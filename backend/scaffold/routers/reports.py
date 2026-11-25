@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.models import User, UserReport
 from scaffold import sensitive_reports
-from scaffold.auth import get_current_user
+from scaffold.auth import get_session_user
 from scaffold.client_ip import client_ip
 from scaffold.rate_limit import check_rate, check_rate_ip_shared
 
@@ -41,10 +41,10 @@ class ReportRequest(BaseModel):
     error_ref: str | None = None
     error_message: str | None = None
     include_details: bool = False
+    share_diagnostics: bool = False
+    attach_documents: bool = False
     email: str | None = None
-    user_agent: str | None = None
     app_version: str | None = None
-    client_log: str | None = None
 
 
 class ReportDocument(BaseModel):
@@ -53,8 +53,8 @@ class ReportDocument(BaseModel):
 
 
 class ConsentedReportRequest(ReportRequest):
-    share_diagnostics: bool = False
-    attach_documents: bool = False
+    user_agent: str | None = None
+    client_log: str | None = None
     workflow: str | None = Field(default=None, max_length=24_000)
     documents: list[ReportDocument] = Field(default_factory=list, max_length=sensitive_reports.MAX_FILES)
 
@@ -86,7 +86,7 @@ def hash_ip(ip: str) -> str:
 def _optional_user(request: Request, db: Session) -> User | None:
     """The signed-in user, or None. Never raises — a broken session still gets to report."""
     try:
-        return get_current_user(request, db)
+        return get_session_user(request, db)
     except HTTPException:
         return None
 
@@ -110,7 +110,10 @@ def submit_report(body: ReportRequest, request: Request, db: Session = Depends(g
     check_rate_ip_shared(ip, "user_report", max_calls=200, window_secs=900)
     if user:
         check_rate(user.id, "user_report", max_calls=10, window_secs=900)
-    include = bool(body.include_details)
+    if body.include_details:
+        raise HTTPException(400, "Reload to use the new diagnostic consent, or clear Include details to send anonymously.")
+    if body.share_diagnostics or body.attach_documents:
+        raise HTTPException(400, "Use the private report form to include diagnostics or documents.")
 
     error_ref = _clip(body.error_ref, 32)
     if error_ref and not _ERROR_REF_RE.match(error_ref):
@@ -126,14 +129,8 @@ def submit_report(body: ReportRequest, request: Request, db: Session = Depends(g
         source=body.source if body.source in SOURCES else "manual",
         error_ref=error_ref,
         error_message=error_message,
-        include_details=include,
-        # Identity is attached only on request. Without the tick the report is
-        # stored anonymously even when it arrives on an authenticated session.
-        user_id=user.id if (include and user) else None,
-        email=_clip(body.email, 200) or (user.email if (include and user) else None),
-        user_agent=_clip(body.user_agent, MAX_USER_AGENT) if include else None,
+        email=_clip(body.email, 200),
         app_version=_clip(body.app_version, 100),
-        client_log=_clip(body.client_log, MAX_CLIENT_LOG) if include else None,
         ip_hash=hash_ip(ip),
     )
     db.add(report)

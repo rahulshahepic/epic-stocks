@@ -480,6 +480,8 @@ def delete_report(report_id: int, admin: User = Depends(get_admin_user), db: Ses
     entry = db.get(UserReport, report_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Report not found")
+    if sensitive_reports.has_material(db, report_id):
+        raise HTTPException(409, "Delete the report's sensitive material first")
     db.delete(entry)
     db.commit()
 
@@ -493,7 +495,7 @@ def _private_report_call(action):
     except sensitive_reports.Missing as exc:
         raise HTTPException(404, str(exc), headers=_PRIVATE_REPORT_HEADERS) from None
     except sensitive_reports.Unavailable as exc:
-        raise HTTPException(409, str(exc), headers=_PRIVATE_REPORT_HEADERS) from None
+        raise HTTPException(422, str(exc), headers=_PRIVATE_REPORT_HEADERS) from None
 
 
 @router.get("/reports/{report_id}/sensitive")

@@ -552,8 +552,21 @@ def _recent(db: Session, action: str, email: str) -> int:
     ).count()
 
 
+def _check_purge_grant(row: AdminActionRequest, grant_id: int | None, scopes) -> None:
+    from .scopes import ADMIN_REPORT_SENSITIVE, ADMIN_WRITE
+
+    if row.action == PURGE_REPORT_MATERIAL and (
+        grant_id is None or grant_id != row.grant_id
+        or ADMIN_REPORT_SENSITIVE not in scopes or ADMIN_WRITE not in scopes
+    ):
+        raise ApprovalError(
+            "Use the connection that filed this deletion, with sensitive report and write permissions, "
+            "or approve it in Admin."
+        )
+
+
 def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = None,
-              client_name: str | None = None) -> dict:
+              client_name: str | None = None, scopes: tuple[str, ...] = ()) -> dict:
     """Mint a fresh code for a pending request and deliver it to `admin`.
     Any earlier code for it stops working. Returns where it went."""
     from .approval_delivery import deliver
@@ -562,6 +575,7 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
     row = db.get(AdminActionRequest, request_id)
     if row is None:
         raise ApprovalError("No request with that id")
+    _check_purge_grant(row, grant_id, scopes)
     if row.status != PENDING:
         raise ApprovalError(f"This request is already {row.status}")
     if (row.approval_codes_sent or 0) >= MAX_CODES_PER_REQUEST:
@@ -614,11 +628,13 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
 
 
 def approve_with_code(db: Session, request_id: int, code, *, admin_email: str,
-                      grant_id: int | None = None, client_name: str | None = None) -> AdminActionRequest:
+                      grant_id: int | None = None, client_name: str | None = None,
+                      scopes: tuple[str, ...] = ()) -> AdminActionRequest:
     expire_stale(db)
     row = db.get(AdminActionRequest, request_id)
     if row is None:
         raise ApprovalError("No request with that id")
+    _check_purge_grant(row, grant_id, scopes)
     if row.status != PENDING:
         raise ApprovalError(f"This request is already {row.status}")
     if not isinstance(code, str):

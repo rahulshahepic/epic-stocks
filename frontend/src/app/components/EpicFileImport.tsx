@@ -13,6 +13,8 @@ import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../e
 import { fmt$, fmtFullDate, fmtPrice } from '../format.ts'
 import { platform } from '../../platform/index.ts'
 
+type ImportReportInputs = { documents: (File | null | undefined)[]; workflow: string }
+
 type Stage = 'idle' | 'analyzing' | 'result'
 
 function Stat({ label, value, caption }: { label: string; value: string; caption?: string }) {
@@ -51,9 +53,8 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
       uploadHeading.current?.focus()
     }
   }, [stage, replacing])
-  const [reportInputs, setReportInputs] = useState<{ documents: (File | null | undefined)[]; workflow: string }>({
-    documents: [], workflow: 'Read Epic stock files',
-  })
+  const [reviewInputs, setReviewInputs] = useState<ImportReportInputs>()
+  const [failedInputs, setFailedInputs] = useState<ImportReportInputs>()
   const [repair, setRepair] = useState<{ json?: string; file?: File | null }>({})
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
@@ -78,19 +79,21 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   async function run(revisedJson?: string, revisedDraft?: File | null) {
     setStage('analyzing')
     setError('')
-    setReportInputs({
+    const attempt = {
       documents: [csv, pdf, revisedDraft],
       workflow: ['Read Epic stock files', pricedAt == null ? '' : `Current price override: ${pricedAt}`,
         revisedJson ? `Pasted revised draft: ${revisedJson.slice(0, 12_000)}` : ''].filter(Boolean).join('\n'),
-    })
+    }
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson,
         pricedAt ?? undefined))
+      setReviewInputs(attempt)
       setRepair({ json: revisedJson, file: revisedDraft })
       setStage('result')
       setReplacing(false)
       setPasted('')
     } catch (e) {
+      setFailedInputs(attempt)
       setError(e instanceof Error ? e.message : 'Could not read those files')
       setStage(result ? 'result' : 'idle')
     }
@@ -100,15 +103,17 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   async function applyCurrentPrice(price: number) {
     setRepricing(true)
     setError('')
-    setReportInputs({
+    const attempt = {
       documents: [csv, pdf, repair.file],
       workflow: [`Read Epic stock files with current price override: ${price}`,
         repair.json ? `Pasted revised draft: ${repair.json.slice(0, 12_000)}` : ''].filter(Boolean).join('\n'),
-    })
+    }
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft: repair.file }, repair.json, price))
+      setReviewInputs(attempt)
       setPricedAt(price)
     } catch (e) {
+      setFailedInputs(attempt)
       setError(e instanceof Error ? e.message : 'Could not apply that price')
     } finally {
       setRepricing(false)
@@ -124,6 +129,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
+      setFailedInputs(undefined)
       setError('Could not reach the clipboard — use Download instead.')
     }
   }
@@ -193,8 +199,8 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
         <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
           <ReportableError
             message={error}
-            source="import"
-            {...reportInputs}
+            source={failedInputs ? "import" : "manual"}
+            {...failedInputs}
             className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400"
           />
         </div>
@@ -238,7 +244,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
             <>
               {repricing && <p role="status" className="text-sm text-cs-text-2">Updating the review with your price…</p>}
               <div hidden={repricing}>
-                <ChangeList changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} disabled={repricing} reportInputs={reportInputs} />
+                <ChangeList changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} disabled={repricing} reportInputs={reviewInputs} />
               </div>
             </>
           )}
@@ -252,7 +258,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
 
           {(result.blocked || counts.errors > 0 || counts.warnings > 0) && (
             <p className="mt-2">
-              <ReportFindingsButton findings={result.findings} blocked={result.blocked} {...reportInputs} />
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} {...reviewInputs} />
             </p>
           )}
 

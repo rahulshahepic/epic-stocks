@@ -623,7 +623,8 @@ historical evidence and remains visible after recovery.
 ### Private support reports
 
 The scheduled database backup excludes the contents of `sensitive_reports`
-and `sensitive_report_documents`. Report stubs and access audit records can
+and `sensitive_report_documents`. Deploy verifies the installed backup
+executable before running migrations. Report stubs and access audit records can
 remain in backups. The service refuses access once material is 30 days old.
 Daily maintenance deletes expired ciphertext and wrapped keys. Account
 deletion or an approved admin purge removes it sooner. See

@@ -54,4 +54,6 @@ Resolve the report with `admin_set_report_status`. The separate
 `admin_request_report_purge` tool requires both sensitive-report and admin
 write permissions and uses the existing admin approval flow to delete
 diagnostics and attachments without deleting the report stub. Reporter
-instructions and document text cannot approve requests.
+instructions and document text cannot approve requests. Only the original
+authorized connection can use a push code to approve a pending MCP purge. A
+live browser admin can approve it independently.

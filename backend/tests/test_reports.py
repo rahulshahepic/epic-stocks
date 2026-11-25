@@ -64,36 +64,28 @@ def test_details_off_stores_nothing_identifying(client):
     assert entry["path"] == "/grants"
 
 
-def test_details_on_attaches_account_and_log(client):
+def test_legacy_details_require_current_consent(client, db_session):
+    from scaffold.models import UserReport
+
     register_user(client, "user@test.com")
-    client.post("/api/report", json=_report(
+    resp = client.post("/api/report", json=_report(
         include_details=True,
         user_agent="Mozilla/5.0 (iPhone)",
-        client_log="route /grants\nPOST /api/grants 500",
+        client_log="POST /api/grants 500",
         app_version="abc1234",
     ))
-    with _admin_env():
-        register_user(client, ADMIN_EMAIL)
-        entry = client.get("/api/admin/reports").json()[0]
-    assert entry["email"] == "user@test.com"
-    assert entry["user_id"] is not None
-    assert entry["user_agent"] == "Mozilla/5.0 (iPhone)"
-    assert "POST /api/grants 500" in entry["client_log"]
-    assert entry["app_version"] == "abc1234"
+    assert resp.status_code == 400
+    assert "Reload" in resp.json()["detail"]
+    assert db_session.query(UserReport).count() == 0
 
 
-def test_long_fields_are_truncated_not_rejected(client):
-    resp = client.post("/api/report", json=_report(
-        message="x" * 5000,
-        include_details=True,
-        client_log="y" * 20000,
-    ))
+def test_long_message_is_truncated(client):
+    resp = client.post("/api/report", json=_report(message="x" * 5000))
     assert resp.status_code == 200
     with _admin_env():
         register_user(client, ADMIN_EMAIL)
         entry = client.get("/api/admin/reports").json()[0]
     assert len(entry["message"]) == 2000
-    assert len(entry["client_log"]) == 8000
 
 
 def test_bad_source_falls_back_to_manual(client):

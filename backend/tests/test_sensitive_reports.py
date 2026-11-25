@@ -59,6 +59,8 @@ def test_consent_defaults_and_unconsented_diagnostics(client, db_session, monkey
     assert _submit(client, source="manual").status_code == 400
     assert _submit(client, documents=[]).status_code == 400
     assert db_session.query(UserReport).count() == 0
+    assert client.post("/api/report", json={"message": DATA, "share_diagnostics": True}).status_code == 400
+    assert client.post("/api/report", json={"message": DATA, "attach_documents": True}).status_code == 400
 
     ordinary = client.post("/api/report", json={
         "message": "An ordinary report", "path": "/import?secret=fictional",
@@ -127,7 +129,7 @@ def test_encrypted_storage_no_report_content_in_email_and_authenticated_original
     db_session.execute(text("UPDATE sensitive_report_documents SET original = :payload"),
                        {"payload": original[:-1] + bytes([original[-1] ^ 1])})
     db_session.commit()
-    assert client.get(_path(report_id, docid)).status_code == 409
+    assert client.get(_path(report_id, docid)).status_code == 422
     monkeypatch.setenv("ADMIN_EMAIL", "")
     assert client.get(_path(report_id)).status_code == 403
 
@@ -139,6 +141,7 @@ def test_real_mcp_scope_original_text_isolation_and_purge_approval(client, db_se
     db_session.rollback()
     register_user(client, ADMIN)
     readonly = _connect_admin(client)["access_token"]
+    write_only = _connect_admin(client, [ADMIN_READ, ADMIN_WRITE])["access_token"]
     scoped = _connect_admin(client, [ADMIN_READ, ADMIN_REPORT_SENSITIVE, ADMIN_WRITE])["access_token"]
 
     listed = _call(client, readonly, "admin_user_reports")
@@ -165,7 +168,13 @@ def test_real_mcp_scope_original_text_isolation_and_purge_approval(client, db_se
     with patch("app.mcp.admin_tools._send_code", return_value={"sent_to": []}):
         filed = _call(client, scoped, "admin_request_report_purge", report_id=report_a)
     request_id = json.loads(filed["content"][0]["text"])["request"]["id"]
+    forbidden_send = _call(client, write_only, "admin_send_approval_code", request_id=request_id)
+    assert forbidden_send["isError"] and "connection that filed" in forbidden_send["content"][0]["text"]
+    other_scoped = _connect_admin(client, [ADMIN_READ, ADMIN_REPORT_SENSITIVE, ADMIN_WRITE])["access_token"]
+    forbidden_approval = _call(client, other_scoped, "admin_approve_request", request_id=request_id, code="12345678")
+    assert forbidden_approval["isError"] and "connection that filed" in forbidden_approval["content"][0]["text"]
     assert client.get(_path(report_a)).status_code == 200
+    assert client.delete(f"/api/admin/reports/{report_a}").status_code == 409
     approved = client.post(f"/api/admin/mcp/requests/{request_id}/approve")
     assert approved.status_code == 200
     assert client.get(_path(report_a)).status_code == 404
@@ -191,6 +200,7 @@ def test_expiry_live_erasure_and_account_deletion(client, db_session, monkeypatc
     db_session.commit()
     register_user(client, ADMIN)
     assert client.get(_path(expiring_report)).status_code == 404
+    assert client.delete(f"/api/admin/reports/{expiring_report}").status_code == 409
     support.expire_reports(db_session)
     assert db_session.get(SensitiveReport, expiring_report) is None
     assert db_session.query(SensitiveReportDocument).filter_by(report_id=expiring_report).count() == 0

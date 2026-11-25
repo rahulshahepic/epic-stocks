@@ -178,6 +178,11 @@ def store(db, report, *, user_id, details, documents):
     db.commit()
 
 
+def has_material(db, report_id):
+    # Include expired rows until the scheduled cleanup has actually erased them.
+    return db.scalar(select(SensitiveReport.report_id).where(SensitiveReport.report_id == report_id)) is not None
+
+
 def available_ids(db, report_ids):
     if not report_ids:
         return set()

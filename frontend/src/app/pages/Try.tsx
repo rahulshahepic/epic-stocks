@@ -543,7 +543,9 @@ export default function Try() {
 
           <div className="mt-6">
             <UploadStage
-              csv={csv} pdf={pdf} setCsv={setCsv} setPdf={setPdf}
+              csv={csv} pdf={pdf}
+              setCsv={file => { setCsv(file); setError('') }}
+              setPdf={file => { setPdf(file); setError('') }}
               allowAssistant={!!config?.ai_connections && !config?.epic_mode}
               busy={stage === 'analyzing'} error={error} onRun={run}
             />

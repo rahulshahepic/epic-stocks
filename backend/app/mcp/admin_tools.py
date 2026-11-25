@@ -296,9 +296,8 @@ def _reports(ctx: ToolContext, args: dict) -> dict:
             "id": r.id, "timestamp_utc": r.timestamp, "status": r.status, "source": r.source,
             "path": _plain(r.path, 200), "error_ref": r.error_ref,
             "message": _plain(r.message, 2000), "error_message": _plain(r.error_message, 500),
-            # Typed by the reporter, or their account email when they ticked
-            # "include details"; otherwise empty.
-            "reply_email": r.email,
+            # Historical reports could attach the account's email implicitly.
+            "reply_email": r.email if not r.include_details else None,
             "app_version": _plain(r.app_version, 100),
             "has_sensitive_material": r.has_sensitive_material,
         } for r in rows],
@@ -640,7 +639,8 @@ def _send_code(ctx: ToolContext, request_id: int) -> dict:
     try:
         sent = admin_requests.send_code(ctx.db, request_id, ctx.user,
                                         grant_id=ctx.connector.grant.id,
-                                        client_name=ctx.connector.grant.client_name)
+                                        client_name=ctx.connector.grant.client_name,
+                                        scopes=tuple(ctx.connector.scopes))
     except admin_requests.ApprovalError as exc:
         return {"sent_to": [], "problem": str(exc)}
     if not sent["sent_to"]:
@@ -683,7 +683,8 @@ register(Tool(
 def _send_approval_code(ctx: ToolContext, args: dict) -> dict:
     request_id = _id(args, "request_id")
     sent = admin_requests.send_code(ctx.db, request_id, ctx.user, grant_id=ctx.connector.grant.id,
-                                    client_name=ctx.connector.grant.client_name)
+                                    client_name=ctx.connector.grant.client_name,
+                                    scopes=tuple(ctx.connector.scopes))
     if not sent["sent_to"]:
         sent["problem"] = ("No code was sent: approval codes go only to push devices, never by "
                            "email, and no push device accepted it. Approve it in the browser, or "
@@ -695,7 +696,8 @@ def _send_approval_code(ctx: ToolContext, args: dict) -> dict:
 def _approve_request(ctx: ToolContext, args: dict) -> dict:
     row = admin_requests.approve_with_code(
         ctx.db, _id(args, "request_id"), args.get("code"), admin_email=ctx.user.email,
-        grant_id=ctx.connector.grant.id, client_name=ctx.connector.grant.client_name)
+        grant_id=ctx.connector.grant.id, client_name=ctx.connector.grant.client_name,
+        scopes=tuple(ctx.connector.scopes))
     return {**_identity(), "request": _request_view(row)}
 
 

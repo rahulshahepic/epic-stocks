@@ -278,6 +278,39 @@ test.describe('Screenshots', () => {
     }
   }
 
+  for (const [device, viewport, navigationLabel] of [
+    ['mobile', MOBILE, 'Mobile navigation'],
+    ['desktop', DESKTOP, 'Main navigation'],
+  ] as const) {
+    test(`more navigation - light - ${device}`, async ({ page }) => {
+      await authedPage(page, viewport, 'light')
+      const navigation = page.getByRole('navigation', { name: navigationLabel })
+      const more = navigation.getByRole('button', { name: 'More', exact: true })
+      await more.click()
+      await expect(more).toHaveAttribute('aria-expanded', 'true')
+      const admin = navigation.getByRole('link', { name: 'Admin', exact: true })
+      await expect(admin).toBeVisible()
+      await expect(navigation.getByRole('heading', { name: 'Stock records' })).toBeVisible()
+      await expect(navigation.getByRole('link', { name: 'Loans', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).include(`[aria-label="${navigationLabel}"]`).analyze()).violations).toEqual([])
+      await shoot(page, `navigation-more-light-${device}`)
+      await admin.focus()
+      await page.keyboard.press('Tab')
+      await expect(more).toHaveAttribute('aria-expanded', 'false')
+      await more.click()
+      await page.keyboard.press('Escape')
+      await expect(more).toBeFocused()
+      await expect(admin).toBeHidden()
+      await more.click()
+      await page.getByRole('main').click({ position: { x: 2, y: 2 } })
+      await expect(admin).toBeHidden()
+      await more.click()
+      await admin.click()
+      await expect(page).toHaveURL(/\/admin$/)
+      await expect(more).toHaveAttribute('aria-expanded', 'false')
+    })
+  }
+
   test('dashboard - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await shoot(page, 'dashboard-light-mobile')

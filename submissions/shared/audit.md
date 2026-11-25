@@ -1,22 +1,21 @@
 # Submission readiness audit
 
 Audit date: 2026-11-25. Local implementation is distinct from deployed behavior.
-See [requirements](requirements.md), [public request evidence](evidence/public-probes.json),
+See [requirements](requirements.md), [public request evidence](evidence/production-public-probes.json),
 [testing/deployment status](evidence/README.md) and platform checklists.
 
 ## P0 publication blockers
 
-- **Production reviewer login not deployed/validated.** New restricted reviewer
-  identity provider and management are implemented. No production credentials
-  have been provisioned. Complete independent review, CI, staging test, promotion
-  and owner deployment approval before provisioning production reviewers.
-- **Public privacy accessibility.** Audit client received 403 on `/privacy` on
-  production initially, and staging before the edge fix. Discovery/setup worked.
-  Independently reviewed staging-only exact-path/BIC changes are now applied at
-  ruleset12; production remains unchanged. Server-readable `/privacy-policy` and
-  `/privacy.md` are implemented but not yet deployed. A200 SPA shell is not proof
-  of policy or reviewer availability. The separate production recipe remains in
-  `ops/cloudflare_directory_review.json` for approved release.
+- **Production reviewer provisioning and host validation.** Reviewer sign-in
+  is deployed. Provision separate fictional identities through approval-gated
+  controls and test each actual host. The staging acceptance and production
+  public checks are distinct from production authenticated/visual tests.
+- **Public accessibility verified.** The exact-path Cloudflare changes are
+  already live; the historical recipe is not an apply instruction.
+  Reviewer sign-in, support, discovery and scriptless privacy
+  (`/privacy-policy`, `/privacy.md`) are accessible. A 200 SPA shell is not
+  evidence of a published terms page. See the
+  [current production probes](evidence/production-public-probes.json).
 - **OpenAI terms, identity and video.** No verified operator identity/contact or
   adopted public terms can be invented. Draft terms supplied for owner review.
   Record actual-host walkthrough and publish reviewer-accessible video URL.

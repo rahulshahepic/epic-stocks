@@ -368,3 +368,48 @@ def test_excluded_year_interest_is_forfeited(client):
     # so the deduction can't be the same as the all-years case
     assert total_excl <= 4000.0, \
         f"Only $4000 of interest should remain after forfeiting 2022: excl={total_excl}"
+
+
+def test_dated_deduction_preview_matches_exit_without_recorded_sales(client):
+    from datetime import date
+
+    register_user(client)
+    for endpoint, body in (
+        ("/api/grants", GRANT),
+        ("/api/prices", PRICE_INITIAL),
+        ("/api/prices", PRICE_RISE),
+        ("/api/loans?generate_payoff_sale=false", INTEREST_LOAN_2021),
+    ):
+        result = client.post(endpoint, json=body)
+        assert result.status_code in (200, 201), result.text
+
+    today = date.today().isoformat()
+    snapshot = client.get("/api/dashboard", params={"as_of": today}).json()
+    assert snapshot["cards"]["tax_savings_from_deduction"] == 0
+    assert snapshot["breakdowns"]["interest"]["booked"] == INTEREST_LOAN_2021["amount"]
+
+    preview = client.get("/api/preview-deduction", params={"as_of": today, "enabled": True}).json()
+    assert preview["tax_savings_from_deduction"] > 0
+    assert client.get("/api/tax-settings").json()["deduct_investment_interest"] is False
+
+    client.put("/api/tax-settings", json={"deduct_investment_interest": True})
+    exit_summary = client.get("/api/preview-exit", params={"date": today}).json()
+    assert preview == {
+        "interest_deduction_total": exit_summary["interest_deducted"],
+        "tax_savings_from_deduction": exit_summary["deduction_savings"],
+    }
+    assert client.get("/api/preview-deduction", params={"as_of": today, "enabled": False}).json() == {
+        "interest_deduction_total": 0,
+        "tax_savings_from_deduction": 0,
+    }
+
+
+def test_historical_deduction_preview_matches_dated_snapshot(client):
+    _setup_basic(client)
+    as_of = "2022-12-31"
+    preview = client.get("/api/preview-deduction", params={"as_of": as_of, "enabled": True}).json()
+    assert preview["interest_deduction_total"] == 2000
+
+    client.put("/api/tax-settings", json={"deduct_investment_interest": True})
+    cards = client.get("/api/dashboard", params={"as_of": as_of}).json()["cards"]
+    assert preview["tax_savings_from_deduction"] == cards["tax_savings_from_deduction"]

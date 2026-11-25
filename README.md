@@ -2137,3 +2137,55 @@ Release walkthroughs: [position](screenshots/magic-position-light-mobile.png),
 [retirement results](screenshots/magic-retirement-dark-mobile.png),
 [announced price](screenshots/magic-price-light-mobile.png), and
 [focused signup](screenshots/magic-signup-light-mobile.png).
+
+## Directory publication and fictional reviewers
+
+Epic Stocks tracks records and models scenarios; it never executes a stock sale,
+pays a loan or moves money.
+
+Admins can provision independent fictional OpenAI and Anthropic review accounts
+in **Admin → Directory reviewer accounts**, with established, early-career,
+exit-planning or empty datasets. Generated passwords are shown once; save them
+privately. Rotation/extension invalidates sessions and AI connections. Resets,
+revocation and deletion require confirmation. The admin MCP exposes the same
+management; widening access follows the existing human approval queue.
+[Architecture and secure operating instructions](docs/DIRECTORY_REVIEWERS.md).
+No reviewer identities or credentials are created automatically on deployment.
+Sign-in audits use separate bounded daily counters (90-day retention), so
+anonymous attempts cannot evict administrator management history.
+
+New implementation locations: `scaffold/reviewers.py` (restricted identities),
+`scaffold/routers/reviewers.py` (separate login/admin API),
+`services/reviewer_fixtures.py` (application-supplied existing fixture seeder),
+`ReviewerAccount` model and Alembic migration. No new production environment
+variables. For local screenshot/E2E runs, optional `SCREENSHOT_BACKEND_PORT`
+(default 8000) selects the temporary backend and `VITE_BACKEND_ORIGIN` selects
+Vite's proxy target; use port 8100 where port 8000 is reserved. Optional
+`E2E_BACKEND_PORT` changes the Docker E2E host binding (default 8000).
+
+![Fictional reviewer sign-in](screenshots/directory-reviewer-login-light-mobile.png)
+![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
+
+## Publication packages
+
+Open the [submission control center](submissions/README.md) for separate ChatGPT
+and Claude instructions, paste-ready answers, listing assets, official sources,
+reviewer guides and release gates. Generate credential-free ZIPs with
+`python scripts/package_submissions.py`; validate only with `--check`.
+
+`backend/directory_reviewer_smoke.py` is the staging-only deployment acceptance
+runner. The Deploy workflow runs it after staging starts: it provisions temporary
+fictional OpenAI/Anthropic identities, tests public HTTPS login/OAuth, reads and
+confirmed persistent writes, verifies admin refusal/revocation, then removes only
+its own identities and registrations. It refuses production before touching the
+database/network and never prints credentials. No new secrets or environment
+settings are required. Narrow staging edge exemptions must allow the reviewer
+login and consent flow; a failure blocks promotion rather than claiming success.
+
+Directory metadata links the [server-readable privacy policy](https://epic-stocks.com/privacy-policy) · [Support](https://epic-stocks.com/support)
+(with a [plain-text alternative](https://epic-stocks.com/privacy.md)). These public endpoints render the
+same repository `PRIVACY.md` without requiring JavaScript or sign-in;
+`scaffold/routers/public_privacy.py` handles them and the Docker image includes
+the public policy source. The ordinary website privacy screen remains available.
+
+![Public privacy policy on mobile](screenshots/public-privacy-light-mobile.png)

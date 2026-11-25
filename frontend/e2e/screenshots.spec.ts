@@ -1,3 +1,4 @@
+const REVIEW_TEST_BACKEND = process.env.VITE_BACKEND_ORIGIN ?? 'http://localhost:8000'
 /**
  * Capture README screenshots. Run via: ./screenshots/run.sh
  * Skipped unless SCREENSHOT_EMAIL is set (requires backend running with E2E_TEST=1).
@@ -783,7 +784,7 @@ test.describe('Screenshots', () => {
         const redirect = 'https://chatgpt.com/connector_platform_oauth_redirect'
         const verifier = 'a'.repeat(64)
         const challenge = createHash('sha256').update(verifier).digest('base64url')
-        const registration = await page.request.post('http://localhost:8000/oauth/register', {
+        const registration = await page.request.post(`${REVIEW_TEST_BACKEND}/oauth/register`, {
           data: { client_name: 'ChatGPT', redirect_uris: [redirect], token_endpoint_auth_method: 'none' },
         })
         expect(registration.ok()).toBeTruthy()
@@ -792,13 +793,13 @@ test.describe('Screenshots', () => {
           response_type: 'code', client_id, redirect_uri: redirect,
           scope: 'equity:read comp:read', code_challenge: challenge, code_challenge_method: 'S256',
         })
-        await page.route('http://localhost:8000/oauth/authorize?**', async route => {
+        await page.route(`${REVIEW_TEST_BACKEND}/oauth/authorize?**`, async route => {
           const response = await route.fetch()
           await route.fulfill({ response, headers: { ...response.headers(),
             'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
           } })
         })
-        await page.goto(`http://localhost:8000/oauth/authorize?${query}`)
+        await page.goto(`${REVIEW_TEST_BACKEND}/oauth/authorize?${query}`)
         const equity = page.getByRole('group', { name: 'Equity', exact: true })
         const compensation = page.getByRole('group', { name: 'Compensation', exact: true })
         await expect(equity.getByRole('checkbox', { name: /Read your equity/ })).toBeChecked()
@@ -827,13 +828,13 @@ test.describe('Screenshots', () => {
         expect(authorized.status()).toBe(302)
         const code = new URL(authorized.headers().location).searchParams.get('code')
         expect(code).toBeTruthy()
-        const exchange = await page.request.post('http://localhost:8000/oauth/token', { form: {
+        const exchange = await page.request.post(`${REVIEW_TEST_BACKEND}/oauth/token`, { form: {
           grant_type: 'authorization_code', code: code!, redirect_uri: redirect, client_id, code_verifier: verifier,
         } })
         expect(exchange.ok()).toBeTruthy()
         const tokens = await exchange.json()
         expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write'])
-        const tools = await page.request.post('http://localhost:8000/mcp', {
+        const tools = await page.request.post(`${REVIEW_TEST_BACKEND}/mcp`, {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
           data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
         })
@@ -846,7 +847,7 @@ test.describe('Screenshots', () => {
 
   test('admin diagnostics consent - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    const registration = await page.request.post('http://localhost:8000/admin-oauth/register', {
+    const registration = await page.request.post(`${REVIEW_TEST_BACKEND}/admin-oauth/register`, {
       data: {
         client_name: 'ChatGPT staging diagnostics',
         redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
@@ -860,7 +861,7 @@ test.describe('Screenshots', () => {
       redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
       code_challenge: 'x'.repeat(43), code_challenge_method: 'S256',
     })
-    await page.goto(`http://localhost:8000/admin-oauth/authorize?${query}`)
+    await page.goto(`${REVIEW_TEST_BACKEND}/admin-oauth/authorize?${query}`)
     await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible()
     await expect(page.getByText('Read site deployment status')).toBeVisible()
     await shoot(page, 'admin-diagnostics-consent-light-mobile', { fullPage: true })
@@ -904,7 +905,7 @@ test.describe('Screenshots', () => {
   test('admin AI redirect rules - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     // A registration from an assistant the allowlist does not know yet.
-    await page.request.post('http://localhost:8000/oauth/register', {
+    await page.request.post(`${REVIEW_TEST_BACKEND}/oauth/register`, {
       data: { client_name: 'Copilot', redirect_uris: ['https://copilot.microsoft.com/oauth/callback'] },
     })
     await navigateTo(page, 'Admin')
@@ -1208,4 +1209,85 @@ test.describe('Screenshots', () => {
     await shoot(page, 'loans-epic-mode-light-mobile', { fullPage: true })
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
+})
+
+test.describe('Directory reviewer screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+
+  test('directory reviewer login - light - mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/reviewer-login')
+    await expect(page.getByRole('heading', { name: 'Directory reviewer sign-in' })).toBeVisible()
+    await page.screenshot({ path: `${OUT}/directory-reviewer-login-light-mobile.png`, fullPage: true })
+  })
+
+  test('directory reviewer admin - light - mobile', async ({ page }) => {
+    await authedPage(page, { width: 390, height: 844 }, 'light')
+    await page.goto('/admin')
+    const panel = page.getByRole('heading', { name: 'Directory reviewer accounts', exact: true }).locator('..')
+    await expect(panel).toBeVisible()
+    await panel.screenshot({ path: `${OUT}/directory-reviewer-admin-light-mobile.png` })
+  })
+
+  test('directory reviewer fictional portfolio and loans', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    const created = await page.request.post(`${BASE}/api/admin/reviewers/access`, { data: { platform: 'openai', scenario: 'established', days: 30 } })
+    expect(created.ok()).toBeTruthy()
+    const account = await created.json()
+    const loginPage = await page.request.get(`${BASE}/reviewer-login`)
+    const csrf = (await loginPage.text()).split('name="csrf" value="')[1].split('"')[0]
+    const signed = await page.request.post(`${BASE}/reviewer-login`, { form: { login: account.login, password: account.password, csrf } })
+    expect(signed.ok()).toBeTruthy()
+    await page.goto(BASE)
+    await expect(page.getByText(/FICTIONAL REVIEW DATA/)).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Calculating exit…')).toHaveCount(0)
+    await page.screenshot({ path: `${OUT}/directory-equity-light-desktop.png` })
+    await page.goto(`${BASE}/loans`)
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: `${OUT}/directory-loans-light-desktop.png` })
+    await page.setViewportSize(MOBILE)
+    await page.goto(BASE)
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Calculating exit…')).toHaveCount(0)
+    await page.screenshot({ path: `${OUT}/directory-equity-light-mobile.png`, fullPage: true })
+  })
+
+})
+
+test.describe('Public privacy screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`public privacy policy - ${theme} - ${size}`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(viewport)
+      await page.goto(`${BASE}/privacy-policy`)
+      await expect(page.getByRole('heading', { name: 'Privacy Policy', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-privacy-${theme}-${size}.png` })
+      await expect(page.locator('ol')).toHaveCount(3)
+      await page.locator('ol').nth(1).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${OUT}/public-privacy-lists-${theme}-${size}.png` })
+    })
+  }
+})
+
+
+test.describe('Public support screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) {
+    test(`public support - ${theme} - mobile`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(MOBILE)
+      await page.goto(`${BASE}/support`)
+      await expect(page.getByRole('heading', { name: 'Epic Stocks support', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-support-${theme}-mobile.png`, fullPage: true })
+      await page.goto(`${BASE}/mcp-setup`)
+      await expect(page.getByRole('link', { name: 'Support', exact: true })).toBeVisible()
+      await page.screenshot({ path: `${OUT}/public-setup-${theme}-mobile.png`, fullPage: true })
+    })
+  }
 })

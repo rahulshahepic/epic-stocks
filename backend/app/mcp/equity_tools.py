@@ -32,7 +32,7 @@ def _apply(ctx: ToolContext, args: dict):
 register(Tool(
     name="apply_changes", title="Add, correct or remove equity records", scope=EQUITY_WRITE,
     description=(
-        "Change the person's grants, loans, share prices, sales, loan payments and statement interest checkpoints in one "
+        "Record or correct the person's grants, loans, share prices, sales, loan payments and statement interest checkpoints. This only edits tracking records: it never executes a securities sale, pays a loan or moves money. Hypothetical events remain planning assumptions. Changes run in one "
         "all-or-nothing step. Call it first WITHOUT confirm: that previews — every change is "
         "checked exactly as the app would store it, nothing is saved — and returns each "
         "change, the position before and after, and a confirm token. Show the person what "
@@ -93,7 +93,7 @@ register(Tool(
 
 register(Tool(
     name="set_investment_interest_method", title="Set investment interest projection method",
-    scope=EQUITY_WRITE, handler=_set_investment_interest_method, read_only=False,
+    scope=EQUITY_WRITE, handler=_set_investment_interest_method, read_only=False, destructive=True,
     description=("With the person's permission, set only the investment interest projection method. "
                  "Accrual counts interest in the year it accrues. Cash counts it in the year it is paid. "
                  "This changes app estimates, not the person's tax return or whether the deduction is enabled."),

@@ -1,16 +1,17 @@
 """Revoking one connection — shared by Settings, RFC 7009 revoke and the admin MCP."""
+from contextlib import nullcontext
 from sqlalchemy.orm import Session
 
 from . import audit
 from .models import OAuthGrant
 
 
-def revoke_grant(db: Session, grant: OAuthGrant) -> None:
+def revoke_grant(db: Session, grant: OAuthGrant, *, lock_held: bool = False) -> None:
     """Delete the grant (every MCP request and refresh loads it, so this is
     immediate) and record the disconnect in the user's activity."""
     user_id, grant_id, name = grant.user_id, grant.id, grant.client_name
     from scaffold.synthetic_accounts import lifecycle_lock, delete_test_accounts
-    with lifecycle_lock(db, user_id):
+    with nullcontext() if lock_held else lifecycle_lock(db, user_id):
         delete_test_accounts(db, grant_id=grant_id)
         db.delete(grant)
         db.commit()

@@ -10,6 +10,7 @@ interface MeData {
   is_content_admin: boolean
   shared_accounts?: SharedAccount[]
   date_of_birth?: string | null
+  reviewer_account?: { platform: string; scenario: string; status: string }
   staging_account?: { initialized: boolean; synthetic: boolean; scenario: string | null; generation: string | null }
 }
 

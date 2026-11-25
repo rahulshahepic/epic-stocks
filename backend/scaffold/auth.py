@@ -208,7 +208,8 @@ def get_session_user(request: Request, db: Session) -> User:
     if siat and time.time() - siat > ABSOLUTE_SESSION_HOURS * 3600:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired — please log in again")
     user = db.get(User, user_id)
-    if not user or user.is_synthetic:
+    from scaffold.reviewers import allowed_identity
+    if not allowed_identity(db, user):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     # "Sign out everywhere" bumps session_version, invalidating older tokens.
     if token_sv != int(user.session_version):
@@ -218,6 +219,10 @@ def get_session_user(request: Request, db: Session) -> User:
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = get_session_user(request, db)
+    from scaffold.reviewers import identity, restrict_request
+    if identity(user):
+        restrict_request(db, user, request.url.path, request.method)
+        return user
     # Refresh admin flag on every request so env changes take effect immediately
     is_admin = user.email.lower() in get_admin_emails()
     if bool(user.is_admin) != is_admin:

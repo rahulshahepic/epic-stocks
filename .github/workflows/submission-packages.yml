@@ -1,0 +1,33 @@
+name: Submission packages
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'submissions/**'
+      - 'scripts/package_submissions.py'
+      - 'screenshots/directory-*.png'
+      - '.github/workflows/submission-packages.yml'
+  push:
+    branches: [staging, main]
+    paths:
+      - 'submissions/**'
+      - 'scripts/package_submissions.py'
+      - 'screenshots/directory-*.png'
+      - '.github/workflows/submission-packages.yml'
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate and package public submission materials
+        run: python scripts/package_submissions.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: epic-stocks-submission-packages-${{ github.sha }}
+          path: |
+            submissions/dist/*.zip
+            submissions/dist/asset-manifest.json
+          retention-days: 30
+          if-no-files-found: error

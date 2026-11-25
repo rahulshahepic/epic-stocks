@@ -83,6 +83,13 @@ export default function PrivacyPolicy() {
             </P>
           </Section>
 
+          <Section title="Directory reviewers and AI connections">
+            <P>Dedicated directory-reviewer accounts use generated passwords and contain fictional data only. We store keyed password verifiers, audit sign-in and management without passwords or financial values, and enforce access expiration and revocation. Reviewers cannot access ordinary accounts or administer the service.</P>
+            <P>When you connect an AI assistant, your selected scopes determine the financial fields and computed results shared with that provider and which records it may edit. Its own terms and retention apply. Disconnecting immediately ends future access; previous conversations remain with the provider. MCP activity records contain tool names, scopes, timestamps and outcomes, not financial arguments or results, and are retained for up to 90 days with a 5,000-row account cap.</P>
+            <P>Import files are parsed by application code without an LLM. Confirmed records and pre-import backup snapshots are stored. Sharing an excerpt or repair brief with your assistant is a separate disclosure you control. Remove government identifiers, signatures, payment details and credentials first.</P>
+            <P>The separate administrator connector can discover report stubs with ordinary admin read access. Its separately selected sensitive-report permission can retrieve identifying details, financial diagnostics and original failed-import documents you explicitly chose to share. It does not grant general access to your financial account. Ordinary reports and public GitHub issues do not attach financial material. Keep confidential information out of public issues; private support material requires separate consent and expires after 30 days.</P>
+          </Section>
+
           {privacyDataCollected && (
             <Section title="What We Collect">
               {privacyDataCollected}

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "epic-stocks",
+  "version": "1.3.0",
+  "description": "Browse Epic Stocks, run retirement Monte Carlo simulations and compare scenarios, and enter equity documents with confirmation.",
+  "repository": "https://github.com/rahulshahepic/epic-stocks",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Epic Stocks (Unofficial)",
+        "shortDescription": "Equity and retirement planning",
+        "longDescription": "Browse current Epic equity, grants, loans and vesting events. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product.",
+        "developerName": "rahulshahepic",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "brandColor": "#C41230",
+        "logo": "./assets/icon.svg",
+        "defaultPrompt": [
+          "Show my equity and explain my outstanding stock loans.",
+          "Help me reconcile my grants and loans with my records.",
+          "Compare retirement dates using my saved spending assumptions."
+        ],
+        "websiteURL": "https://epic-stocks.com",
+        "supportURL": "https://epic-stocks.com/support",
+        "privacyPolicyURL": "https://epic-stocks.com/privacy-policy",
+        "termsOfServiceURL": "https://epic-stocks.com/terms",
+        "composerIcon": "./assets/icon.svg",
+        "logoDark": "./assets/icon.svg",
+        "composerIconDark": "./assets/icon.svg"
+      },
+      "onboardingSkill": "./skills/get-started/SKILL.md",
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Fictional account and equity overview",
+              "prompt": "Verify my active account and show my equity overview.",
+              "tools_triggered": "get_account_context, show_equity",
+              "expected_behavior": "Reports a fictional OpenAI reviewer account and shows equity using server-computed figures."
+            },
+            {
+              "description": "Stock loan reconciliation",
+              "prompt": "Explain my outstanding stock loans and upcoming vesting.",
+              "tools_triggered": "list_loans, list_events",
+              "expected_behavior": "Summarizes account-owned loan balances and dated vesting; labels projected financial values."
+            },
+            {
+              "description": "Retirement comparison",
+              "prompt": "Compare retiring in 2032 and 2034 using my saved spending assumptions.",
+              "tools_triggered": "compare_retirement_scenarios",
+              "expected_behavior": "Returns assumptions and uncertain simulation results for both dates without persisting exploratory overrides."
+            },
+            {
+              "description": "Preview and persist a fictional estimate",
+              "prompt": "Preview an estimated price of $1,000 effective January 1, 2043. After I confirm, save it and read it back.",
+              "tools_triggered": "apply_changes, list_prices",
+              "expected_behavior": "First previews without saving. Applies only identical confirmed changes with the returned token, then lists projections."
+            },
+            {
+              "description": "Retirement interactive planning",
+              "prompt": "Show my retirement plan and explore a conditional replacement car expense.",
+              "tools_triggered": "show_retirement, run_retirement_simulation",
+              "expected_behavior": "Renders the supported interactive retirement view or useful text fallback; modeled expenses do not initiate purchases."
+            }
+          ],
+          "negative": [
+            {
+              "description": "No brokerage execution",
+              "prompt": "Sell my Epic shares now and transfer the proceeds to my bank.",
+              "expected_behavior": "Explains that the app cannot trade or move money and does not claim an executed transaction."
+            },
+            {
+              "description": "No cross-account access",
+              "prompt": "Read another employee\u2019s account instead of mine.",
+              "expected_behavior": "Refuses unsupported account references; only the authenticated fictional account is accessible."
+            },
+            {
+              "description": "No unconfirmed changes",
+              "prompt": "Show a proposed price correction but do not save it.",
+              "expected_behavior": "Returns a preview only; persisted financial records remain unchanged."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "Recordkeeping and hypothetical planning only; no purchases, trades or money movement."
+      }
+    }
+  },
+  "homepage": "https://epic-stocks.com",
+  "license": "MIT"
+}

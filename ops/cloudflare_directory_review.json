@@ -1,0 +1,80 @@
+{
+  "description": "Proposed exact-path directory reviewer/documentation exclusions. Do not apply until reviewed; preserve unrelated WAF protections.",
+  "verified_at": "2026-11-25",
+  "zone_id": "309000937a50ad3b8500dbcc931739d5",
+  "ruleset_id": "5674486203694b9689992cad67dfd752",
+  "observed_ruleset_version": "12",
+  "changes": [
+    {
+      "rule_id": "237a4ec36df446b3aec8f1f8e4b1b011",
+      "expected_version": "5",
+      "body": {
+        "action": "managed_challenge",
+        "enabled": true,
+        "description": "No bots on non mcp",
+        "expression": "(((not ((http.request.uri.path in {\"/mcp\" \"/admin-mcp\" \"/.well-known/oauth-protected-resource\" \"/.well-known/oauth-protected-resource/mcp\" \"/.well-known/oauth-protected-resource/admin-mcp\" \"/.well-known/oauth-authorization-server\" \"/.well-known/oauth-authorization-server/mcp\" \"/.well-known/oauth-authorization-server/admin-mcp\" \"/.well-known/oauth-authorization-server/admin-oauth\"}) or starts_with(http.request.uri.path, \"/oauth/\") or starts_with(http.request.uri.path, \"/admin-oauth/\")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers[\"accept\"][0] contains \"text/html\" and http.request.uri.path eq \"/\"))) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\"} and http.request.uri.path eq \"/api/health\" and http.request.method in {\"GET\" \"HEAD\"})) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and ((http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/\" \"/login\" \"/privacy\" \"/privacy-policy\" \"/privacy.md\" \"/terms\" \"/support\" \"/demo\" \"/api/health\" \"/reviewer-login\" \"/reviewer-login.css\"}) or (http.request.method eq \"POST\" and http.request.uri.path eq \"/reviewer-login\")))"
+      }
+    },
+    {
+      "rule_id": "edfc4c22af8843d3a90a74f8cbdf8c28",
+      "expected_version": "2",
+      "body": {
+        "action": "skip",
+        "action_parameters": {
+          "products": [
+            "bic"
+          ]
+        },
+        "description": "Browser Integrity Check exception for public MCP discovery",
+        "enabled": true,
+        "expression": "((http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})) or (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and ((http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/\" \"/login\" \"/privacy\" \"/privacy-policy\" \"/privacy.md\" \"/terms\" \"/support\" \"/demo\" \"/api/health\" \"/reviewer-login\" \"/reviewer-login.css\"}) or (http.request.method eq \"POST\" and http.request.uri.path eq \"/reviewer-login\")))",
+        "logging": {
+          "enabled": true
+        },
+        "ref": "public_mcp_discovery_bic"
+      }
+    }
+  ],
+  "verification": "Re-fetch exact versions before applying; test public endpoints and valid/invalid reviewer login. Server authentication, CSRF, account permissions and rate limits remain enforced. Do not broadly skip managed WAF, rate limiting or all /api routes.",
+  "staging_changes": [
+    {
+      "rule_id": "237a4ec36df446b3aec8f1f8e4b1b011",
+      "expected_version": "4",
+      "body": {
+        "action": "managed_challenge",
+        "enabled": true,
+        "description": "No bots on non mcp",
+        "expression": "(((not ((http.request.uri.path in {\"/mcp\" \"/admin-mcp\" \"/.well-known/oauth-protected-resource\" \"/.well-known/oauth-protected-resource/mcp\" \"/.well-known/oauth-protected-resource/admin-mcp\" \"/.well-known/oauth-authorization-server\" \"/.well-known/oauth-authorization-server/mcp\" \"/.well-known/oauth-authorization-server/admin-mcp\" \"/.well-known/oauth-authorization-server/admin-oauth\"}) or starts_with(http.request.uri.path, \"/oauth/\") or starts_with(http.request.uri.path, \"/admin-oauth/\")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers[\"accept\"][0] contains \"text/html\" and http.request.uri.path eq \"/\"))) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\"} and http.request.uri.path eq \"/api/health\" and http.request.method in {\"GET\" \"HEAD\"})) and not (http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})) and not (http.host eq \"staging.epic-stocks.com\" and ((http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/\" \"/login\" \"/privacy\" \"/privacy-policy\" \"/privacy.md\" \"/terms\" \"/support\" \"/demo\" \"/api/health\" \"/reviewer-login\" \"/reviewer-login.css\"}) or (http.request.method eq \"POST\" and http.request.uri.path eq \"/reviewer-login\")))"
+      }
+    },
+    {
+      "rule_id": "edfc4c22af8843d3a90a74f8cbdf8c28",
+      "expected_version": "1",
+      "body": {
+        "action": "skip",
+        "action_parameters": {
+          "products": [
+            "bic"
+          ]
+        },
+        "description": "Browser Integrity Check exception for public MCP discovery",
+        "enabled": true,
+        "expression": "((http.host in {\"epic-stocks.com\" \"www.epic-stocks.com\" \"staging.epic-stocks.com\"} and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/mcp-setup\" \"/mcp-setup.css\" \"/mcp/setup.json\" \"/robots.txt\" \"/llms.txt\" \"/mcp-sitemap.xml\" \"/mcp-setup/plugin/chatgpt\" \"/mcp-setup/plugin/claude\"})) or (http.host eq \"staging.epic-stocks.com\" and ((http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/\" \"/login\" \"/privacy\" \"/privacy-policy\" \"/privacy.md\" \"/terms\" \"/support\" \"/demo\" \"/api/health\" \"/reviewer-login\" \"/reviewer-login.css\"}) or (http.request.method eq \"POST\" and http.request.uri.path eq \"/reviewer-login\")))",
+        "logging": {
+          "enabled": true
+        },
+        "ref": "public_mcp_discovery_bic"
+      }
+    }
+  ],
+  "staging_note": "staging_changes was applied after independent review at original versions4/1. It is historical evidence, not an executable current plan. Production/all-host changes remain unapplied; re-fetch versions and review before release.",
+  "staging_applied": {
+    "date": "2026-11-25",
+    "ruleset_version": "12",
+    "review": "Independent assistant; 6,624 request combinations; non-staging unchanged",
+    "rule_versions": {
+      "237a4ec36df446b3aec8f1f8e4b1b011": "5",
+      "edfc4c22af8843d3a90a74f8cbdf8c28": "2"
+    }
+  }
+}

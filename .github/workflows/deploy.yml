@@ -270,3 +270,9 @@ jobs:
             # Restore full site
             docker run --rm -v caddy_appdata:/appdata alpine \
               rm -f /appdata/epic-stocks/full_maintenance
+
+            # Exercise the actual public staging OAuth and financial services with
+            # temporary fictional identities. Never creates production reviewers.
+            if [ "${{ github.ref_name }}" = "staging" ]; then
+              docker compose exec -T app python -m directory_reviewer_smoke
+            fi

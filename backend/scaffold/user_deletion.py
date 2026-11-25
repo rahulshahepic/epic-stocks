@@ -20,6 +20,8 @@ from sqlalchemy import text
 
 # (table, user_id column) in FK-safe order: children before parents.
 USER_OWNED_TABLES: list[tuple[str, str]] = [
+    ("reviewer_login_audit", "user_id"),
+    ("reviewer_accounts", "user_id"),
     ("mcp_test_accounts", "user_id"),
     ("sensitive_reports", "user_id"),
     ("sales", "user_id"),

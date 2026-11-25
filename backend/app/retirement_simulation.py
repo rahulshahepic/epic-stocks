@@ -218,8 +218,9 @@ def validate_changes(changes):
                                     "claimAge", "spouseClaimAge", "spouseStopWorkAge", "fra", "spouseFra"} else
                      MAX_PATHS if key == "paths" else
                      4_294_967_295 if key == "seed" else 2)
-            if value < (100 if key == "paths" else -2 if key.startswith("custom") else 0) or value > limit:
-                raise ValueError(f"{key} is outside the supported range")
+            minimum = 100 if key == "paths" else -2 if key.startswith("custom") else 0
+            if value < minimum or value > limit:
+                raise ValueError(f"{key} is outside the supported range ({minimum} to {limit})")
             if key in INTEGERS and not isinstance(value, int):
                 raise ValueError(f"{key} must be an integer")
         elif key == "plannedEvents":

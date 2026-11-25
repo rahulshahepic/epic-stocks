@@ -56,13 +56,13 @@ Use public GitHub issues for general feedback and bugs you can describe with inv
 
 Reports are readable by the site operator, who is emailed when one arrives, and can be deleted by them once handled.
 
-### Computed Data (never stored)
+### Computed Data and Caches
 
-The application computes an event timeline (vesting events, income, capital gains) from your grants, loans, and prices on every request. **Computed events are never written to the database.** They exist only in memory during your request.
+The application computes an event timeline (vesting events, income, capital gains) from your grants, loans and prices. Events are not database records. Computed timelines are cached per account in server memory and, when configured, in password-protected Redis for up to 24 hours. The Redis cache contains financial results and does not use the database column-encryption layer. In-process entries can remain until replaced or the process restarts; Redis entries can remain until their expiry after a reset or deletion. Account authentication and data-hash checks prevent these cached results from serving as access to a deleted account. Operators must secure both database and cache infrastructure.
 
 ### What We Don't Collect
 
-- Passwords (authentication is handled entirely by your identity provider via OIDC)
+- Ordinary-user passwords (authentication is handled by your identity provider via OIDC). Dedicated fictional directory-reviewer accounts instead use randomly generated passwords. Only keyed verifiers are stored; administrators can rotate, expire or revoke them. Reviewer login attempts and account management are audited without passwords or financial values.
 - Per-person or cross-visit analytics profiles, cross-site tracking, or third-party analytics services. Import measurement is **off until explicitly opted in** on the upload form. A random tab-local attempt key links parse, preview, sign-in, confirmed-save and reminder stages for up to 24 hours. The server keeps only the key hash, timestamps, flags and fixed error categories. At sign-in, a keyed digest unique to that attempt binds later events to the same account without storing an account ID/email or a reusable account identifier. No IP, device data, financial value, filename, document text or document fingerprint is stored in these measurement tables. Admins and admin-scoped AI tools see aggregate reports and collection health only.
 - Opt-out or Do Not Track stops measurement and removes the temporary attempt linkage; no attempt key is used for another visit/person profile. The key is kept in this tab's session storage (native storage adapters apply the same 24-hour limit). Keys become unusable after 24 hours and expired rows are removed by the next scheduled cleanup, normally within 15 minutes. Anonymous start-day cohort counts are retained for 180 days. Already aggregated counts are not subtracted on opt-out. Account deletion removes any remaining bound attempt linkage. Legacy unlinked request totals are kept separately with the same aggregate retention limit. Counts represent opted-in attempts, not unique employees, and source-matched evidence is distinguished from independently verified accuracy.
 - Cookies beyond the authentication session token
@@ -230,3 +230,14 @@ This policy may be updated as the application evolves. Changes will be reflected
 ## Contact
 
 For confidential concerns, use the private Report a problem option in the app. For general questions, use the public GitHub repository: [github.com/rahulshahepic/epic-stocks/issues](https://github.com/rahulshahepic/epic-stocks/issues).
+
+
+## Connected AI assistants and directory reviewers
+
+Connecting an assistant explicitly authorizes the selected account scopes. Read scopes disclose the requested financial fields and computed results to that assistant provider; editing scopes permit the changes named on the consent screen. The provider processes those results under its own terms and retention policy. Disconnecting invalidates connector access immediately but does not erase prior assistant conversations. MCP audit records contain tool names, scopes, times and outcomes, not arguments, documents or financial results; they are retained for up to 90 days, bounded to 5,000 records per account by scheduled cleanup.
+
+The separate administrator connector can read ordinary report stubs with admin read access. Only an administrator connection with the separately selected `admin:reports:sensitive` permission can read financial diagnostics, identifying details and original failed-import documents that a reporter explicitly opted to share. This does not grant general access to the reporter's financial account. A free-text report can contain whatever its author types; do not put confidential figures, documents, credentials or government identifiers in it. Financial diagnostics and original files are attached only through their separate explicit consent choices; ordinary reports and public issues do not attach them. Public GitHub issues are public; private in-app reports are not published there.
+
+Uploads for share-summary, loan-statement and workbook imports are parsed by application code, not sent to an LLM. Confirmed records and pre-import backup snapshots are stored; raw upload content is handled during parsing. Browser trial previews remain on the device temporarily. If you copy an excerpt or repair brief to your own assistant, that is a separate disclosure you control. Redact government identifiers, signatures, payment account details and credentials first. Import only documents you are authorized to process.
+
+Directory-reviewer identities contain fictional data exclusively, use independent encryption keys and cannot share accounts, send invitations, administer the service or access real users' records. Access expires after the administrator-selected period (1–90 days). Expiration does not erase testing changes: resets and deletion are deliberate administrator actions. Reviewer sign-in counts are separate daily buckets with 90-day retention; other activity follows the MCP audit and administrator-journal controls; fictional datasets remain until an administrator deletes them.

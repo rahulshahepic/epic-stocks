@@ -3,7 +3,7 @@ from datetime import date
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
-from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS
+from app.retirement_simulation import run, validate_changes, validate_combined, MAX_SCENARIOS, MAX_PATHS
 
 RETIREMENT_RESOURCE_VERSION = 7
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
@@ -72,6 +72,9 @@ _PATCH = {
         **{k: {"type": "boolean"} for k in (
             "zeroHIPost65", "includeSpouse", "spouseHasEmployerHI", "advanced",
         )},
+        "paths": {"type": "integer", "minimum": 100, "maximum": MAX_PATHS,
+                  "description": "Simulation paths: 100–100000; lower counts are faster but less stable."},
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4_294_967_295},
         "scenario": {"type": "string", "enum": ["historical", "moderate", "cautious", "custom"]},
         "rebalance": {"type": "string", "enum": ["none", "tax-advantaged", "all"]},
         "retirementDate": {"type": "string", "description": "YYYY-MM-DD"},
@@ -206,7 +209,7 @@ register(Tool(
     name="update_retirement_params", title="Update saved retirement assumptions",
     description="Save only named fields in the user's retirement calculator. Preserve all other saved settings. Use only when the user explicitly wants to save changes. Assets are $M, spending and insurance are $K/year. This writes immediately; do not use for exploratory what-if runs.",
     input_schema=object_schema({"account": ACCOUNT_PROPERTY, "changes": _PATCH}, ["changes"]),
-    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=True,
+    scope=COMP_WRITE, handler=_update, read_only=False, idempotent=True, destructive=True,
 ))
 register(Tool(
     name="show_retirement", title="Open retirement planner",

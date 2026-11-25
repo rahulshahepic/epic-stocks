@@ -90,6 +90,7 @@ def _protected_resource_doc(request: Request, *, admin: bool = False) -> dict:
         "scopes_supported": list(scope_defs.ADMIN_SCOPES if admin else scope_defs.SUPPORTED_SCOPES),
         "bearer_methods_supported": ["header"],
         "resource_documentation": f"{issuer(request)}/mcp-setup",
+        "resource_policy_uri": f"{issuer(request)}/privacy-policy",
     }
 
 
@@ -211,14 +212,15 @@ def _optional_user(request: Request, db: Session) -> User | None:
         user = db.get(User, int(payload["sub"]))
     except (ValueError, KeyError):
         return None
-    if not user or int(payload.get("sv", 0)) != int(user.session_version):
+    from scaffold.reviewers import allowed_identity
+    if not allowed_identity(db, user) or int(payload.get("sv", 0)) != int(user.session_version):
         return None
     return user
 
 
 def _is_site_admin(user: User) -> bool:
     # Check the live allowlist, not the flag cached at the last login.
-    return user.email.lower() in get_admin_emails()
+    return not user.is_synthetic and user.email.lower() in get_admin_emails()
 
 
 def _redirect_error(redirect_uri: str, state: str | None, error: str, description: str):
@@ -591,11 +593,26 @@ def token(request: Request, grant_type: str = Form(...),
         return _token_error("invalid_target", "The resource parameter does not name this MCP server")
     presented_secret = _client_secret_from(request, client_secret)
 
+    from contextlib import nullcontext
+    from scaffold.reviewers import identity
+    from scaffold.synthetic_accounts import account_lock
+    row = None
+    if grant_type == 'authorization_code' and code:
+        row = db.query(OAuthAuthCode).filter_by(code=code_verifier_of(code)).first()
+    elif grant_type == 'refresh_token' and refresh_token:
+        row = db.query(OAuthGrant).filter_by(refresh_token=refresh_verifier(refresh_token)).first()
+    user = db.get(User, row.user_id) if row else None
+    guard = account_lock(db, user.id) if identity(user) else nullcontext()
+    with guard:
+        return _token_grant(db, request, grant_type, code, redirect_uri, client_id, code_verifier, presented_secret, refresh_token, reviewer_locked=identity(user))
+
+
+def _token_grant(db, request, grant_type, code, redirect_uri, client_id, code_verifier, presented_secret, refresh_token, *, reviewer_locked=False):
     if grant_type == "authorization_code":
         return _exchange_code(db, request, code, redirect_uri, client_id,
                               code_verifier, presented_secret)
     if grant_type == "refresh_token":
-        return _refresh(db, request, refresh_token, client_id, presented_secret)
+        return _refresh(db, request, refresh_token, client_id, presented_secret, reviewer_locked=reviewer_locked)
     return _token_error("unsupported_grant_type", f"Unsupported grant_type '{grant_type}'")
 
 
@@ -644,8 +661,9 @@ def _exchange_code(db: Session, request: Request, raw_code: str | None,
         return _token_error("invalid_client", "Client authentication failed", 401)
 
     user = db.get(User, stored["user_id"])
-    if user is None:
-        return _token_error("invalid_grant", "The account no longer exists")
+    from scaffold.reviewers import allowed_identity
+    if not allowed_identity(db, user):
+        return _token_error("invalid_grant", "The account is unavailable")
 
     grant = db.query(OAuthGrant).filter(
         OAuthGrant.user_id == user.id,
@@ -674,7 +692,7 @@ def _exchange_code(db: Session, request: Request, raw_code: str | None,
 
 
 def _refresh(db: Session, request: Request, raw_refresh: str | None,
-             client_id: str | None, presented_secret: str | None) -> JSONResponse:
+             client_id: str | None, presented_secret: str | None, *, reviewer_locked=False) -> JSONResponse:
     if not raw_refresh:
         return _token_error("invalid_request", "refresh_token is required")
 
@@ -701,16 +719,17 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
         # Switched off since this connection was made. Drop it rather than
         # letting it live out its refresh window.
         from .connections import revoke_grant
-        revoke_grant(db, grant)
+        revoke_grant(db, grant, lock_held=reviewer_locked)
         return _token_error("invalid_grant", "AI connections from this provider are turned off")
 
     user = db.get(User, grant.user_id)
-    if user is None:
-        return _token_error("invalid_grant", "The account no longer exists")
+    from scaffold.reviewers import allowed_identity
+    if not allowed_identity(db, user):
+        return _token_error("invalid_grant", "The account is unavailable")
     if int(grant.session_version) != int(user.session_version):
         # Signed out everywhere since this was authorized.
         from .connections import revoke_grant
-        revoke_grant(db, grant)
+        revoke_grant(db, grant, lock_held=reviewer_locked)
         return _token_error("invalid_grant", "This connection was signed out. Connect again.")
 
     return _issue(db, request, grant, user)

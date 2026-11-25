@@ -223,7 +223,9 @@ export default function Dashboard() {
 
   // When toggling on for the first time (no existing exclusions), tell the
   // preview to auto-exclude past years so the number matches what Apply will do.
-  const shouldExcludePast = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+  const thisYear = Number(today.slice(0, 4))
+  const pastYearCutoff = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+    ? thisYear : undefined
 
   useEffect(() => {
     if (!pendingDeductionChanged || pendingDeduction === null) {
@@ -233,12 +235,12 @@ export default function Dashboard() {
     setDeductionPreview('loading')
     let cancelled = false
     const timer = setTimeout(() => {
-      api.previewDeduction(pendingDeduction, shouldExcludePast, cardDate)
+      api.previewDeduction(pendingDeduction, cardDate, showExitPreview, pastYearCutoff)
         .then(result => { if (!cancelled) setDeductionPreview(result) })
         .catch(() => { if (!cancelled) setDeductionPreview(null) })
     }, 400)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [pendingDeductionChanged, pendingDeduction, shouldExcludePast, cardDate])
+  }, [pendingDeductionChanged, pendingDeduction, pastYearCutoff, cardDate, showExitPreview])
 
   async function applyDeduction(enabled: boolean) {
     setSavingDeduction(true)
@@ -247,7 +249,6 @@ export default function Dashboard() {
       // When first enabling and no year customization exists yet,
       // auto-exclude past years (you can't retroactively itemize)
       if (enabled && taxSettings && !taxSettings.deduction_excluded_years?.length) {
-        const thisYear = new Date().getFullYear()
         const pastYears = (taxSettings.taxable_years ?? []).filter(y => y < thisYear)
         if (pastYears.length > 0) {
           update.deduction_excluded_years = pastYears

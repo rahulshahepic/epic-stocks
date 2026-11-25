@@ -608,8 +608,14 @@ export const api = {
   updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
 
   previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
-  previewDeduction: (enabled: boolean, excludePast = false, asOf?: string) =>
-    apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}${excludePast ? '&exclude_past=true' : ''}${asOf ? `&as_of=${encodeURIComponent(asOf)}` : ''}`),
+  previewDeduction: (enabled: boolean, asOf: string, includeExit: boolean, pastYearCutoff?: number) => {
+    const query = new URLSearchParams({enabled: String(enabled), as_of: asOf, include_exit: String(includeExit)})
+    if (pastYearCutoff != null) {
+      query.set('exclude_past', 'true')
+      query.set('past_year_cutoff', String(pastYearCutoff))
+    }
+    return apiFetch<DeductionPreview | null>(`/api/preview-deduction?${query}`)
+  },
 
   // Wizard content (read by any logged-in user; writes gated by content-admin)
   getContent: () => apiFetch<ContentBlob>('/api/content'),

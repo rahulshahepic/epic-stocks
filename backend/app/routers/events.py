@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant
+from scaffold.models import User
 from scaffold.auth import get_current_user
 from app.sales_engine import compute_sale_tax
 from app.date_utils import to_date as _to_date
@@ -725,6 +725,8 @@ def preview_deduction(
     enabled: bool = Query(..., description="Whether to apply investment interest deduction"),
     exclude_past: bool = Query(False, description="Auto-exclude years before the current year"),
     as_of: date | None = None,
+    include_exit: bool = Query(False, description="Include a hypothetical exit on as_of"),
+    past_year_cutoff: int | None = Query(None, ge=1, le=9999),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -735,12 +737,11 @@ def preview_deduction(
         return None
     excl = set(ts_row.deduction_excluded_years or [])
     if exclude_past and not excl:
-        this_year = date.today().year
-        grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
+        this_year = past_year_cutoff or (inputs.today or date.today()).year
         from services.vesting import vest_years
-        excl = {y for g in grants_db for y in vest_years(g) if y < this_year}
+        excl = {y for g in inputs.grants for y in vest_years(g) if y < this_year}
     if as_of is not None:
-        if as_of >= (inputs.today or date.today()):
+        if include_exit:
             summary = _preview_exit_data(user, db, as_of.isoformat(), inputs=inputs,
                                          deduction_enabled=enabled, excluded_years=excl)
             if summary is None:

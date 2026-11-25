@@ -371,7 +371,7 @@ def test_excluded_year_interest_is_forfeited(client):
 
 
 def test_dated_deduction_preview_matches_exit_without_recorded_sales(client):
-    from datetime import date
+    from datetime import date, timedelta
 
     register_user(client)
     for endpoint, body in (
@@ -383,22 +383,32 @@ def test_dated_deduction_preview_matches_exit_without_recorded_sales(client):
         result = client.post(endpoint, json=body)
         assert result.status_code in (200, 201), result.text
 
-    today = date.today().isoformat()
-    snapshot = client.get("/api/dashboard", params={"as_of": today}).json()
+    today = date.today()
+    snapshot = client.get("/api/dashboard", params={"as_of": today.isoformat()}).json()
     assert snapshot["cards"]["tax_savings_from_deduction"] == 0
     assert snapshot["breakdowns"]["interest"]["booked"] == INTEREST_LOAN_2021["amount"]
 
-    preview = client.get("/api/preview-deduction", params={"as_of": today, "enabled": True}).json()
-    assert preview["tax_savings_from_deduction"] > 0
+    # The browser can still be on yesterday when the server crosses midnight.
+    dates = [today.isoformat(), (today - timedelta(days=1)).isoformat()]
+    previews = {
+        day: client.get("/api/preview-deduction", params={
+            "as_of": day, "enabled": True, "include_exit": True,
+        }).json()
+        for day in dates
+    }
     assert client.get("/api/tax-settings").json()["deduct_investment_interest"] is False
 
     client.put("/api/tax-settings", json={"deduct_investment_interest": True})
-    exit_summary = client.get("/api/preview-exit", params={"date": today}).json()
-    assert preview == {
-        "interest_deduction_total": exit_summary["interest_deducted"],
-        "tax_savings_from_deduction": exit_summary["deduction_savings"],
-    }
-    assert client.get("/api/preview-deduction", params={"as_of": today, "enabled": False}).json() == {
+    for day, preview in previews.items():
+        exit_summary = client.get("/api/preview-exit", params={"date": day}).json()
+        assert preview["tax_savings_from_deduction"] > 0
+        assert preview == {
+            "interest_deduction_total": exit_summary["interest_deducted"],
+            "tax_savings_from_deduction": exit_summary["deduction_savings"],
+        }
+    assert client.get("/api/preview-deduction", params={
+        "as_of": dates[0], "enabled": False, "include_exit": True,
+    }).json() == {
         "interest_deduction_total": 0,
         "tax_savings_from_deduction": 0,
     }
@@ -409,6 +419,14 @@ def test_historical_deduction_preview_matches_dated_snapshot(client):
     as_of = "2022-12-31"
     preview = client.get("/api/preview-deduction", params={"as_of": as_of, "enabled": True}).json()
     assert preview["interest_deduction_total"] == 2000
+
+    def preview_with_cutoff(year):
+        return client.get("/api/preview-deduction", params={
+            "as_of": as_of, "enabled": True, "exclude_past": True, "past_year_cutoff": year,
+        }).json()["interest_deduction_total"]
+
+    assert preview_with_cutoff(2022) == 2000
+    assert preview_with_cutoff(2023) == 0
 
     client.put("/api/tax-settings", json={"deduct_investment_interest": True})
     cards = client.get("/api/dashboard", params={"as_of": as_of}).json()["cards"]

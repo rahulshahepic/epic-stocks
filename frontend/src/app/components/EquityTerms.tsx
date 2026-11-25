@@ -17,7 +17,7 @@ export default function EquityTerms({ terms, title = 'What do these terms mean?'
 }) {
   return (
     <details className="rounded-lg border border-cs-border bg-cs-surface p-3 text-xs text-cs-text-2">
-      <summary className="cursor-pointer py-1 font-medium text-cs-brand">{title}</summary>
+      <summary className="cursor-pointer py-1 font-medium text-cs-brand dark:text-rose-300">{title}</summary>
       <dl className="mt-3 space-y-3 leading-relaxed">
         {terms.map(key => <div key={key}><dt className="font-semibold text-cs-text">{EQUITY_TERMS[key].title}</dt><dd className="mt-1">{EQUITY_TERMS[key].definition} {EQUITY_TERMS[key].meaning}</dd></div>)}
       </dl>

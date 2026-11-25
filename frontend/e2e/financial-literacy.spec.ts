@@ -63,6 +63,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     expect((await (await page.request.get('/api/tax-settings')).json()).federal_income_rate).not.toBe(0.30)
     await settings.getByRole('button', {name: 'Confirm and save assumptions'}).click()
     await expect(settings.getByRole('button', {name: 'Edit', exact: true})).toBeVisible()
+    expect((await new AxeBuilder({page}).include('#tax').analyze()).violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await settings.screenshot({path: `../screenshots/teaching-settings-${theme}-${device}.png`})
   })
 }

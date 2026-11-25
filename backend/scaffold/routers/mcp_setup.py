@@ -99,11 +99,11 @@ def llms():
     first_run = doc['first_run']
     import_steps = first_run['import']
     lines = [
-        'Privacy policy: ' + doc['privacy_policy_url'],
-        'Support: ' + doc['support_url'],
         f'# {doc["name"]}', '', f'> {doc["purpose"]}', '',
         f'- [MCP setup]({doc["guide_url"]}): Connection and OAuth sign-in steps.',
         f'- [Setup JSON]({doc["server_url"]}/setup.json): Server configuration and first-run instructions.',
+        f'- [Privacy policy]({doc["privacy_policy_url"]}): Data use, recipients and retention.',
+        f'- [Support]({doc["support_url"]}): Private reporting and public issue guidance.',
         '', '## After connecting', '',
     ]
     if 'staging_setup' in first_run:

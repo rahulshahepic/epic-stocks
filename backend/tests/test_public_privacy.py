@@ -30,3 +30,21 @@ def test_public_support_is_readable_without_sign_in(client):
     assert 'Public issues are visible to everyone' in response.text
     assert '30 days' in response.text
     assert client.head('/support').status_code == 200
+
+
+def test_privacy_preserves_ordered_lists_and_inline_code(client):
+    body = client.get('/privacy-policy').text
+    assert body.count('<ol>') == 3
+    assert body.count('</ol>') == 3
+    assert '<li><strong>Self-host</strong>' in body
+    assert '<code>KEY_ENCRYPTION_KEY</code>' in body
+    assert '<a href="https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md"><code>PRIVACY.md</code></a>' in body
+    assert '<code>[not a link](https://example.invalid)</code>' in policy_html('`[not a link](https://example.invalid)`')
+    assert 'Plain-text policy' not in client.get('/support').text
+
+
+def test_llms_document_starts_with_h1_and_keeps_policy_support_links(client):
+    text = client.get('/llms.txt').text
+    assert text.startswith('# Epic Stocks\n\n> ')
+    assert '[Privacy policy](https://epic-stocks.com/privacy-policy)' in text
+    assert '[Support](https://epic-stocks.com/support)' in text

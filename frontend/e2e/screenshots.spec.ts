@@ -1266,6 +1266,9 @@ test.describe('Public privacy screenshots', () => {
       expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
       await page.screenshot({ path: `${OUT}/public-privacy-${theme}-${size}.png` })
+      await expect(page.locator('ol')).toHaveCount(3)
+      await page.locator('ol').nth(1).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${OUT}/public-privacy-lists-${theme}-${size}.png` })
     })
   }
 })

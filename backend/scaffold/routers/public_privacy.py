@@ -18,15 +18,26 @@ def policy_text():
 
 
 def inline(text):
-    value = escape(text)
-    value = re.sub(r'\[([^\]]+)\]\((https://[^\s)]+)\)', r'<a href="\2">\1</a>', value)
-    return re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', value)
+    pattern = r'`([^`]+)`|\[([^\]]+)\]\((https://[^\s)]+)\)|\*\*([^*]+)\*\*'
+    parts, end = [], 0
+    for match in re.finditer(pattern, text):
+        parts.append(escape(text[end:match.start()]))
+        code, label, url, strong = match.groups()
+        if code is not None:
+            parts.append('<code>' + escape(code) + '</code>')
+        elif label is not None:
+            parts.append('<a href="' + escape(url, quote=True) + '">' + inline(label) + '</a>')
+        else:
+            parts.append('<strong>' + inline(strong) + '</strong>')
+        end = match.end()
+    parts.append(escape(text[end:]))
+    return ''.join(parts)
 
 
-def policy_html(text):
+def policy_html(text, *, title="Epic Stocks privacy policy", plain_policy=True):
     # Render only trusted-repository headings, paragraphs, lists and code. Raw
     # HTML is escaped; no document uploads or caller-selected paths are read.
-    parts, paragraph, listed, code = [], [], False, None
+    parts, paragraph, listed, code = [], [], None, None
     def flush():
         if paragraph:
             parts.append('<p>' + inline(' '.join(paragraph)) + '</p>')
@@ -34,6 +45,9 @@ def policy_html(text):
     for line in text.splitlines():
         if line.startswith('```'):
             flush()
+            if listed:
+                parts.append(f'</{listed}>')
+                listed = None
             if code is None:
                 code = []
             else:
@@ -43,28 +57,31 @@ def policy_html(text):
         if code is not None:
             code.append(line)
             continue
-        item = line.startswith('- ')
-        if listed and not item:
-            parts.append('</ul>')
-            listed = False
+        numbered = re.match(r'^\d+\. (.*)', line)
+        tag = 'ol' if numbered else 'ul' if line.startswith('- ') else None
+        item = numbered.group(1) if numbered else line[2:] if tag else None
+        if listed and listed != tag:
+            parts.append(f'</{listed}>')
+            listed = None
         if not line.strip():
             flush()
         elif line.startswith('#') and re.match(r'^#{1,6} ', line):
             flush()
             level = len(line) - len(line.lstrip('#'))
             parts.append(f'<h{level}>' + inline(line[level:].strip()) + f'</h{level}>')
-        elif item:
+        elif tag:
             flush()
             if not listed:
-                parts.append('<ul>')
-                listed = True
-            parts.append('<li>' + inline(line[2:]) + '</li>')
+                parts.append(f'<{tag}>')
+                listed = tag
+            parts.append('<li>' + inline(item) + '</li>')
         else:
             paragraph.append(line)
     flush()
     if listed:
-        parts.append('</ul>')
-    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Epic Stocks privacy policy</title><link rel="stylesheet" href="/mcp-setup.css"></head><body><main><a href="/mcp-setup">Epic Stocks · independent and unofficial</a>' + ''.join(parts) + '<p><a href="/privacy.md">Plain-text policy</a></p></main></body></html>'
+        parts.append(f'</{listed}>')
+    footer = '<p><a href="/privacy.md">Plain-text policy</a></p>' if plain_policy else ''
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escape(title) + '</title><link rel="stylesheet" href="/mcp-setup.css"></head><body><main><a href="/mcp-setup">Epic Stocks · independent and unofficial</a>' + ''.join(parts) + footer + '</main></body></html>'
 
 
 @router.api_route('/privacy-policy', methods=['GET', 'HEAD'])
@@ -99,5 +116,5 @@ Read [connection instructions](https://epic-stocks.com/mcp-setup). You can disco
 
 Read the [privacy policy](https://epic-stocks.com/privacy-policy) before sharing support material. Epic Stocks tracks records and estimates; it cannot trade securities or move money.
 '''
-    return HTMLResponse(policy_html(text).replace('<title>Epic Stocks privacy policy</title>', '<title>Epic Stocks support</title>'),
+    return HTMLResponse(policy_html(text, title='Epic Stocks support', plain_policy=False),
                         headers={'Cache-Control': 'public, max-age=300'})

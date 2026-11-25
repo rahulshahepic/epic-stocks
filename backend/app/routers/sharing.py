@@ -623,7 +623,8 @@ def shared_retirement_params(
 ):
     """Read-only: viewer sees the owner's saved simulator params."""
     owner = _get_shared_owner(invitation_id, user, db)
-    return {"params": owner.retirement_params}
+    from app.expense_funding import retirement_params_without_funding
+    return {"params": retirement_params_without_funding(owner.retirement_params)}
 
 
 @router.get("/view/{invitation_id}/comp-entries")

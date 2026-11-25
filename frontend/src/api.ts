@@ -5,6 +5,42 @@ import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
+export interface ExpenseSale {
+  date: string
+  shares: number
+  price_per_share: number
+  price_date: string
+  price_is_estimate: boolean
+  gross_proceeds: number
+  estimated_tax: number
+  net_proceeds: number
+}
+
+interface ExpenseFundingEstimate {
+  event_id: string
+  title: string
+  due_date: string
+  initial_cash: number
+  first_month_only: boolean
+  monthly_cost: number
+  months_to_save: number
+  sale: ExpenseSale | null
+}
+
+export interface ExpenseFundingOptions extends ExpenseFundingEstimate {
+  confirmation: string
+  sale_unavailable: string | null
+}
+
+export interface ExpenseFundingPlan extends ExpenseFundingEstimate {
+  method: 'savings' | 'epic'
+}
+
+interface RetirementParamsResponse {
+  params: Record<string, unknown> | null
+  funding_plans?: Record<string, ExpenseFundingPlan>
+}
+
 export interface AiConnection {
   id: number
   client_name: string
@@ -539,16 +575,23 @@ export const api = {
   // User info
   getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null }>('/api/me'),
   updateProfile: (body: { date_of_birth?: string | null }, signal?: AbortSignal) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body), ...(signal ? { signal } : {}) }),
-  getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
-  saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params, preserve_planned_expenses: true }, signal),
+  getRetirementParams: () => apiFetch<RetirementParamsResponse>('/api/retirement/params'),
+  saveRetirementParams: (params: Record<string, unknown>, signal?: AbortSignal) => put<RetirementParamsResponse>('/api/retirement/params', { params, preserve_planned_expenses: true }, signal),
   savePlannedExpenses: (plannedEvents: PlannedEvent[]) =>
-    apiFetch<{ params: Record<string, unknown> }>('/api/retirement/params', { method: 'PATCH', body: JSON.stringify({ plannedEvents }) }),
+    apiFetch<RetirementParamsResponse>('/api/retirement/params', { method: 'PATCH', body: JSON.stringify({ plannedEvents }) }),
+  getExpenseFundingPlans: () => apiFetch<Record<string, ExpenseFundingPlan>>('/api/retirement/expense-funding'),
+  getExpenseFundingOptions: (expenseId: string, signal: AbortSignal) =>
+    apiFetch<ExpenseFundingOptions>(`/api/retirement/expense-funding/${encodeURIComponent(expenseId)}`, { signal }),
+  confirmExpenseFunding: (expenseId: string, method: ExpenseFundingPlan['method'], confirmation: string) =>
+    post<ExpenseFundingPlan>(`/api/retirement/expense-funding/${encodeURIComponent(expenseId)}`, { method, confirmation }),
+  clearExpenseFunding: (expenseId: string) =>
+    apiFetch<void>(`/api/retirement/expense-funding/${encodeURIComponent(expenseId)}`, { method: 'DELETE' }),
   getCompEntries: () => apiFetch<{ entries: unknown }>('/api/retirement/comp-entries'),
   saveCompEntries: (entries: unknown, signal?: AbortSignal) => put<{ entries: unknown }>('/api/retirement/comp-entries', { entries }, signal),
   getDashboardPrefs: () => apiFetch<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs'),
   saveDashboardPrefs: (prefs: Record<string, unknown>, signal?: AbortSignal) => put<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs', { prefs }, signal),
   getSharedProfile: (invId: number) => apiFetch<{ name: string | null; date_of_birth: string | null }>(`/api/sharing/view/${invId}/profile`),
-  getSharedRetirementParams: (invId: number) => apiFetch<{ params: Record<string, unknown> | null }>(`/api/sharing/view/${invId}/retirement-params`),
+  getSharedRetirementParams: (invId: number) => apiFetch<RetirementParamsResponse>(`/api/sharing/view/${invId}/retirement-params`),
   getSharedCompEntries: (invId: number) => apiFetch<{ entries: unknown }>(`/api/sharing/view/${invId}/comp-entries`),
   getSharedDashboardPrefs: (invId: number) => apiFetch<{ prefs: Record<string, unknown> }>(`/api/sharing/view/${invId}/dashboard-prefs`),
 

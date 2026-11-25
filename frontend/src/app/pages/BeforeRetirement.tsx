@@ -1,12 +1,22 @@
+import type { ExpenseFundingPlan } from '../../api.ts'
 import { planCashFlows, type PlannedEvent } from './Retirement.math.ts'
 
 const dollars = (n: number) => (n * 1_000_000).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-export default function BeforeRetirement({ events, retirementDate }: { events: PlannedEvent[]; retirementDate: string }) {
+export default function BeforeRetirement({ events, retirementDate, fundingPlans }: {
+  events: PlannedEvent[]
+  retirementDate: string
+  fundingPlans: Record<string, ExpenseFundingPlan>
+}) {
   const planned = planCashFlows(events, retirementDate, 1)
   const rows = new Map<string, { year: string; title: string; funding: string; amount: number }>()
   for (const row of planned.preRetirementSchedule) {
     const year = row.date.slice(0, 4), key = year + ':' + row.eventId
-    const existing = rows.get(key) ?? { year, title: row.title, funding: row.funding, amount: 0 }
+    const plan = Object.hasOwn(fundingPlans, row.eventId) ? fundingPlans[row.eventId] : undefined
+    const funding = !plan ? row.funding === 'epic' ? 'Epic stock' : row.funding === 'mixed' ? 'Decide later' : row.funding
+      : plan.due_date.slice(0, 4) !== year ? 'Decide later'
+        : !plan.sale ? 'Savings for first bill'
+          : plan.sale.net_proceeds < plan.initial_cash ? 'Tentative sale + savings for first bill' : 'Tentative sale for first bill'
+    const existing = rows.get(key) ?? { year, title: row.title, funding, amount: 0 }
     existing.amount += row.netCashM; rows.set(key, existing)
   }
   const years = new Map<string, number>()
@@ -22,7 +32,7 @@ export default function BeforeRetirement({ events, retirementDate }: { events: P
     </div>
     {rows.size > 0 && <details><summary className="text-sm font-semibold">Review funding by year and expense</summary><div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Funding schedule table">
       <table className="w-full text-left text-xs"><thead><tr><th className="p-2">Year</th><th className="p-2">Expense</th><th className="p-2">Funding plan</th><th className="p-2 text-right">Net cash needed</th></tr></thead>
-        <tbody>{[...rows].map(([key, row]) => <tr key={key} className="border-t border-cs-border"><td className="p-2">{row.year}</td><td className="p-2">{row.title}</td><td className="p-2">{row.funding === 'epic' ? 'Hypothetical Epic sale' : row.funding === 'mixed' ? 'Decide later' : row.funding}</td><td className="p-2 text-right">{dollars(row.amount)}</td></tr>)}</tbody></table>
+        <tbody>{[...rows].map(([key, row]) => <tr key={key} className="border-t border-cs-border"><td className="p-2">{row.year}</td><td className="p-2">{row.title}</td><td className="p-2">{row.funding}</td><td className="p-2 text-right">{dollars(row.amount)}</td></tr>)}</tbody></table>
     </div></details>}
     <details className="text-xs text-cs-text-2"><summary className="cursor-pointer">Estimate assumptions</summary><p className="mt-2">Amounts are in {retirementDate.slice(0, 4)} dollars. Working-life wages, investment returns and future stock-sale taxes are not simulated. An Epic funding label is a net cash target; it does not reserve shares. Review share availability, loan repayment and taxes before an actual sale.</p></details>
   </section>

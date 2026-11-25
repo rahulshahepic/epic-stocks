@@ -26,7 +26,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ExitPreview } from '../../api.ts'
+import { api, type ExitPreview, type ExpenseFundingPlan } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
@@ -525,6 +525,8 @@ function RetirementAccount() {
     JSON.stringify(completedRun.params) !== JSON.stringify(params)
   )
   const expenseSaveRequest = useRef(0)
+  const fundingVersion = useRef(0)
+  const [fundingPlans, setFundingPlans] = useState<Record<string, ExpenseFundingPlan>>({})
   const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [expenseSaveError, setExpenseSaveError] = useState('')
   const [saveRetry, setSaveRetry] = useState(0)
@@ -571,7 +573,9 @@ function RetirementAccount() {
     if (runTimer.current) clearTimeout(runTimer.current)
     const fetcher = vid ? api.getSharedRetirementParams(vid) : retirementSaveQueue.then(() => api.getRetirementParams())
     fetcher
-      .then(({ params: saved }) => {
+      .then(result => {
+        const { params: saved } = result
+        setFundingPlans(result.funding_plans ?? {})
         if (saved && typeof saved === 'object') {
           const rawSaved = saved as Record<string, unknown>
           const savedDate = rawSaved.retirementDate
@@ -752,10 +756,14 @@ function RetirementAccount() {
   function saveExpenses(events: PlannedEvent[]) {
     if (vid || !paramsLoadedRef.current) return
     const request = ++expenseSaveRequest.current
+    const fundingAtSave = fundingVersion.current
     setExpenseSaveStatus('saving')
     setExpenseSaveError('')
-    retirementSaveQueue = retirementSaveQueue.then(() => api.savePlannedExpenses(events)).then(() => {
-      if (request === expenseSaveRequest.current) setExpenseSaveStatus('saved')
+    retirementSaveQueue = retirementSaveQueue.then(() => api.savePlannedExpenses(events)).then(result => {
+      if (request === expenseSaveRequest.current) {
+        if (fundingAtSave === fundingVersion.current) setFundingPlans(result.funding_plans ?? {})
+        setExpenseSaveStatus('saved')
+      }
     }).catch((err: unknown) => {
       if (request !== expenseSaveRequest.current) return
       setExpenseSaveStatus('error')
@@ -780,10 +788,14 @@ function RetirementAccount() {
         ...(legacyExitHeld ? {} : { epicExitMode: exitMode }),
         spouseDOB,
       }
+      const fundingAtSave = fundingVersion.current
       retirementSaveQueue = retirementSaveQueue.then(() => {
         if (!controller.signal.aborted) return api.saveRetirementParams(payload, controller.signal)
-      }).then(() => {
-        if (!controller.signal.aborted && request === saveRequestRef.current) setSaveStatus('saved')
+      }).then(result => {
+        if (!controller.signal.aborted && request === saveRequestRef.current) {
+          if (result && fundingAtSave === fundingVersion.current) setFundingPlans(result.funding_plans ?? {})
+          setSaveStatus('saved')
+        }
       }).catch((err: unknown) => {
         if (controller.signal.aborted || request !== saveRequestRef.current) return
         setSaveError(err instanceof Error ? err.message : 'Unable to save retirement inputs')
@@ -1098,8 +1110,21 @@ function RetirementAccount() {
             onRun={() => { setPlanningView(false); run() }}
             running={running}
             showRun={!!expenseRetirementDate}
+            funding={vid ? undefined : {
+              ready: expenseSaveStatus === 'idle' || expenseSaveStatus === 'saved',
+              plans: fundingPlans,
+              onPlan: (id, plan) => {
+                fundingVersion.current++
+                setFundingPlans(previous => {
+                  if (plan) return { ...previous, [id]: plan }
+                  const next = { ...previous }
+                  delete next[id]
+                  return next
+                })
+              },
+            }}
           />
-          {expenseRetirementDate && !!params.plannedEvents?.length && <BeforeRetirement events={params.plannedEvents} retirementDate={expenseRetirementDate} />}
+          {expenseRetirementDate && !!params.plannedEvents?.length && <BeforeRetirement events={params.plannedEvents} retirementDate={expenseRetirementDate} fundingPlans={fundingPlans} />}
         </>}
       </div>}
       <div hidden={showExpenses} className="space-y-4">

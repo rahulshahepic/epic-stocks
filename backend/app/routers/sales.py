@@ -10,6 +10,7 @@ from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares
 from app.sale_tax import compute_all_sale_taxes
+from app.tax_settings import tax_settings_or_defaults
 from scaffold.crud import apply_update, get_owned, version_conflict
 from services.vesting import core_grant, vest_years
 
@@ -99,10 +100,10 @@ def _check_cash_out_allowed(user: User, sale_date, db: Session):
 
 # --- Bulk tax computation (one DB round-trip for all sales) ---
 
-def _sale_specs_for_user(user: User, db: Session) -> tuple[list, dict, TaxSettings, bool]:
+def _sale_specs_for_user(user: User, db: Session):
     """Snapshot every sale plus the ingredients compute_all_sale_taxes needs,
     before closing the DB session for CPU-heavy work."""
-    ts = _get_or_create_tax_settings(user, db)
+    ts = tax_settings_or_defaults(user, db)
     flexible_enabled = _flexible_payoff_enabled(db)
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).order_by(Sale.date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).all()
@@ -142,15 +143,27 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
     return results
 
 
-def sale_aware_timeline(user: User, db: Session, as_of: date, exclude_sale_id=None):
-    """Remaining lots after every earlier sale, including manual allocations."""
+def sale_projection(user: User, db: Session, as_of: date, exclude_sale_id=None, *, tentative_sales=()):
+    """Tax breakdowns and remaining lots, optionally including scenario sales."""
     specs, grants, settings, flexible = _sale_specs_for_user(user, db)
     specs = [s for s in specs if s["date"] <= as_of and s["id"] != exclude_sale_id]
-    _, timeline = compute_all_sale_taxes(
+    if tentative_sales:
+        from app.routers.loans import _get_lot_selection_method
+        method = _get_lot_selection_method(user, db)
+        rates = {key: getattr(settings, key) for key in WI_DEFAULTS if key.endswith("_rate") or key == "lt_holding_days"}
+        specs.extend({
+            **sale, "id": f"tentative-{index}", "date": date.fromisoformat(sale["date"]),
+            "rates": rates, "lot_selection_method": method,
+        } for index, sale in enumerate(tentative_sales))
+    return compute_all_sale_taxes(
         _build_timeline(user, db), specs, grants, settings.loan_payoff_method,
         settings.lot_selection_method, flexible,
     )
-    return timeline
+
+
+def sale_aware_timeline(user: User, db: Session, as_of: date, exclude_sale_id=None):
+    """Remaining lots after every earlier sale, including manual allocations."""
+    return sale_projection(user, db, as_of, exclude_sale_id)[1]
 
 
 def _remaining_holdings(user: User, db: Session, as_of: date) -> list[dict]:

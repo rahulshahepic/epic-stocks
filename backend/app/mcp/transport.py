@@ -203,7 +203,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                  if requires_synthetic() else "") +
                 "Use show_retirement for an interactive retirement planner, run_retirement_simulation "
                 "for numeric analysis, and compare_retirement_scenarios for retirement-date decisions. "
-                "Exploratory overrides never save; update_retirement_params writes only with permission.\n\n"
+                "Exploratory overrides never save. Preview retirement changes, then pass the preview token after the user approves.\n\n"
                 "Use show_equity when someone asks to see or browse their "
                 "portfolio; it opens an interactive view. Use the other read "
                 "tools for analysis without opening a card.\n\n"

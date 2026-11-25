@@ -105,6 +105,13 @@ class Mcp:
         assert result.get("isError"), f"{name} was expected to fail: {result}"
         return result["content"][0]["text"]
 
+    def confirm_write(self, name, **arguments):
+        preview = self.call(name, **arguments)
+        assert preview["applied"] is False
+        result = self.call(name, **arguments, confirm=preview["confirm"])
+        assert result["applied"] is True
+        return result
+
     def save(self, kind, values, id=None):
         """Preview one change, then apply it with the preview's token."""
         change = {"kind": kind, "action": "update" if id else "create", "values": dict(values)}

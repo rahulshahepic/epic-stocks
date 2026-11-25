@@ -10,7 +10,7 @@ The portfolio card is read-only: overview, grants with their vesting dates, loan
 
 A grant need not map to a configured template. Use **Add a new grant type**, enter the complete schedule and cost basis, and explicitly confirm both. Similar names never authorize choosing a template. Blank cost basis cannot silently become zero. Any change to the schedule resets both confirmations. Leave-related schedule changes use this same custom path.
 
-The **retirement card** (`show_retirement`) runs the actual retirement calculator with editable what-if inputs, percentile charts and date comparisons. Simulations do not save. `update_retirement_params` saves named fields only with `comp:write`. Date-specific Epic exit projections require `equity:read`. See [MCP Apps](mcp-apps.md).
+The **retirement card** (`show_retirement`) runs the actual retirement calculator with editable what-if inputs, percentile charts and date comparisons. Simulations do not save. `update_retirement_params` previews named fields and saves them when called again with the confirmation token. Both calls require `comp:write`. Date-specific Epic exit projections require `equity:read`. See [MCP Apps](mcp-apps.md).
 
 ## Implementation plan and acceptance checks
 

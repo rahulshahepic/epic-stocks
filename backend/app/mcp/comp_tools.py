@@ -22,6 +22,7 @@ from app.financial_literacy import MAX_PORTFOLIO_MILLIONS
 
 from scaffold.oauth.scopes import COMP_WRITE
 from .accounts import ACCOUNT_PROPERTY, resolve_account
+from .retirement_tools import RETIREMENT_CONFIRM_PROPERTY, apply_retirement_patch
 from .tools import Tool, ToolContext, object_schema, register
 
 # The comp tab is a working life's worth of raises and bonuses — a few dozen
@@ -366,13 +367,6 @@ _BUCKETS: dict[str, tuple[str, str]] = {
     "brokerage_basis": ("additionalBasis", "cost basis of the taxable brokerage"),
 }
 
-# Setting a retirement balance while the app is in its simple view would store
-# a figure the user cannot see: the simple view shows one "additional
-# portfolio" box, and collapsing the breakdown folds 401(k) and Roth back into
-# it. So a write that splits the buckets opens the breakdown too.
-_BREAKDOWN_KEYS = ("traditional", "roth", "additionalBasis")
-
-
 def _set_retirement_accounts(ctx: ToolContext, args: dict):
     owner = _account(ctx, args)
 
@@ -386,35 +380,18 @@ def _set_retirement_accounts(ctx: ToolContext, args: dict):
         _BUCKETS[name][0]: _millions(raw, name) for name, raw in given.items()
     }
 
-    ctx.db.refresh(owner, with_for_update=True)
-    held = owner.retirement_params
-    params = dict(held) if isinstance(held, dict) else {}
-
-    basis = changes.get("additionalBasis", params.get("additionalBasis"))
-    total = changes.get("taxableAdditional", params.get("taxableAdditional"))
-    if isinstance(basis, (int, float)) and isinstance(total, (int, float)) and basis > total:
-        raise ValueError(
-            f"The brokerage cost basis (${basis:g}M) cannot exceed the "
-            f"brokerage balance (${total:g}M) — the basis is what was paid for "
-            f"the assets that balance is now worth."
-        )
-
-    params.update(changes)
-    if any(params.get(k) for k in _BREAKDOWN_KEYS):
-        params["advanced"] = True
-
-    owner.retirement_params = params
-    ctx.db.commit()
-
+    # Open the breakdown when it is needed to display separate account buckets.
+    result = apply_retirement_patch(
+        owner, ctx.db, changes, args.get("confirm"), show_account_breakdown=True,
+    )
+    balances = {name: changes[_BUCKETS[name][0]] for name in given}
+    if not result["applied"]:
+        return {**result, "changes": balances, "units": "millions of dollars"}
     return {
-        # Only what was asked for. A connection may hold comp:write without
-        # comp:read, so this must not hand back the rest of the scenario.
-        "set": {name: changes[_BUCKETS[name][0]] for name in given},
+        **result,
+        "set": balances,
         "units": "millions of dollars",
-        "next_step": (
-            "Saved. The Retirement page picks these up as the starting "
-            "balances; the ages, spending and market assumptions are set there."
-        ),
+        "next_step": "The Retirement page picks up the saved starting balances.",
     }
 
 
@@ -422,7 +399,9 @@ register(Tool(
     name="set_retirement_accounts",
     title="Set retirement account balances",
     description=(
-        "Set the account balances the retirement simulator starts from. "
+        "Preview the retirement simulator's starting balances by omitting confirm. "
+        "Show the proposed balances to the user and, once they approve, repeat the "
+        "call with the same inputs and the returned confirm token to save. "
         "**Every figure is in millions of dollars** — a $850,000 401(k) is "
         "0.85, not 850000. Only the balances you pass are changed; the rest of "
         "the saved scenario is left alone. The Epic position is not set here — "
@@ -459,10 +438,11 @@ register(Tool(
             ),
         },
         "account": ACCOUNT_PROPERTY,
+        "confirm": RETIREMENT_CONFIRM_PROPERTY,
     }),
     scope=COMP_WRITE,
     handler=_set_retirement_accounts,
     read_only=False,
     destructive=True,
-    idempotent=True,
+    idempotent=False,
 ))

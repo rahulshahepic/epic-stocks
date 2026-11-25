@@ -6,8 +6,9 @@ import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../../format.ts'
 import type { CardValues, GrantHolding } from '../Dashboard.types.ts'
 
 /** What the person holds, and what it is worth on the chosen date. */
-export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakdowns, toggleBreakdown, hideNextEvent = false }: {
+export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakdowns, toggleBreakdown, headingAs: Heading = 'h2', hideNextEvent = false }: {
   hideNextEvent?: boolean
+  headingAs?: 'h2' | 'h3'
   cv: CardValues
   cardDate: string
   grantHoldings: GrantHolding[] | null
@@ -20,7 +21,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
   const estimatedPriceChange = next?.event_type === 'Share Price' && !!next.price_is_estimate
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-cs-muted">Your shares</h3>
+      <Heading className="text-sm font-semibold text-cs-muted">Your shares</Heading>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {totalValue !== null && <Card
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}

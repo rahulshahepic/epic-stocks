@@ -395,7 +395,7 @@ export default function Dashboard() {
             {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitFigure ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
           </p>
           <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitFigure ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
-          {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Estimated exit cash is unavailable for this date.'}</p>}
+          {showExitFigure && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.'}</p>}
 
           {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
             datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
@@ -581,10 +581,10 @@ export default function Dashboard() {
       {importSaved && !readOnly && <OwnerPositionTour />}
       {cv && <section aria-labelledby="dashboard-position" className="space-y-3">
         <h2 id="dashboard-position" className="text-xl font-semibold text-cs-text">Your position</h2>
-        {!hasExitSection && headline}
+        {!showExitFigure && headline}
         <div aria-live="polite" aria-atomic="true">
           <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
-            totalValue={totalValue} hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+            totalValue={totalValue} headingAs="h3" hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
         </div>
 
         {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <details className="rounded-xl border border-cs-border bg-cs-surface">
@@ -609,7 +609,7 @@ export default function Dashboard() {
 
       {hasExitSection && <section aria-labelledby="dashboard-exit" className="space-y-3">
         <h2 id="dashboard-exit" className="text-xl font-semibold text-cs-text">If you leave</h2>
-        {headline}
+        {showExitFigure ? headline : <p role="status" className="text-sm text-cs-muted">Estimated exit cash is unavailable for this date.</p>}
         <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 divide-y divide-cs-border rounded-xl border border-cs-border bg-cs-surface">
           <details>
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</summary>

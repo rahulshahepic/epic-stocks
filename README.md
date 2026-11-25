@@ -280,7 +280,7 @@ Summary cards showing everything that has happened through the selected date:
 |-----------|--------------|
 | **Your shares** | Value today (vested shares at current FMV + unvested shares at cost basis), total cost basis, current share price, vested shares and unvested shares |
 | **Earnings** | Total ordinary income recognized from vesting, total capital gains from sales, net cash received |
-| **Costs** | Outstanding loan principal, total interest accrued, estimated taxes paid |
+| **Costs** | Total amount borrowed, active loan balances in the principal breakdown, total interest accrued and estimated taxes paid |
 
 Tap a card with a chevron to see the grant, sale, or loan details behind its figure. Open breakdowns persist across visits.
 

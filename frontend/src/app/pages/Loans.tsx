@@ -10,7 +10,7 @@ import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from '
 import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
-import { fmt$ } from '../format.ts'
+import { fmtFullDate, fmt$ } from '../format.ts'
 import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
@@ -37,7 +37,7 @@ function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
   const num = l.loan_number ? ` #${l.loan_number}` : ''
   const rate = `${(l.interest_rate * 100).toFixed(2)}%`
   const refinanced = refinancedIds?.has(l.id) ? ' [refinanced]' : ''
-  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${l.due_date}${refinanced}`
+  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${fmtFullDate(l.due_date)}${refinanced}`
 }
 
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
@@ -419,12 +419,12 @@ export default function Loans() {
               </div>
               {/* Line 3: Due + Sale + Expand */}
               <div className="mt-1 flex items-center justify-between text-cs-muted">
-                <span>Due: {l.due_date} <span className="text-cs-muted">&middot;</span> Yr: {l.loan_year}</span>
+                <span>Due: {fmtFullDate(l.due_date)} <span className="text-cs-muted">&middot;</span> Loan year: {l.loan_year}</span>
                 <button
                   onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
                   className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
                 >
-                  {hasSale ? '\u2713 linked' : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
+                  {hasSale ? (linkedSale?.is_generated && linkedSale.date > today ? 'Planned repayment sale' : 'Recorded repayment sale') : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
                 </button>
               </div>
               {/* Expanded detail */}
@@ -434,7 +434,7 @@ export default function Loans() {
                     {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
                     {linkedSale && (
                       <>
-                        <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
+                        <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{fmtFullDate(linkedSale.date)}</span></div>
                         <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
                         <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
                         <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
@@ -493,13 +493,13 @@ export default function Loans() {
                       </td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmt$(l.amount)}</td>
                       <td className="px-3 py-2 text-right text-cs-muted">{(l.interest_rate * 100).toFixed(2)}%</td>
-                      <td className="px-3 py-2 text-cs-muted">{l.due_date}</td>
+                      <td className="px-3 py-2 text-cs-muted">{fmtFullDate(l.due_date)}</td>
                       <td className="px-3 py-2">
                         <button
                           onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
                           className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
                         >
-                          {hasSale ? '\u2713 linked' : 'none'}
+                          {hasSale ? (linkedSale?.is_generated && linkedSale.date > today ? 'Planned repayment sale' : 'Recorded repayment sale') : 'none'}
                         </button>
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -519,7 +519,7 @@ export default function Loans() {
                               {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
                               {linkedSale && (
                                 <>
-                                  <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
+                                  <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{fmtFullDate(linkedSale.date)}</span></div>
                                   <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
                                   <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
                                   <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
@@ -560,7 +560,7 @@ export default function Loans() {
             </p>
             {payoffModal.existingSale && (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                The existing repayment sale on {payoffModal.existingSale.date} will be updated.
+                The existing repayment sale on {fmtFullDate(payoffModal.existingSale.date)} will be updated.
               </p>
             )}
             {payoffModal.loan.due_date < today && !payoffModal.existingSale && (
@@ -574,7 +574,7 @@ export default function Loans() {
                   className={FIELD_INPUT_CLASS}
                 />
                 <span className="mt-1 block text-[11px] text-cs-text-2">
-                  Due {payoffModal.loan.due_date}. Epic collects on the due date unless the loan was extended — change this if it was paid later.
+                  Due {fmtFullDate(payoffModal.loan.due_date)}. Epic collects on the due date unless the loan was extended — change this if it was paid later.
                 </span>
               </label>
             )}
@@ -604,7 +604,7 @@ export default function Loans() {
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-cs-muted">Sale date</dt>
-                    <dd className="font-medium text-cs-text">{payoffModal.suggestion.date}</dd>
+                    <dd className="font-medium text-cs-text">{fmtFullDate(payoffModal.suggestion.date)}</dd>
                   </div>
                 </dl>
                 <div className="mt-3">

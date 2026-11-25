@@ -27,6 +27,8 @@ function eventLabel(group: TimelineEvent[]) {
   if (event.event_type === 'Vesting') {
     return `${fmtNum(group.reduce((sum, e) => sum + (e.vested_shares ?? 0), 0))} shares vest`
   }
+  if (event.event_type === 'Sale' && group.every(e => e.is_generated && e.date > localToday())) return 'Planned loan repayment sales'
+  if (event.event_type === 'Sale' && group.some(e => e.is_generated && e.date > localToday())) return 'Sales (includes planned repayments)'
   if (event.event_type === 'Loan Payoff') return group.length === 1 ? 'Loan payoff' : `${group.length} loan payoffs`
   if (event.event_type === 'Share Price') return event.is_estimate ? 'Estimated price' : 'New share price'
   return group.length === 1 ? event.event_type : `${group.length} ${event.event_type.toLowerCase()} events`
@@ -50,6 +52,7 @@ function eventDetail(group: TimelineEvent[], estimated: boolean) {
     return group.some(e => e.cash_due != null) ? `${fmt$(due)} due` : null
   }
   if (event.event_type === 'Sale') {
+    if (group.every(e => e.is_generated && e.date > localToday())) return 'Planned by the app to repay loans · not a recorded sale'
     const proceeds = group.reduce((sum, e) => sum + (e.gross_proceeds ?? 0), 0)
     return group.some(e => e.gross_proceeds != null) ? `${estimated ? 'Est. ' : ''}${fmt$(proceeds)} gross proceeds` : null
   }
@@ -105,6 +108,7 @@ export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: 
               <p className="text-sm font-bold leading-tight text-cs-text">{eventLabel(group)}</p>
               <p className="mt-1 text-xs font-semibold text-cs-text-2">{shortDate(group[0].date)}</p>
               {details[index] && <p className="mt-0.5 text-xs text-cs-muted">{details[index]}</p>}
+              {group.some(e => e.is_generated && e.date > localToday()) && <a href="/settings#loans" className="text-xs text-cs-brand underline">Repayment settings</a>}
               {group.length === 1 && group[0].grant_year && (
                 <p className="mt-0.5 text-xs text-cs-muted">{group[0].grant_year} {group[0].grant_type}</p>
               )}

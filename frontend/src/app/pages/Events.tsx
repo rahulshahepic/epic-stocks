@@ -8,7 +8,7 @@ import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
-import { fmt$, fmtNum, fmtPct, fmtPrice } from '../format.ts'
+import { fmtFullDate, fmt$, fmtNum, fmtPct, fmtPrice } from '../format.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { useToday } from '../dateUtils.ts'
 
@@ -148,9 +148,9 @@ export default function Events() {
   const [typeFilter, setTypeFilter] = useState<Set<string>>(
     initialTypes.length ? new Set(initialTypes) : new Set()
   )
-  const highlightDate = searchParams.get('date') ?? null
   const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
   const today = useToday()
+  const highlightDate = searchParams.get('date') ?? today
   const [jumpDate, setJumpDate] = useState<string | null>(null)
   const isMobile = useIsMobile()
   const highlightRefs = useRef<Map<number, HTMLElement>>(new Map())
@@ -168,7 +168,7 @@ export default function Events() {
     if (jumpHighlightTimer.current) clearTimeout(jumpHighlightTimer.current)
     setHighlightedRows(indices)
     const firstIndex = Math.min(...indices)
-    requestAnimationFrame(() => highlightRefs.current.get(firstIndex)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    requestAnimationFrame(() => highlightRefs.current.get(firstIndex)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }))
     jumpHighlightTimer.current = setTimeout(() => setHighlightedRows(new Set()), 2000)
   }, [])
 
@@ -195,8 +195,12 @@ export default function Events() {
         matchingIndices.add(i)
       }
     })
-    if (matchingIndices.size === 0) return
-    highlightAndScroll(matchingIndices)
+    if (matchingIndices.size === 0) {
+      const next = filteredRef.current.findIndex(e => e.date >= highlightDate)
+      if (next >= 0) matchingIndices.add(next)
+      else if (filteredRef.current.length) matchingIndices.add(filteredRef.current.length - 1)
+    }
+    if (matchingIndices.size > 0) highlightAndScroll(matchingIndices)
   }, [highlightDate, events, highlightAndScroll])
 
   function toggleType(t: string) {
@@ -400,7 +404,7 @@ export default function Events() {
                 {/* Line 1: Date + Type badge */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-cs-text-2">{e.date}</span>
+                    <span className="text-cs-text-2">{fmtFullDate(e.date)}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
                       {e.event_type}
                     </span>
@@ -505,7 +509,7 @@ export default function Events() {
                         highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
                       ].join(' ')}
                     >
-                      <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">{e.date}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">{fmtFullDate(e.date)}</td>
                       <td className="px-3 py-2">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
                           {e.event_type}

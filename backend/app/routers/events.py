@@ -420,6 +420,8 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
             "gross_proceeds": round(s.shares * s.price_per_share, 2),
             "notes": s.notes,
             "sale_id": s.id,
+            "is_generated": bool(s.is_generated),
+            "loan_id": s.loan_id,
         })
 
     # Sort: date first, then by event type order
@@ -890,6 +892,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
     )
 
     sales_db = inputs.sales
+    account_empty = not grants and not loans_db and not sales_db
+    onboarding = {"account_empty": account_empty}
+    if account_empty:
+        onboarding["next_step"] = {"tool": "get_import_guide", "message": "No equity records yet. Read get_import_guide to import your files, then preview and confirm apply_changes to save them."}
     # Build loan amount + early payment maps for cash received calculation
     loan_payments_db = inputs.payments
     payments_by_loan: dict[int, float] = {}
@@ -924,7 +930,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
 
     if not grants and not prices:
         empty = {
-            "current_price": 0, "total_shares": 0,
+            **onboarding,
+            "current_price": None, "total_shares": 0,
             "total_income": 0, "total_cap_gains": 0,
             "total_loan_principal": 0, "total_tax_paid": 0,
             "cash_received": 0, "next_event": None,
@@ -1083,6 +1090,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
     metadata = price_metadata(applicable_price, cutoff) if applicable_price else {}
     price_is_estimate = metadata.get("price_is_estimate", False)
     payload = {
+        **onboarding,
         **metadata,
         "as_of": as_of.isoformat() if as_of else None,
         "price_is_estimate": price_is_estimate,

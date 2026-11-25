@@ -583,3 +583,14 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
                                   "values": {"effective_date": "2025-01-01", "price": 5.0}}]}
     payload = mcp.call(name, **arguments)
     assert isinstance(payload, (dict, list))
+
+
+def test_empty_dashboard_guides_import_without_zero_valuation(client):
+    register_user(client)
+    data = Mcp(client).call("get_dashboard")
+    assert data["account_empty"] is True
+    assert data["current_price"] is None
+    assert data["next_step"]["tool"] == "get_import_guide"
+    assert "apply_changes" in data["next_step"]["message"]
+    client.post("/api/grants", json=GRANT)
+    assert Mcp(client).call("get_dashboard")["account_empty"] is False

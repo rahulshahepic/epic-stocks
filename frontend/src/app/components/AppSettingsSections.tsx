@@ -39,6 +39,11 @@ export default function AppSettingsSections() {
   }, [])
 
   useEffect(() => { loadTaxSettings() }, [loadTaxSettings])
+  useEffect(() => {
+    if (taxSettings && ['#tax', '#loans'].includes(window.location.hash)) {
+      document.getElementById(window.location.hash.slice(1))?.scrollIntoView?.({block: 'start'})
+    }
+  }, [taxSettings])
 
   return (
     <>
@@ -112,7 +117,8 @@ export default function AppSettingsSections() {
       )}
 
       {/* Tax Rates */}
-      <Card as="section" pad="md">
+      <Card as="section" id="tax" className="scroll-mt-24" pad="md">
+        <span id="loans" className="scroll-mt-24" />
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-cs-text">Tax Rates</h2>
           {!editingTax && (
@@ -125,6 +131,8 @@ export default function AppSettingsSections() {
         <p className="mt-1 text-xs text-cs-text-2">
           Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying long-term gains is baked into the state long-term rate.
         </p>
+
+        <p className="mt-2 text-xs text-cs-text-2">Loan repayment sales are app-generated plans until you record a payoff. Edit these settings to choose how shares are selected. Investment interest deductions require itemizing and apply only against gains realized in the year interest is paid; review your eligibility before enabling them.</p>
 
         {taxSettings && !editingTax && (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">

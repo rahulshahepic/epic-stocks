@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { SmartTip, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -72,18 +73,18 @@ export default function TipCarousel({ onApply }: Props) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-cs-text">{tip.title}</p>
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
-              Save {fmt$(tip.savings)}
+              {tip.type === 'deduction' ? 'Potential saving: ' : 'Save '}{fmt$(tip.savings)}
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-cs-text-2">{tip.description}</p>
+          <p className="mt-0.5 text-xs text-cs-text-2">{tip.type === 'deduction' ? 'You may be able to deduct investment interest if you itemize. Savings depend on gains realized in the year interest is paid. Review eligibility and tax settings before enabling this.' : tip.description}</p>
           <div className="mt-2.5 flex items-center gap-3">
-            <button
+            {tip.type === 'deduction' ? <Link to="/settings#tax" className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">Learn more</Link> : <button
               onClick={handleApply}
               disabled={applying}
               className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-60"
             >
               {applying ? 'Applying…' : 'Apply'}
-            </button>
+            </button>}
             <button
               onClick={handleDismiss}
               className="text-xs font-medium text-cs-text-2 hover:text-cs-text"

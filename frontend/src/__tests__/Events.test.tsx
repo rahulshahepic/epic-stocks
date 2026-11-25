@@ -55,9 +55,9 @@ describe('Events', () => {
     mockApi()
     renderEvents()
     await waitFor(() => {
-      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
+      expect(screen.getByText('Mar 1, 2021')).toBeInTheDocument()
     })
-    expect(screen.getByText('2021-06-01')).toBeInTheDocument()
+    expect(screen.getByText('Jun 1, 2021')).toBeInTheDocument()
     expect(screen.getByText(/^2 events/)).toBeInTheDocument()
   })
 
@@ -85,8 +85,8 @@ describe('Events', () => {
     await userEvent.click(vestingCheckbox)
 
     expect(screen.getByText(/^1 events/)).toBeInTheDocument()
-    expect(screen.getByText('2021-03-01')).toBeInTheDocument()
-    expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
+    expect(screen.getByText('Mar 1, 2021')).toBeInTheDocument()
+    expect(screen.queryByText('Jun 1, 2021')).not.toBeInTheDocument()
   })
 
   it('shows error on fetch failure', async () => {
@@ -101,7 +101,7 @@ describe('Events', () => {
     mockApi()
     renderEvents('/?types=Vesting,Exercise')
     await waitFor(() => {
-      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
+      expect(screen.getByText('Mar 1, 2021')).toBeInTheDocument()
     })
     // Both types selected → filter button should show count of 2 types
     expect(screen.getByRole('button', { name: /2 types/i })).toBeInTheDocument()
@@ -111,10 +111,10 @@ describe('Events', () => {
     mockApi()
     renderEvents('/?types=Vesting')
     await waitFor(() => {
-      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
+      expect(screen.getByText('Mar 1, 2021')).toBeInTheDocument()
     })
     // Only Vesting selected — Exercise row should be hidden
-    expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
+    expect(screen.queryByText('Jun 1, 2021')).not.toBeInTheDocument()
   })
 
   it('jumps to the next event, falls back to the last, and resets with Today', async () => {
@@ -122,9 +122,11 @@ describe('Events', () => {
     const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView
     renderEvents()
-    await screen.findByText('2021-03-01')
-    const first = screen.getByText('2021-03-01').closest('tr')!
-    const last = screen.getByText('2021-06-01').closest('tr')!
+    await screen.findByText('Mar 1, 2021')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    scrollIntoView.mockClear()
+    const first = screen.getByText('Mar 1, 2021').closest('tr')!
+    const last = screen.getByText('Jun 1, 2021').closest('tr')!
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
     await waitFor(() => expect(first).toHaveClass('ring-blue-400'))
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
@@ -165,10 +167,12 @@ describe('Events', () => {
     const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView
     renderEvents('/?types=Exercise')
-    await screen.findByText('2021-06-01')
-    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
-    await waitFor(() => expect(screen.getByText('2021-06-01').closest('tr')).toHaveClass('ring-blue-400'))
+    await screen.findByText('Jun 1, 2021')
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
-    expect(screen.queryByText('2021-03-01')).not.toBeInTheDocument()
+    scrollIntoView.mockClear()
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
+    await waitFor(() => expect(screen.getByText('Jun 1, 2021').closest('tr')).toHaveClass('ring-blue-400'))
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Mar 1, 2021')).not.toBeInTheDocument()
   })
 })

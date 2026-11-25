@@ -1987,3 +1987,19 @@ lists the live operational and human evidence still required before rollout.
 | Empty-account retirement | Summary awaiting a channel |
 |---|---|
 | ![Retirement inputs without stock](screenshots/retirement-empty-light-mobile.png) | ![Summary delivery eligibility](screenshots/summary-no-channel-dark-mobile.png) |
+
+First imports return directly to a refreshed dashboard after saving. Import checks
+separate **Needs you** from collapsed **FYI** notes, and repeat imports collapse
+checks when nothing needs saving. Generated loan repayment sales are labelled as
+app plans, with a link to repayment settings. The exit headline shows liquidation
+proceeds less loans, accrued interest, projected obligations and estimated tax;
+the separate total includes earlier activity and modeled deduction savings.
+Deduction suggestions link to eligibility information before a setting is changed.
+Empty-account MCP dashboards return `account_empty`, a null price and an import
+next step; the public setup guide leads with per-assistant instructions and keeps
+protocol details under a disclosure. Displayed record dates use month names;
+the event timeline initially jumps to today while retaining its history.
+
+Import walkthrough screenshots: [review](screenshots/import-review-light-mobile.png),
+[saved dashboard](screenshots/import-saved-light-mobile.png), and
+[dark dashboard](screenshots/import-saved-dark-mobile.png).

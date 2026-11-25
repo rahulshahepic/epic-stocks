@@ -76,13 +76,13 @@ describe('Loans', () => {
     mockApi()
     renderLoans()
     await waitFor(() => {
-      expect(screen.getByText('✓ linked')).toBeInTheDocument()
+      expect(screen.getByText('Recorded repayment sale')).toBeInTheDocument()
     })
-    await userEvent.click(screen.getByText('✓ linked'))
+    await userEvent.click(screen.getByText('Recorded repayment sale'))
     expect(screen.getByText('L-001')).toBeInTheDocument()
-    expect(screen.getByText('2025-06-01')).toBeInTheDocument()
+    expect(screen.getByText('Jun 1, 2025')).toBeInTheDocument()
     // clicking again collapses
-    await userEvent.click(screen.getByText('✓ linked'))
+    await userEvent.click(screen.getByText('Recorded repayment sale'))
     expect(screen.queryByText('L-001')).not.toBeInTheDocument()
   })
 

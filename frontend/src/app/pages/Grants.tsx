@@ -10,7 +10,7 @@ import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from '
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
-import { fmtNum, fmtPrice } from '../format.ts'
+import { fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
@@ -648,7 +648,7 @@ export default function Grants() {
               </div>
               {/* Line 3: Vest details */}
               <div className="mt-1 text-cs-muted">
-                Vests: {vestingOf(g).map(v => `${fmtNum(v.shares)} on ${v.date}`).join(', ')}
+                Vests: {vestingOf(g).map(v => `${fmtNum(v.shares)} on ${fmtFullDate(v.date)}`).join(', ')}
                 {g.exercise_date && <> <span className="text-cs-muted">&middot;</span> Ex: {g.exercise_date}</>}
               </div>
               {/* Line 4: Loan status */}
@@ -670,12 +670,12 @@ export default function Grants() {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                     <div><span className="text-cs-text-2">Amount</span> <span className="ml-1 font-medium text-cs-text-2">{fmtPrice(loan.amount)}</span></div>
                     <div><span className="text-cs-text-2">Rate</span> <span className="ml-1 font-medium text-cs-text-2">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
-                    <div><span className="text-cs-text-2">Due</span> <span className="ml-1 font-medium text-cs-text-2">{loan.due_date}</span></div>
+                    <div><span className="text-cs-text-2">Due</span> <span className="ml-1 font-medium text-cs-text-2">{fmtFullDate(loan.due_date)}</span></div>
                     <div><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{loan.loan_number ?? '\u2014'}</span></div>
                   </div>
                   {linkedSale ? (
                     <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
-                      {'\u2713'} Payoff sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                      {'\u2713'} Payoff sale {fmtFullDate(linkedSale.date)} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                     </p>
                   ) : (
                     <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
@@ -721,7 +721,7 @@ export default function Grants() {
                       </td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmtNum(g.shares)}</td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmtPrice(g.price)}</td>
-                      <td className="px-3 py-2 text-cs-muted">{g.vest_start}</td>
+                      <td className="px-3 py-2 text-cs-muted">{fmtFullDate(g.vest_start)}</td>
                       <td className="px-3 py-2 text-right text-cs-muted">{g.periods}</td>
                       <td className="px-3 py-2 text-cs-muted">{g.exercise_date}</td>
                       <td className="px-3 py-2">
@@ -751,12 +751,12 @@ export default function Grants() {
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                               <div><span className="text-cs-text-2">Amount</span> <span className="ml-1 font-medium text-cs-text-2">{fmtPrice(loan.amount)}</span></div>
                               <div><span className="text-cs-text-2">Rate</span> <span className="ml-1 font-medium text-cs-text-2">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
-                              <div><span className="text-cs-text-2">Due</span> <span className="ml-1 font-medium text-cs-text-2">{loan.due_date}</span></div>
+                              <div><span className="text-cs-text-2">Due</span> <span className="ml-1 font-medium text-cs-text-2">{fmtFullDate(loan.due_date)}</span></div>
                               <div><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{loan.loan_number ?? '\u2014'}</span></div>
                             </div>
                             {linkedSale ? (
                               <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
-                                {'\u2713'} Repayment sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                                {'\u2713'} Repayment sale {fmtFullDate(linkedSale.date)} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                               </p>
                             ) : (
                               <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No sale linked to repay this loan</p>

@@ -64,8 +64,8 @@ function mockApi(...responses: unknown[]) {
 const csv = () => new File(['a,b'], 'shares.csv', { type: 'text/csv' })
 
 /** The card links elsewhere, which needs router context. */
-function renderCard() {
-  return render(<MemoryRouter><EpicFileImport /></MemoryRouter>)
+function renderCard(onApplied?: () => void) {
+  return render(<MemoryRouter><EpicFileImport onApplied={onApplied} /></MemoryRouter>)
 }
 
 async function readFiles() {
@@ -189,7 +189,7 @@ describe('EpicFileImport → one screen of changes', () => {
     await readFiles()
     expect(await screen.findByText('2026 Purchase grant')).toBeInTheDocument()
     expect(screen.getByText(/not on your statement/)).toBeInTheDocument()
-    expect(screen.getAllByRole('checkbox').filter(c => !c.closest('label')?.textContent?.includes('Share optional onboarding counts')).every(c => (c as HTMLInputElement).checked)).toBe(true)
+    expect(screen.getAllByRole('checkbox').filter(c => !c.closest('label')?.textContent?.includes('Help improve setup')).every(c => (c as HTMLInputElement).checked)).toBe(true)
   })
 
   it('checks, then saves exactly the ticked changes with the preview token', async () => {
@@ -260,4 +260,28 @@ describe('EpicFileImport — current share price', () => {
     expect(calls[1].body?.get('current_price')).toBe('7.25')
     expect(await screen.findByText(/entered for today/)).toBeInTheDocument()
   })
+})
+
+it('notifies the owning page after a confirmed import save', async () => {
+  const onApplied = vi.fn()
+  mockApi(CLEAN, {confirm: 'fictional-confirmation', changes: CLEAN.changes, position_before: {}, position_after: {}},
+    {changes: CLEAN.changes, position_before: {}, position_after: {}})
+  renderCard(onApplied)
+  await readFiles()
+  await userEvent.click(await screen.findByRole('button', {name: 'Check 2 changes'}))
+  expect(onApplied).not.toHaveBeenCalled()
+  await userEvent.click(await screen.findByRole('button', {name: 'Save 2 changes'}))
+  await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1))
+})
+
+it('keeps advisory checks collapsed while showing actionable findings', async () => {
+  mockApi({...CLEAN, findings: [
+    {code: 'G1', severity: 'warning', subject: 'Custom award', message: 'Confirm this award'},
+    {code: 'C9', severity: 'warning', subject: 'Loan', message: 'Rate differs'},
+  ]})
+  renderCard()
+  await readFiles()
+  expect(await screen.findByText('Needs you')).toBeVisible()
+  expect(screen.getByText('Confirm this award')).toBeVisible()
+  expect(screen.getByText(/FYI/).closest('details')).not.toHaveAttribute('open')
 })

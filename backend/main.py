@@ -306,7 +306,7 @@ def _start_metrics_sampler():
 # API routes that are always accessible during maintenance (all HTTP methods).
 # /api/report stays open during maintenance: downtime is when people most want
 # to report something, and a report touches no encrypted financial table.
-_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/sharing/invite-info", "/api/report"})
+_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/sharing/invite-info", "/api/report", "/api/report/with-consent"})
 _MAINT_ALLOWED_PREFIX = ("/api/auth/", "/api/admin/", "/api/push/", "/api/notifications/")
 # GET /api/me is needed for nav (profile info, is_admin flag).
 # Mutating methods on /api/me (DELETE = account deletion) must be blocked —
@@ -846,6 +846,7 @@ _BODY_LIMITS: tuple[tuple[str, int], ...] = (
     # share_csv + statement_pdf, and unauthenticated, so no more than it needs
     ("/api/trial/analyze", 2 * _FILE_MB + _MB),
     ("/api/import/excel", _FILE_MB + _MB),
+    ("/api/report/with-consent", 14 * _MB),
 )
 _DEFAULT_BODY_LIMIT = _MB
 

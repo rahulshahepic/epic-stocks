@@ -358,3 +358,50 @@ def test_login_deleted_between_lookup_and_lock_returns_auth_failure(client, db_s
     csrf = page.text.split('name="csrf" value="')[1].split('"')[0]
     response = client.post('/reviewer-login', data={'login': info['login'], 'password': raw, 'csrf': csrf})
     assert response.status_code == 401, response.text
+
+
+def test_reviewer_explicit_support_consent_is_scoped_encrypted_and_erased(client, db_session):
+    from tests.test_sensitive_reports import _submit, _path
+    from scaffold.models import SensitiveReport
+    from scaffold.user_deletion import delete_user
+    info, raw = provision(db_session)
+    sign_in(client, info, raw)
+    response = _submit(client)
+    assert response.status_code == 200, response.text
+    report_id = response.json()['id']
+    uid = db_session.get(ReviewerAccount, info['id']).user_id
+    material = db_session.get(SensitiveReport, report_id)
+    assert material.user_id == uid
+    assert client.get(_path(report_id)).status_code == 403
+    assert client.get('/api/admin/reviewers').status_code == 403
+    delete_user(db_session, uid)
+    db_session.commit()
+    assert db_session.get(SensitiveReport, report_id) is None
+
+
+def test_report_session_auth_rejects_expired_reviewer(client, db_session):
+    from scaffold.auth import get_session_user
+    from starlette.requests import Request
+    from scaffold.auth import create_token
+    info, _ = provision(db_session)
+    row = db_session.get(ReviewerAccount, info['id'])
+    user = db_session.get(User, row.user_id)
+    token = create_token(user.id, user.session_version)
+    row.expires_at = reviewers.now() - timedelta(seconds=1)
+    db_session.commit()
+    request = Request({'type': 'http', 'path': '/api/report/with-consent', 'method': 'POST',
+                       'headers': [(b'cookie', ('session=' + token).encode())]})
+    with pytest.raises(Exception, match='User not found'):
+        get_session_user(request, db_session)
+
+
+def test_expired_reviewer_mcp_preserves_oauth_discovery_challenge(client, db_session):
+    info, raw = provision(db_session)
+    sign_in(client, info, raw)
+    tokens = connect(client)
+    row = db_session.get(ReviewerAccount, info['id'])
+    row.expires_at = reviewers.now() - timedelta(seconds=1)
+    db_session.commit()
+    response = rpc(client, tokens['access_token'], 'get_dashboard')
+    assert response.status_code == 401
+    assert 'resource_metadata=' in response.headers['www-authenticate']

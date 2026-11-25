@@ -188,7 +188,8 @@ def _token_from_request(request: Request) -> str | None:
     return None
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+def get_session_user(request: Request, db: Session) -> User:
+    """Authenticate a session without loading its financial encryption key."""
     token = _token_from_request(request)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -207,12 +208,18 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if siat and time.time() - siat > ABSOLUTE_SESSION_HOURS * 3600:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired — please log in again")
     user = db.get(User, user_id)
-    from scaffold.reviewers import allowed_identity, identity, restrict_request
+    from scaffold.reviewers import allowed_identity
     if not allowed_identity(db, user):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     # "Sign out everywhere" bumps session_version, invalidating older tokens.
     if token_sv != int(user.session_version):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+    return user
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user = get_session_user(request, db)
+    from scaffold.reviewers import identity, restrict_request
     if identity(user):
         restrict_request(db, user, request.url.path, request.method)
         return user

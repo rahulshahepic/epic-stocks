@@ -1,8 +1,8 @@
 """Isolated production directory reviewer identities."""
 from alembic import op
 import sqlalchemy as sa
-revision = 'x5y6z7a8b9c0'
-down_revision = 'w4x5y6z7a8b9'
+revision = 'y6z7a8b9c0d1'
+down_revision = 'x5y6z7a8b9c0'
 branch_labels = depends_on = None
 
 

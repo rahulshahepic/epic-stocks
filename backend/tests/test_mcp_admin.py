@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from scaffold.models import ErrorLog, SystemMetric
+from scaffold.oauth.scopes import ADMIN_REPORT_SENSITIVE, ADMIN_SCOPES
 from tests.conftest import register_user
 from tests.test_mcp_tools import Mcp
 from tests.test_oauth_server import code_from, pkce_pair
@@ -89,7 +90,7 @@ def test_separate_discovery_consent_and_token_boundaries(client):
     data = client.get("/.well-known/oauth-protected-resource/mcp").json()
     admin = client.get("/.well-known/oauth-protected-resource/admin-mcp").json()
     assert data["scopes_supported"] and "admin:read" not in data["scopes_supported"]
-    assert admin["scopes_supported"] == ["admin:read", "admin:write"]
+    assert admin["scopes_supported"] == ["admin:read", "admin:write", "admin:reports:sensitive"]
     assert admin["resource"].endswith("/admin-mcp")
     challenge = client.post("/admin-mcp", json={
         "jsonrpc": "2.0", "id": 1, "method": "ping",
@@ -529,8 +530,8 @@ def test_every_admin_tool_survives_garbage_arguments(client):
     """A confused model's arguments become a tool error, never a 500."""
     from app.mcp.tools import REGISTRY
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
-        tokens, _ = _admin_session(client, WRITE)
-        for name in sorted(n for n, t in REGISTRY.items() if t.scope in ("admin:read", "admin:write")):
+        tokens, _ = _admin_session(client, [*WRITE, ADMIN_REPORT_SENSITIVE])
+        for name in sorted(n for n, t in REGISTRY.items() if t.scope in ADMIN_SCOPES):
             if name in ("admin_deploy_runs", "admin_edge_summary", "admin_pause_ai_connections"):
                 continue  # network-backed, or covered by its own confirmation test
             for arguments in ({}, {"rule_id": "x", "report_id": [], "limit": "lots", "status": 5,

@@ -481,10 +481,10 @@ def authorize_decide(request: Request, decision: str = Form(...),
             ))
         except scope_defs.ScopeError as exc:
             return _error_page("Invalid permissions", str(exc), 400)
-    elif _admin(request) and scope_defs.ADMIN_WRITE in scope.split():
+    elif _admin(request):
         # Without an explicit selection (a consent form from before the
-        # checkboxes), admin:write is never granted just because it was asked for.
-        scope = scope_defs.format_scope([s for s in scope.split() if s != scope_defs.ADMIN_WRITE])
+        # checkboxes), privileged permissions are never granted just because they were requested.
+        scope = scope_defs.format_scope([s for s in scope.split() if s in scope_defs.ADMIN_DEFAULT_SCOPES])
     elif read_only:
         # Compatibility for a consent page opened before deployment.
         # Keep the reads, drop every write.

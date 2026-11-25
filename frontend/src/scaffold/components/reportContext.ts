@@ -7,6 +7,11 @@ export interface ReportPrefill {
   source?: ReportSource
   /** The failure text the UI already showed the person. */
   errorMessage?: string
+  /** Non-financial, allowlisted import-rule summary. */
+  publicSafeSummary?: string
+  /** Local originals and inputs from the specific failing workflow. */
+  documents?: readonly (File | null | undefined)[]
+  workflow?: string
   /** Server correlation id, when the failure carried one. */
   errorRef?: string | null
   /** Seed text for the message box (import findings use this). */

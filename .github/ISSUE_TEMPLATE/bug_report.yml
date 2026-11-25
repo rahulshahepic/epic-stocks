@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem in Epic Stocks
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Never include actual share prices, financial figures, account details, statements, or unredacted screenshots. Use invented numbers. For account-specific problems, use the private report option in Epic Stocks instead.
+  - type: textarea
+    attributes:
+      label: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: Include expected and actual behavior, using fictional data if needed.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Browser and device
+  - type: checkboxes
+    attributes:
+      label: Privacy
+      options:
+        - label: I have removed personal and confidential financial information.
+          required: true

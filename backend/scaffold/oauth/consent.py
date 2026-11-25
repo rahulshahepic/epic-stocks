@@ -125,7 +125,7 @@ def _page(title: str, body: str) -> str:
 
 
 # Permissions a person must tick themselves, even when the client asks for them.
-NEVER_PRESELECTED = frozenset({scope_defs.ADMIN_WRITE})
+NEVER_PRESELECTED = frozenset({scope_defs.ADMIN_WRITE, scope_defs.ADMIN_REPORT_SENSITIVE})
 
 
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
@@ -149,10 +149,11 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
             for scope in scopes
         )
         sections.append(
-            f'<fieldset><legend>{title}</legend><div class="quick" hidden>'
-            f'<button type="button" data-select="all" aria-label="Select all {title.lower()} permissions">Select all</button>'
-            f'<button type="button" data-select="none" aria-label="Clear all {title.lower()} permissions">Clear all</button>'
-            '</div>' + ('<p class="help">Preparing imports and editing equity also require equity read access.</p>' if title == 'Equity' else '')
+            f'<fieldset><legend>{title}</legend>'
+            + ("" if admin else '<div class="quick" hidden>'
+               f'<button type="button" data-select="all" aria-label="Select all {title.lower()} permissions">Select all</button>'
+               f'<button type="button" data-select="none" aria-label="Clear all {title.lower()} permissions">Clear all</button>'
+               '</div>') + ('<p class="help">Preparing imports and editing equity also require equity read access.</p>' if title == 'Equity' else '')
             + ('<p class="help">Changing settings also requires read access. Anything that would let '
                'more assistants connect is filed as a request you approve in Admin, never done directly.</p>'
                if title == 'Diagnostics' else '')
@@ -161,9 +162,11 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
     body = (
         f'<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>'
         f'<p class="origin">It will return you to <code>{_esc(redirect_origin)}</code></p>'
-        '<p class="help">Choose what this connection can do. Requested permissions start checked; '
-        'you can add or remove any permission below.</p>'
-        f'<form method="post" action="{_esc(action)}">'
+        + ('<p class="help">Choose which diagnostic permissions this connection gets. '
+           'Write access and sensitive reports require your selection.</p>' if admin else
+           '<p class="help">Choose what this connection can do. Requested permissions start checked. '
+           'You can add or remove any permission below.</p>')
+        + f'<form method="post" action="{_esc(action)}">'
         f'<input type="hidden" name="request" value="{_esc(request_token)}">'
         f'<input type="hidden" name="csrf" value="{_esc(csrf)}">'
         '<input type="hidden" name="permission_selection" value="1">'
@@ -195,10 +198,14 @@ if (form) {
       equityRead.setCustomValidity('To prepare imports or edit equity, also select Read your equity.');
     }
     const adminRead = choices.find(input => input.value === 'admin:read');
-    if (selected.has('admin:write') && !selected.has('admin:read')) {
-      adminRead.setCustomValidity('To change settings, also select read access.');
+    const sensitiveReports = selected.has('admin:reports:sensitive');
+    if ((selected.has('admin:write') || sensitiveReports) && !selected.has('admin:read')) {
+      adminRead.setCustomValidity('To select additional diagnostic permissions, also select read access.');
     }
-    if (selected.has('admin:write')) {
+    if (sensitiveReports) {
+      summary.textContent = 'This connection can retrieve consented financial details and original import documents. ' +
+        'Reads are audited. Disconnect in Settings to revoke access.';
+    } else if (selected.has('admin:write')) {
       summary.textContent = 'This selection lets the assistant change site settings when you ask: ' +
         'triage reports and switch AI providers off. Anything that lets more assistants connect ' +
         'waits for your approval in Admin. You can disconnect at any time in Settings.';

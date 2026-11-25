@@ -76,7 +76,7 @@ SMS, MFA, or dataset setup is required.
 
 ## Deployment
 
-Alembic revision `x5y6z7a8b9c0` adds only the reviewer binding table. No credentials
+Alembic revision `y6z7a8b9c0d1` adds only the reviewer binding table. No credentials
 or reviewer users are created by migration, startup or deployment. There are no
 new production secrets or environment switches. Provision production accounts
 only after approved deployment; test production discovery without real data.
@@ -94,3 +94,9 @@ rotate/revoke promptly after review and never copy it into public artifacts.
 Reviewers can file the ordinary opt-in problem report and sign out everywhere
 for their own fictional identity. Sign-out and token refresh serialize with
 credential rotation. Public/static requests do not trigger reviewer lookups.
+
+Reviewers may deliberately submit separately consented support diagnostics and
+fictional failed-import documents through the same production reporting flow.
+Those submissions use the existing encrypted 30-day support store and sensitive
+admin permission; they never grant a reviewer access to other reports. Linked
+material is erased when the reviewer is deleted. Supply fictional samples only.

@@ -12,6 +12,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
 import { pluginHost, retirementHost, purchaseSnapshot, mobileEditorSnapshot, snapshots, retirementSnapshot } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
+import { openFailedImportReport } from './reporting-fixture'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -586,6 +587,33 @@ test.describe('Screenshots', () => {
       .fill('Signing in with Google sends me back to this page every time.')
     await page.waitForTimeout(500)
     await shoot(page, 'report-dark-mobile')
+  })
+
+  test('report dialog with original import files - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    const dialog = await openFailedImportReport(page, BASE)
+    await dialog.getByRole('checkbox', { name: /Attach the original import files/ }).check()
+    await dialog.getByRole('button', { name: 'Remove fictional-statement.pdf' }).scrollIntoViewIfNeeded()
+    await shoot(page, 'report-import-files-mobile')
+  })
+
+  test('report investigation in browser admin - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    const dialog = await openFailedImportReport(page, BASE)
+    await dialog.getByRole('checkbox', { name: /Attach the original import files/ }).check()
+    await dialog.getByRole('button', { name: 'Remove fictional-statement.pdf' }).click()
+    await dialog.getByRole('button', { name: 'Send report' }).click()
+    await expect(dialog.getByText('Thanks — that went straight to the maintainer.')).toBeVisible()
+    await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: EMAIL, name: 'Test Admin' } })
+    await page.goto(`${BASE}/admin`)
+    await page.getByRole('button', { name: /private report with consented material/i }).first().click()
+    await page.getByRole('button', { name: 'Open private details' }).click()
+    await page.getByRole('button', { name: 'View text' }).click()
+    await expect(page.locator('pre').filter({ hasText: 'Fictional grant,321,25.50' })).toBeVisible()
+    await page.getByRole('heading', { name: 'Consented material' }).scrollIntoViewIfNeeded()
+    await shoot(page, 'admin-private-report-light-mobile')
   })
 
   test('try page - light - mobile', async ({ page }) => {
@@ -1213,6 +1241,7 @@ test('directory reviewer fictional portfolio and loans', async ({ page }) => {
   await page.goto(BASE)
   await expect(page.getByText(/FICTIONAL REVIEW DATA/)).toBeVisible()
   await page.waitForLoadState('networkidle')
+  await expect(page.getByText('Calculating exit…')).toHaveCount(0)
   await page.screenshot({ path: `${OUT}/directory-equity-light-desktop.png` })
   await page.goto(`${BASE}/loans`)
   await page.waitForLoadState('networkidle')
@@ -1220,6 +1249,7 @@ test('directory reviewer fictional portfolio and loans', async ({ page }) => {
   await page.setViewportSize(MOBILE)
   await page.goto(BASE)
   await page.waitForLoadState('networkidle')
+  await expect(page.getByText('Calculating exit…')).toHaveCount(0)
   await page.screenshot({ path: `${OUT}/directory-equity-light-mobile.png`, fullPage: true })
 })
 

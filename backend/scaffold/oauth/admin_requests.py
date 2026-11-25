@@ -38,12 +38,13 @@ UNBLOCK_SENDING = "unblock_invite_sending"
 END_MAINTENANCE = "end_maintenance"
 SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
 GRANT_CONTENT_ADMIN = "grant_content_admin"
+PURGE_REPORT_MATERIAL = "purge_report_material"
 ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
-           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, REVIEWER_ACCESS)
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, REVIEWER_ACCESS, PURGE_REPORT_MATERIAL)
 TARGET_TYPES = {REVIEWER_ACCESS: "reviewer", RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
                 UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
                 END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
-                GRANT_CONTENT_ADMIN: "user"}
+                GRANT_CONTENT_ADMIN: "user", PURGE_REPORT_MATERIAL: "report"}
 
 PENDING, APPROVED, REJECTED, EXPIRED, FAILED, CANCELLED = (
     "pending", "approved", "rejected", "expired", "failed", "cancelled")
@@ -135,6 +136,8 @@ def describe(row: AdminActionRequest) -> str:
     if row.action == REVIEWER_ACCESS:
         target = f"rotate reviewer #{payload['reviewer_id']}" if payload.get('reviewer_id') else 'provision a new reviewer'
         return f"{payload['platform']}: {target}, {payload['scenario']} fictional data, {payload['days']} days"
+    if row.action == PURGE_REPORT_MATERIAL:
+        return f"Delete all sensitive material for report #{payload['report_id']}"
     if row.action == RESUME_ONBOARDING:
         return "Resume optional onboarding measurement"
     if row.action == ADD_RULE:
@@ -174,7 +177,7 @@ def _int_arg(args: dict, name: str, hint: str) -> int:
 
 
 def _target_id(payload: dict) -> int | None:
-    for key in ("rule_id", "block_id", "user_id"):
+    for key in ("rule_id", "block_id", "user_id", "report_id"):
         if key in payload:
             return payload[key]
     return None
@@ -186,6 +189,12 @@ def _validate(db: Session, action: str, args: dict) -> dict:
     if action == REVIEWER_ACCESS:
         from scaffold.reviewers import validate_access
         return validate_access(db, args)
+    if action == PURGE_REPORT_MATERIAL:
+        from scaffold.sensitive_reports import available_ids
+        report_id = _int_arg(args, "report_id", "from admin_user_reports")
+        if report_id not in available_ids(db, [report_id]):
+            raise ValueError("No sensitive material is available for this report")
+        return {"report_id": report_id}
     if action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused
         if not paused(db):
@@ -373,6 +382,11 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         from scaffold.reviewers import grant_access
         result = grant_access(db, payload)
         return "Reviewer access granted", None, result
+    if row.action == PURGE_REPORT_MATERIAL:
+        from scaffold.sensitive_reports import erase_material
+        report_id = payload["report_id"]
+        removed = erase_material(db, report_id)
+        return "Sensitive report material removed", {"present": removed}, {"present": False}
     if row.action == RESUME_ONBOARDING:
         from scaffold.onboarding import paused, set_paused
         if not paused(db):
@@ -554,8 +568,21 @@ def _recent(db: Session, action: str, email: str) -> int:
     ).count()
 
 
+def _check_purge_grant(row: AdminActionRequest, grant_id: int | None, scopes) -> None:
+    from .scopes import ADMIN_REPORT_SENSITIVE, ADMIN_WRITE
+
+    if row.action == PURGE_REPORT_MATERIAL and (
+        grant_id is None or grant_id != row.grant_id
+        or ADMIN_REPORT_SENSITIVE not in scopes or ADMIN_WRITE not in scopes
+    ):
+        raise ApprovalError(
+            "Use the connection that filed this deletion, with sensitive report and write permissions, "
+            "or approve it in Admin."
+        )
+
+
 def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = None,
-              client_name: str | None = None) -> dict:
+              client_name: str | None = None, scopes: tuple[str, ...] = ()) -> dict:
     """Mint a fresh code for a pending request and deliver it to `admin`.
     Any earlier code for it stops working. Returns where it went."""
     from .approval_delivery import deliver
@@ -564,6 +591,7 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
     row = db.get(AdminActionRequest, request_id)
     if row is None:
         raise ApprovalError("No request with that id")
+    _check_purge_grant(row, grant_id, scopes)
     if row.status != PENDING:
         raise ApprovalError(f"This request is already {row.status}")
     if (row.approval_codes_sent or 0) >= MAX_CODES_PER_REQUEST:
@@ -616,11 +644,13 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
 
 
 def approve_with_code(db: Session, request_id: int, code, *, admin_email: str,
-                      grant_id: int | None = None, client_name: str | None = None) -> AdminActionRequest:
+                      grant_id: int | None = None, client_name: str | None = None,
+                      scopes: tuple[str, ...] = ()) -> AdminActionRequest:
     expire_stale(db)
     row = db.get(AdminActionRequest, request_id)
     if row is None:
         raise ApprovalError("No request with that id")
+    _check_purge_grant(row, grant_id, scopes)
     if row.status != PENDING:
         raise ApprovalError(f"This request is already {row.status}")
     if not isinstance(code, str):

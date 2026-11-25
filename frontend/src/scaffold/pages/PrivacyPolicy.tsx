@@ -87,7 +87,7 @@ export default function PrivacyPolicy() {
             <P>Dedicated directory-reviewer accounts use generated passwords and contain fictional data only. We store keyed password verifiers, audit sign-in and management without passwords or financial values, and enforce access expiration and revocation. Reviewers cannot access ordinary accounts or administer the service.</P>
             <P>When you connect an AI assistant, your selected scopes determine the financial fields and computed results shared with that provider and which records it may edit. Its own terms and retention apply. Disconnecting immediately ends future access; previous conversations remain with the provider. MCP activity records contain tool names, scopes, timestamps and outcomes, not financial arguments or results, and are retained for up to 90 days with a 5,000-row account cap.</P>
             <P>Import files are parsed by application code without an LLM. Confirmed records and pre-import backup snapshots are stored. Sharing an excerpt or repair brief with your assistant is a separate disclosure you control. Remove government identifiers, signatures, payment details and credentials first.</P>
-            <P>The separate administrator connector can read problem reports and identifying diagnostic details you explicitly opted to include. It does not expose your personal financial records or documents. Do not type confidential information into reports. Public GitHub issues are public; private in-app reports are not published there.</P>
+            <P>The separate administrator connector can discover report stubs with ordinary admin read access. Its separately selected sensitive-report permission can retrieve identifying details, financial diagnostics and original failed-import documents you explicitly chose to share. It does not grant general access to your financial account. Ordinary reports and public GitHub issues do not attach financial material. Keep confidential information out of public issues; private support material requires separate consent and expires after 30 days.</P>
           </Section>
 
           {privacyDataCollected && (
@@ -176,7 +176,7 @@ export default function PrivacyPolicy() {
           <Section title="Data Retention and Portability">
             <P>
               Your data persists until you explicitly delete it. You can export your financial records at any
-              time using the Excel export feature. Account deletion removes live account data immediately. Existing encrypted backup archives can retain deleted records under the operator's retention policy. The newest seven complete backups are retained even beyond the nominal window, including if backups stop. Diagnostic reports are retained with identifying account fields removed. The operator must prevent restored backups from reactivating deleted accounts; ask them about retention and restore procedures.
+              time using the Excel export feature. Account deletion removes live account data immediately. Existing encrypted backup archives can retain deleted records under the operator's retention policy. The newest seven complete backups are retained even beyond the nominal window, including if backups stop. Ordinary diagnostic reports are retained with linked identifying fields removed. Separately consented material linked to the deleted account is erased. The operator must prevent restored backups from reactivating deleted accounts; ask them about retention and restore procedures.
             </P>
           </Section>
 

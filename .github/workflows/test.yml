@@ -340,6 +340,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Test encrypted problem reporting
+        # Exercise the report with production-style encryption and a fictional
+        # staging account. Leave the full browser suite's test setup unchanged.
+        env:
+          E2E_APP_ENV: staging
+          E2E_KEY_ENCRYPTION_KEY: "7465737474657374746573747465737474657374746573747465737474657374"
+          E2E_BASE_URL: http://127.0.0.1:8000
+          E2E_API_URL: http://127.0.0.1:8000
+        run: |
+          docker compose -f docker-compose.e2e.yml up -d --no-deps --force-recreate --wait --wait-timeout 120 e2e-app
+          cd frontend
+          npx playwright test --project=main e2e/reporting.spec.ts --workers=1
+
       - name: Dump backend logs on failure
         if: failure()
         run: |

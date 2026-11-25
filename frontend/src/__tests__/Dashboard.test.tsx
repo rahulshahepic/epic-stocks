@@ -117,6 +117,7 @@ beforeEach(() => {
   localStorage.clear()
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
+  MOCK_DASHBOARD_NEXT_OVERRIDE.value = null
 })
 
 const MOCK_DASHBOARD_NEXT_OVERRIDE: {value: Record<string, unknown> | null} = {value: null}
@@ -604,4 +605,13 @@ it('refreshes the primary exit amount after applying a tax or lot-selection tip'
   await screen.findByText('Additional cash needed to settle: $55,000')
   await userEvent.click(screen.getByRole('button', {name: 'Apply'}))
   await waitFor(() => expect(screen.getByText('Estimated cash from leaving on this date').parentElement).toHaveTextContent('$4,321'))
+})
+
+it('links unpriced holdings to Prices', async () => {
+  MOCK_DASHBOARD_NEXT_OVERRIDE.value = {current_price: null, total_stock_value: null, net_equity: null}
+  mockApi([])
+  renderDashboard()
+  expect(await screen.findByText(/Price not entered for this date/)).toBeVisible()
+  expect(screen.getByRole('link', {name: 'Add a price'})).toHaveAttribute('href', '/prices')
+  expect(screen.getByText(/vested shares · Price not entered/)).toBeVisible()
 })

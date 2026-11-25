@@ -339,6 +339,12 @@ export default function Dashboard() {
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
+      {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
+          {!readOnly && <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>}
+        </div>
+      )}
       {cv && grantHoldings && (
         <HeroCard
           className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
@@ -368,7 +374,7 @@ export default function Dashboard() {
               </p>
               {cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
               <p className="font-semibold tabular-nums">
-                {fmtNum(cv.total_shares)} vested shares · {(cv.current_price === null ? '—' : fmtPrice(cv.current_price))}/share
+                {fmtNum(cv.total_shares)} vested shares · {cv.current_price === null ? 'Price not entered' : `${fmtPrice(cv.current_price)}/share`}
                 {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
               </p>
               {cv.next_event && (

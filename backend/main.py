@@ -1,6 +1,9 @@
+import anyio
+import asyncio
 import logging
+import sys
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -464,6 +467,7 @@ class EncryptionMiddleware:
 
     def __init__(self, app):
         self.app = app
+        self._preflight_limiter = anyio.CapacityLimiter(16)
 
     @staticmethod
     def _token_from_scope(scope) -> str | None:
@@ -493,31 +497,66 @@ class EncryptionMiddleware:
             return credential.strip()
         return None
 
+    @contextmanager
+    def _request_context(self, scope):
+        from scaffold.crypto import get_current_key, reload_master_key_if_stale
+        from scaffold.web_test_accounts import request_workspace
+        db = database.SessionLocal()
+        set_current_key(None)
+        try:
+            if encryption_enabled():
+                reload_master_key_if_stale(db)
+            token = self._token_from_scope(scope)
+            with request_workspace(db, token, scope.get('path', ''), scope.get('method', 'GET')) as target:
+                if token and encryption_enabled():
+                    self._try_set_key(token, db, effective_user_id=target)
+                key = get_current_key()
+                db.close()
+                yield target, key
+        finally:
+            db.close()
+            set_current_key(None)
+
+    async def _guard_worker(self, operation, *args):
+        # Retain ownership until the worker completes, including raw asyncio
+        # cancellation during entry. AnyIO shielding also covers cancelled scopes.
+        task = asyncio.create_task(anyio.to_thread.run_sync(operation, *args, limiter=self._preflight_limiter))
+        cancelled = False
+        with anyio.CancelScope(shield=True):
+            while True:
+                try:
+                    return await asyncio.shield(task), cancelled
+                except asyncio.CancelledError:
+                    if task.cancelled():
+                        raise
+                    cancelled = True
+
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
         from scaffold.synthetic_accounts import SyntheticAccountBusy
-        from scaffold.web_test_accounts import request_workspace
-        db = database.SessionLocal()
+        guard = self._request_context(scope)
         try:
-            from scaffold.crypto import reload_master_key_if_stale
-            if encryption_enabled():
-                reload_master_key_if_stale(db)
-            token = self._token_from_scope(scope)
+            # SQLAlchemy pool waits must not block ASGI. Use a separate worker limiter,
+            # separate from FastAPI's sync endpoint pool: queued preflights must
+            # not consume every worker needed to finish/release active requests.
+            (target, key), cancelled = await self._guard_worker(guard.__enter__)
             try:
-                with request_workspace(db, token, scope.get('path', ''), scope.get('method', 'GET')) as target:
-                    if target is not None:
-                        scope.setdefault('state', {})['staging_workspace_id'] = target
-                    if token and encryption_enabled():
-                        self._try_set_key(token, db, effective_user_id=target)
-                    db.close()
-                    await self.app(scope, receive, send)
-            except HTTPException as exc:
-                await JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)(scope, receive, send)
-            except SyntheticAccountBusy as exc:
-                await JSONResponse({'detail': str(exc)}, status_code=409, headers={'Retry-After': '1'})(scope, receive, send)
+                if cancelled:
+                    raise asyncio.CancelledError
+                if target is not None:
+                    scope.setdefault('state', {})['staging_workspace_id'] = target
+                set_current_key(key)
+                await self.app(scope, receive, send)
+            finally:
+                _, cancelled_on_exit = await self._guard_worker(guard.__exit__, *sys.exc_info())
+                if cancelled_on_exit:
+                    raise asyncio.CancelledError
+        except HTTPException as exc:
+            await JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)(scope, receive, send)
+        except SyntheticAccountBusy as exc:
+            await JSONResponse({'detail': str(exc)}, status_code=409, headers={'Retry-After': '1'})(scope, receive, send)
         finally:
-            db.close()
             set_current_key(None)
 
     def _try_set_key(self, token: str, db=None, *, effective_user_id=None):

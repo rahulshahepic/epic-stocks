@@ -16,6 +16,8 @@ test('directory reviewer: production-shaped login, persistent financial writes, 
   await reviewer.getByLabel('Password', { exact: true }).fill(accounts[0].password)
   await reviewer.getByRole('button', { name: 'Sign in to fictional account' }).click()
   await expect(reviewer).toHaveURL(/\/$/)
+  await reviewer.waitForLoadState('networkidle')
+  await expect(reviewer.getByText('Loading...', { exact: true })).toHaveCount(0)
   const grants = await reviewer.request.get('/api/grants')
   expect(grants.ok()).toBeTruthy()
   expect((await grants.json()).length).toBeGreaterThan(0)
@@ -25,8 +27,17 @@ test('directory reviewer: production-shaped login, persistent financial writes, 
   expect((await reviewer.request.get('/api/admin/reviewers')).status()).toBe(403)
   expect((await reviewer.request.get('/api/sharing')).status()).toBe(403)
   for (const account of accounts) {
-    const preview = await (await page.request.post(`/api/admin/reviewers/${account.id}/manage`, { data: { action: 'delete' } })).json()
-    expect((await page.request.post(`/api/admin/reviewers/${account.id}/manage`, { data: { action: 'delete', confirm: preview.confirm } })).ok()).toBeTruthy()
+    // Initial dashboard reads hold a shared account guard. Deletion correctly
+    // refuses concurrent readers; retry only that explicit busy response.
+    await expect.poll(async () => {
+      const response = await page.request.post(`/api/admin/reviewers/${account.id}/manage`, { data: { action: 'delete' } })
+      if (response.status() === 409) return false
+      expect(response.ok(), await response.text()).toBeTruthy()
+      const preview = await response.json()
+      const result = await page.request.post(`/api/admin/reviewers/${account.id}/manage`, { data: { action: 'delete', confirm: preview.confirm } })
+      if (result.status() !== 409) expect(result.ok(), await result.text()).toBeTruthy()
+      return result.ok()
+    }, { timeout: 15_000 }).toBeTruthy()
   }
   expect((await reviewer.request.get('/api/grants')).status()).toBe(401)
   await reviewerContext.close()

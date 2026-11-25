@@ -312,3 +312,124 @@ def test_directory_reviewers_write_independently_in_parallel(isolated_database):
 
     with ThreadPoolExecutor(2) as pool:
         assert list(pool.map(write, range(2))) == [700, 800]
+
+
+def test_http_preflight_does_not_block_event_loop_on_exhausted_pool(isolated_database, monkeypatch):
+    """A queued identity lookup must let an active request release its connection."""
+    import asyncio
+    import httpx
+    import database
+    from main import EncryptionMiddleware
+    from scaffold.auth import create_token
+    from scaffold.crypto import get_current_key, decrypt_user_key
+    factory, _, owner_id, _ = isolated_database
+    monkeypatch.setattr(database, 'SessionLocal', factory)
+    monkeypatch.delenv('DOMAIN', raising=False)
+    monkeypatch.delenv('APP_ENV', raising=False)
+    with factory() as db:
+        user = db.get(User, owner_id)
+        token = create_token(owner_id, user.session_version)
+        expected_key = decrypt_user_key(user.encrypted_key) if user.encrypted_key else None
+    engine = factory.kw['bind']
+    if engine.dialect.name != 'postgresql':
+        pytest.skip('Requires a bounded PostgreSQL connection pool')
+
+    async def run():
+        holding = engine.connect()  # Occupy the single financial connection.
+        async def endpoint(scope, receive, send):
+            assert get_current_key() == expected_key
+            await send({'type': 'http.response.start', 'status': 200, 'headers': []})
+            await send({'type': 'http.response.body', 'body': b'ok'})
+        transport = httpx.ASGITransport(app=EncryptionMiddleware(endpoint))
+        async with httpx.AsyncClient(transport=transport, base_url='https://fictional.test') as client:
+            pending = asyncio.create_task(client.get('/api/me', cookies={'session': token}))
+            try:
+                # On the broken implementation, the loop stalls until the pool
+                # timeout instead of running this release after 50 ms.
+                await asyncio.sleep(0.05)
+                holding.close()
+                response = await asyncio.wait_for(pending, 1)
+                assert response.status_code == 200
+            finally:
+                holding.close()
+                if not pending.done():
+                    await pending
+    asyncio.run(run())
+
+
+def test_cancelled_http_request_releases_preflight_guard_and_key():
+    import anyio
+    from main import EncryptionMiddleware
+    from scaffold.crypto import get_current_key, set_current_key
+    events = []
+    @contextmanager
+    def guarded(scope):
+        events.append('entered')
+        try:
+            yield None, bytearray(b'fictional-request-key')
+        finally:
+            events.append('exited')
+    async def run():
+        async def endpoint(scope, receive, send):
+            assert get_current_key() == bytearray(b'fictional-request-key')
+            cancellation.cancel()
+            await anyio.sleep(0)
+        middleware = EncryptionMiddleware(endpoint)
+        middleware._request_context = guarded
+        async def unused(*args):
+            pass
+        set_current_key(None)
+        with anyio.CancelScope() as cancellation:
+            await middleware({'type': 'http'}, unused, unused)
+        assert events == ['entered', 'exited']
+        assert get_current_key() is None
+    anyio.run(run)
+
+
+def test_raw_task_cancellation_during_preflight_keeps_guard_owned():
+    import asyncio
+    from main import EncryptionMiddleware
+    from scaffold.crypto import get_current_key, set_current_key
+    started, release = threading.Event(), threading.Event()
+    events = []
+    @contextmanager
+    def guarded(scope):
+        started.set()
+        assert release.wait(2)
+        events.append('entered')
+        try:
+            yield None, None
+        finally:
+            events.append('exited')
+    async def run():
+        async def endpoint(*args):
+            pytest.fail('Cancelled preflight must not dispatch')
+        async def unused(*args):
+            pass
+        middleware = EncryptionMiddleware(endpoint)
+        middleware._request_context = guarded
+        set_current_key(None)
+        pending = asyncio.create_task(middleware({'type': 'http'}, unused, unused))
+        while not started.is_set():
+            await asyncio.sleep(0.001)
+        pending.cancel()
+        await asyncio.sleep(0)
+        assert not pending.done()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        assert events == ['entered', 'exited']
+        assert get_current_key() is None
+    asyncio.run(run())
+
+
+def test_cancelled_preflight_worker_does_not_spin():
+    import asyncio
+    from main import EncryptionMiddleware
+    async def run():
+        middleware = EncryptionMiddleware(None)
+        def cancelled_worker():
+            raise asyncio.CancelledError
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(middleware._guard_worker(cancelled_worker), 1)
+    asyncio.run(run())

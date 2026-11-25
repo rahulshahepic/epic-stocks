@@ -998,14 +998,14 @@ function RetirementAccount() {
             : showExpenses
               ? { idle: '', saving: 'Saving expenses…', saved: 'Expenses saved', error: 'Save failed' }[expenseSaveStatus]
               : exitMode === 'auto' && !legacyExitHeld && (exitError || exitPreviewLoading)
-              ? (saveStatus === 'saved' ? 'Inputs saved — exit projection pending' : saveStatus === 'error' ? 'Save failed' : 'Saving inputs — exit projection pending')
-              : saveStatus === 'saving'
-                ? 'Saving…'
-                : saveStatus === 'saved'
-                  ? 'All inputs saved'
-                  : saveStatus === 'error'
-                    ? 'Save failed'
-                    : 'Inputs save automatically'}
+                ? (saveStatus === 'saved' ? 'Inputs saved — exit projection pending' : saveStatus === 'error' ? 'Save failed' : 'Saving inputs — exit projection pending')
+                : saveStatus === 'saving'
+                  ? 'Saving…'
+                  : saveStatus === 'saved'
+                    ? 'All inputs saved'
+                    : saveStatus === 'error'
+                      ? 'Save failed'
+                      : 'Inputs save automatically'}
         </span>}
       </div>
 

@@ -99,6 +99,32 @@ def test_preview_exit_early_date_uses_partial_shares(client):
     assert data["unvested_cost_proceeds"] == pytest.approx(5000.0)
 
 
+def test_preview_exit_counts_purchase_and_loan_from_exercise_date(client):
+    register_user(client)
+    _seed_data(client)
+    grant = client.post("/api/grants", json={
+        "year": 2030, "type": "Purchase", "shares": 100, "price": 10.0,
+        "vest_start": "2031-09-30", "periods": 4,
+        "exercise_date": "2030-11-30", "dp_shares": 0, "election_83b": True,
+    })
+    assert grant.status_code == 201, grant.text
+    loan = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2030, "grant_type": "Purchase", "loan_type": "Purchase",
+        "loan_year": 2030, "amount": 1000.0, "interest_rate": 0.0,
+        "disbursed_on": "2030-11-30", "due_date": "2040-07-15",
+    })
+    assert loan.status_code == 201, loan.text
+
+    for exit_date, purchase_cost in (("2030-11-29", 0.0), ("2030-11-30", 1000.0)):
+        resp = client.get("/api/preview-exit", params={"date": exit_date})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["unvested_cost_proceeds"] == pytest.approx(purchase_cost)
+        assert data["outstanding_principal"] == pytest.approx(purchase_cost)
+        assert data["liquidation_net_cash"] == pytest.approx(10000.0)
+        assert data["net_cash"] == pytest.approx(10000.0)
+
+
 def test_preview_exit_no_data_returns_none(client):
     register_user(client)
     resp = client.get("/api/preview-exit?date=2025-06-01")

@@ -9,7 +9,7 @@ from .read_tools import _opt_date
 from .accounts import ACCOUNT_PROPERTY
 from .tools import REGISTRY, Tool, ToolContext, object_schema, register
 
-RESOURCE_VERSION = 4
+RESOURCE_VERSION = 5
 RESOURCE_URI = f"ui://epic-stocks/portfolio-v{RESOURCE_VERSION}.html"
 # Published resource URIs can outlive a deployment in cached tool descriptors.
 RESOURCE_URIS = frozenset(f"ui://epic-stocks/portfolio-v{v}.html" for v in range(1, RESOURCE_VERSION + 1))

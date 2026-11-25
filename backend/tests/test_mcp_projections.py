@@ -102,6 +102,25 @@ def test_the_dashboard_reports_today_not_the_end_of_the_projection(mcp):
     assert dash["as_of"] == date.today().isoformat()
 
 
+def test_portfolio_labels_the_next_share_price_estimate(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    today = date.today()
+    applicable = today + timedelta(days=5)
+    announcement = applicable + timedelta(days=60)
+    for effective, price, tentative in ((today - timedelta(days=30), 10, False), (applicable, 12, True)):
+        body = {"effective_date": effective.isoformat(), "price": price, "is_estimate": tentative}
+        if tentative:
+            body["expected_announcement_date"] = announcement.isoformat()
+        response = client.post("/api/prices", json=body)
+        assert response.status_code in (200, 201), response.text
+    next_event = Mcp(client).call("show_equity", view="summary")["data"]["next_event"]
+    assert next_event["date"] == applicable.isoformat()
+    assert next_event["event_type"] == "Share Price"
+    assert next_event["price_is_estimate"] is True
+    assert next_event["expected_announcement_date"] == announcement.isoformat()
+
+
 def test_the_unbounded_endpoint_is_the_one_that_runs_to_the_projection(mcp, client):
     """Why the tool passes as_of at all. The app never shows this either — it
     computes its own card values for the date in its picker."""

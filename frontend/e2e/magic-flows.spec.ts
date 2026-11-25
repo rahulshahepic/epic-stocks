@@ -69,7 +69,7 @@ test('trial signup keeps the preview and focuses sign-in', async ({page}) => {
   await expect(page.getByRole('heading', {name: 'Sign in to save your numbers'})).toBeVisible()
   const provider = page.getByRole('button', {name: 'Sign in with Google'})
   expect((await provider.boundingBox())!.y).toBeLessThan(812)
-  await expect(page.getByRole('link', {name: 'Explore a fictional employee demo'})).toHaveCount(0)
+  await expect(page.getByRole('link', {name: 'Try the demo'})).toHaveCount(0)
   await page.screenshot({path: '../screenshots/magic-signup-light-mobile.png', fullPage: true, style: '[aria-label="Mobile navigation"]{visibility:hidden!important}'})
   await page.getByRole('link', {name: 'Back to my preview'}).click()
   await expect(page.getByText('Preview · nothing saved')).toBeVisible()

@@ -141,7 +141,7 @@ test.describe('Screenshots', () => {
     test('retirement purchase outcomes - ' + theme + ' - mobile', async ({ page }) => {
       await authedPage(page, MOBILE, theme)
       await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: `purchase-outcomes-${theme}@screenshots.example.test`, name: 'Planning Demo' } })
-      const params = { retirementDate: '2032-01-01', epicExit: 5, paths: 1000, seed: 1729,
+      const params = { retirementDate: '2032-01-01', epicExitMode: 'manual', epicExit: 5, paths: 1000, seed: 1729,
         currentAge: 45, endAge: 85, defaultSpend: 160, minSpend: 100,
         plannedEvents: [
           { id: 'car', title: 'Sports car', kind: 'vehicle', date: '2035-01-01', amountM: 0.2, annualCostM: 0.015, lifetimeYears: 10, replacementEveryYears: 10, depreciationRate: 0, condition: { minStartingWealthRatio: 1.4 }, conditionFailure: 'defer' },
@@ -159,6 +159,14 @@ test.describe('Screenshots', () => {
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await outcomes.screenshot({ path: `${OUT}/retirement-purchase-outcomes-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+      await page.getByRole('button', { name: 'Compare one year later' }).click()
+      const comparison = page.getByRole('table', { name: 'Comparison of retirement dates' })
+      await expect(comparison.getByRole('rowheader', { name: 'Any optional purchase' })).toBeVisible()
+      await expect(comparison.getByRole('rowheader', { name: 'Assets exhausted' })).toBeVisible()
+      await expect(comparison.getByRole('columnheader', { name: 'Jan 1, 2033' })).toBeVisible()
+      const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
+      expect(saved.params.retirementDate).toBe('2032-01-01')
+      await comparison.locator('../..').screenshot({ path: `${OUT}/retirement-date-comparison-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
       await outcomes.getByText('Calculation details', { exact: true }).click()
       await outcomes.getByLabel('Details for Sports car', { exact: true }).click()
       await outcomes.screenshot({ path: `${OUT}/retirement-purchase-details-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
@@ -433,10 +441,11 @@ test.describe('Screenshots', () => {
       await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
       await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)
       await page.getByRole('button', {name: 'Read my files'}).click()
+      await page.getByText('What the files could verify', {exact: true}).click()
       const checks = page.getByRole('region', {name: 'Import checks'})
       await expect(checks.getByText('Not available', {exact: true})).toBeVisible()
       await expect(checks.getByText('Stale statement', {exact: true})).toBeVisible()
-      await checks.screenshot({path: `${OUT}/import-evidence-${theme}-${size}.png`})
+      await checks.screenshot({style: '[aria-label="Mobile navigation"]{visibility:hidden!important}', path: `${OUT}/import-evidence-${theme}-${size}.png`})
     })
   }
 

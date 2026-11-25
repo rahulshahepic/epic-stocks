@@ -20,6 +20,7 @@ const WI_DEFAULTS: TaxSettings = {
   flexible_payoff_enabled: false,
   prefer_stock_dp: false,
   deduct_investment_interest: false,
+  investment_interest_method: 'accrual',
   deduction_excluded_years: null,
   taxable_years: [],
 }
@@ -135,7 +136,7 @@ export default function AppSettingsSections() {
           Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying long-term gains is baked into the state long-term rate.
         </p>
 
-        <p className="mt-2 text-xs text-cs-text-2">Loan repayment sales are app-generated plans until you record a payoff. Edit these settings to choose how shares are selected. Investment interest deductions require itemizing and apply only against gains realized in the year interest is paid; review your eligibility before enabling them.</p>
+        <p className="mt-2 text-xs text-cs-text-2">Loan repayment sales are app-generated plans until you record a payoff. Edit these settings to choose how shares are selected. The investment interest method controls when the app counts interest. Review your eligibility before enabling the deduction estimate.</p>
         <div className="mt-3"><EquityTerms terms={['tax', 'short_term', 'long_term', 'lot_selection', 'form_4952', 'capitalised_interest', 'election_83b']} title="Understand these settings" /></div>
 
         {taxSettings && !editingTax && (
@@ -186,6 +187,12 @@ export default function AppSettingsSections() {
                     ? `Enabled (excl. ${taxSettings.deduction_excluded_years.sort((a, b) => a - b).join(', ')})`
                     : 'Enabled (all years)')
                   : 'Disabled'}
+              </dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-cs-text-2">Investment interest method</dt>
+              <dd className="font-medium text-cs-text-2">
+                {taxSettings.investment_interest_method === 'cash' ? 'Cash' : 'Accrual'}
               </dd>
             </div>
             <div className="flex justify-between col-span-2 border-t border-cs-border pt-2 ">
@@ -299,6 +306,24 @@ export default function AppSettingsSections() {
                     </p>
                   </div>
                 </label>
+                <label className="mt-3 block">
+                  <span className="text-xs text-cs-text-2">Investment interest method</span>
+                  <select
+                    value={taxForm.investment_interest_method ?? 'accrual'}
+                    onChange={e => {
+                      const method = e.target.value === 'cash' ? 'cash' : 'accrual'
+                      setTaxForm(f => f ? { ...f, investment_interest_method: method } : f)
+                    }}
+                    className={FIELD_INPUT_CLASS}
+                    aria-describedby="investment-interest-method-help"
+                  >
+                    <option value="accrual">Accrual · as interest accrues</option>
+                    <option value="cash">Cash · when interest is paid</option>
+                  </select>
+                </label>
+                <p id="investment-interest-method-help" className="mt-1 text-[11px] text-cs-text-2">
+                  For projections. Choose the method that matches your tax treatment.
+                </p>
                 {taxForm.deduct_investment_interest && taxSettings && taxSettings.taxable_years.length > 0 && (
                   <details className="mt-2 ml-6">
                     <summary className="cursor-pointer text-[11px] font-medium text-cs-brand">

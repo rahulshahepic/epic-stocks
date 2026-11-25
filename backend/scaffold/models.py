@@ -305,6 +305,7 @@ class TaxSettings(Base):
     loan_payoff_method: Mapped[str] = mapped_column(String, nullable=False, default='epic_lifo')
     prefer_stock_dp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deduct_investment_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    investment_interest_method: Mapped[str] = mapped_column(String, nullable=False, default="accrual", server_default="accrual")
     deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     # Projection assumptions (app/loan_projection.py). Null rate = the latest
     # Interest-loan rate on record; null withholding = 0.52.

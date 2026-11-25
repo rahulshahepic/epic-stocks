@@ -19,9 +19,13 @@ describe('ExitBreakdownCard', () => {
     expect(screen.getByText('$40,000')).toBeInTheDocument()
   })
 
-  it('says the deduction is interest actually paid, against realized gains', () => {
-    render(<ExitBreakdownCard s={{ ...base, deduction_savings: 2_916, deduction_years: [2031], interest_deducted: 10_000 }} />)
-    expect(screen.getByText(/of interest paid by the exit/)).toBeInTheDocument()
+  it.each([
+    ['cash', 'Interest counted when paid.'],
+    ['accrual', 'Interest counted as it accrued.'],
+  ] as const)('explains the deduction under the %s method', (method, label) => {
+    render(<ExitBreakdownCard s={{ ...base, deduction_savings: 2_916, deduction_years: [2031],
+      interest_deducted: 10_000, investment_interest_method: method }} />)
+    expect(screen.getByText(/of interest offset realized gains/)).toHaveTextContent(label)
   })
 
   it('leaves the rows out when there is nothing projected', () => {

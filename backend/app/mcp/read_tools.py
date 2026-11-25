@@ -585,8 +585,9 @@ _TOPICS: dict[str, str] = {
         "ordinary income and the basis steps up to the vest price. Second, "
         "selling above the cost basis is a capital gain: long-term where the lot "
         "has been held at least the configured holding period, short-term "
-        "otherwise. Loan interest is deductible in the year it is paid, only "
-        "against gains realized that year, with the rest carried forward."
+        "otherwise. Epic Stocks estimates the interest deduction using the saved "
+        "projection method: accrual counts interest as it accrues, and cash counts it "
+        "when paid. The app models offsets against realized Epic gains and carryforward."
     ),
     "lots": (
         "A lot is the shares from one vesting event — one grant, one vest date, "

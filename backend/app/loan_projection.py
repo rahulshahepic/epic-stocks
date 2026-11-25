@@ -95,6 +95,7 @@ class Projection:
     stop: date | None
     assumed_rate: float
     accrued_by_key: dict = field(default_factory=dict)   # interest paid with each loan
+    interest_accrued_by_year: dict[int, float] = field(default_factory=dict)
 
     @property
     def projected(self) -> list:
@@ -126,11 +127,17 @@ class Projection:
         grant with no other debt due that day)."""
         return [p for p in self.payoffs if p.anchor_id is None and p.extra > 0]
 
-    def interest_paid_by_year(self) -> dict[int, float]:
+    def interest_paid_by_year(self, cutoff: date | None = None) -> dict[int, float]:
         out: dict[int, float] = {}
         for p in self.payoffs:
-            out[p.date.year] = out.get(p.date.year, 0.0) + p.interest_paid
+            if cutoff is None or p.date <= cutoff:
+                out[p.date.year] = out.get(p.date.year, 0.0) + p.interest_paid
         return out
+
+    def interest_for_deduction(self, method: str) -> dict[int, float]:
+        if method == "cash":
+            return self.interest_paid_by_year()
+        return self.interest_accrued_by_year
 
 
 def assumed_rate_from(loans) -> float:
@@ -170,14 +177,15 @@ def loan_start_date(l, grant_by_key, by_id, seen=()) -> date:
         return _d(disbursed)
     ly, lt = _get(l, "loan_year"), _get(l, "loan_type")
     g = grant_by_key.get((_get(l, "grant_year"), _get(l, "grant_type")))
-    if lt == "Interest":
+    ref = _get(l, "refinances_loan_id")
+    is_refinance = ref is not None and ref != _get(l, "id") and ref in by_id and ref not in seen
+    if lt == "Interest" and not is_refinance:
         return date(ly + 1, 1, 1)
     if lt == "Tax" and g:
         vests = [_d(d) for d, _ in g["vesting"] if _d(d).year == ly]
         if vests:
             return vests[0]
-    ref = _get(l, "refinances_loan_id")
-    if ref is not None and ref != _get(l, "id") and ref in by_id and ref not in seen:
+    if is_refinance:
         # A refinance carries the same debt on: it accrues from where the
         # loan it replaced did, or from 1 January of its own year.
         return max(date(ly, 1, 1), loan_start_date(by_id[ref], grant_by_key, by_id, (*seen, _get(l, "id"))))
@@ -240,10 +248,16 @@ def project(
         payments.setdefault(_get(lp, "loan_id"), []).append((_d(_get(lp, "date")), float(_get(lp, "amount"))))
 
     booked: dict[tuple, int] = {}
+    accrued_by_year: dict[int, float] = {}
     for l in loans:
-        if _get(l, "loan_type") == "Interest" and _get(l, "id") not in superseded_in:
-            g = group_of(_get(l, "grant_year"), _get(l, "grant_type"))
-            booked[g] = max(booked.get(g, 0), _get(l, "loan_year"))
+        if _get(l, "loan_type") != "Interest" or _get(l, "refinances_loan_id") not in (None, _get(l, "id")):
+            continue
+        # Only a new statement charge covers the preceding year's accrual.
+        # A refinance changes where the old balance is owed.
+        year = _get(l, "loan_year")
+        group = group_of(_get(l, "grant_year"), _get(l, "grant_type"))
+        booked[group] = max(booked.get(group, 0), year)
+        accrued_by_year[year] = accrued_by_year.get(year, 0.0) + float(_get(l, "amount"))
 
     plist: list[PLoan] = []
     for l in loans:
@@ -348,6 +362,7 @@ def project(
         if not live:
             continue
         accr: dict[str, float] = {}
+        unbooked_years: dict[str, dict[int, float]] = {}
         capitalised = grp in booked
         first = min(m.accrue_from for m in live).year
         last = max(m.end for m in live).year
@@ -356,6 +371,9 @@ def project(
         while y <= last:
             ys, ye = date(y, 1, 1), date(y + 1, 1, 1)
             for m in live:
+                previous = accr.get(m.key, 0.0)
+                accrued_this_year = 0.0
+                prior_years = unbooked_years.setdefault(m.key, {})
                 anchors = [c for c in m.checkpoints
                            if max(ys, m.accrue_from) <= _d(_get(c, "accrued_through")) < ye
                            and _d(_get(c, "accrued_through")) <= m.end]
@@ -363,17 +381,38 @@ def project(
                     anchor = max(anchors, key=lambda c: _d(_get(c, "accrued_through")))
                     # Replace this loan's unbooked balance, including a carried
                     # first-year stub. Capitalization below then consumes it once.
-                    accr[m.key] = float(_get(anchor, "accrued_interest")) + m.interest(
-                        _d(_get(anchor, "accrued_through")), min(ye, m.end))
+                    anchor_day = _d(_get(anchor, "accrued_through"))
+                    reported = float(_get(anchor, "accrued_interest"))
+                    before_anchor = m.interest(ys, anchor_day)
+                    after_anchor = m.interest(anchor_day, min(ye, m.end))
+                    estimated = previous + before_anchor
+                    if estimated > 0:
+                        # Allocate the reconciled balance across the unbooked
+                        # periods in proportion to their modeled accrual.
+                        ratio = reported / estimated
+                        for prior_year, amount in prior_years.items():
+                            corrected = amount * ratio
+                            accrued_by_year[prior_year] += corrected - amount
+                            prior_years[prior_year] = corrected
+                        accrued_this_year = before_anchor * ratio + after_anchor
+                    else:
+                        accrued_this_year = reported + after_anchor
+                    accr[m.key] = reported + after_anchor
                 elif m.accrue_from < ye and m.end > ys:
-                    accr[m.key] = accr.get(m.key, 0.0) + m.interest(ys, ye)
+                    accrued_this_year = m.interest(ys, ye)
+                    accr[m.key] = previous + accrued_this_year
+                if accrued_this_year:
+                    prior_years[y] = accrued_this_year
+                    accrued_by_year[y] = accrued_by_year.get(y, 0.0) + accrued_this_year
                 if ys <= m.end < ye and not m.superseded:
                     paid_accrual[m.key] = paid_accrual.get(m.key, 0.0) + accr.pop(m.key, 0.0)
+                    unbooked_years.pop(m.key, None)
             still = [m for m in live if m.end >= ye and m.accrue_from < ye]
             stub = not capitalised and all(m.accrue_from > ys for m in still)
             if still and not stub and y > booked.get(grp, 0):
                 amount = sum(accr.values())
                 accr.clear()
+                unbooked_years.clear()
                 if amount > 0:
                     due = max(purchase_due) if purchase_due and max(purchase_due) >= ye else max(m.due for m in still)
                     # Repaid with the grant's purchase loan when a payoff settles
@@ -435,7 +474,9 @@ def project(
 
     payoffs = sorted(buckets.values(), key=lambda b: (b.date, b.group))
     return Projection(loans=plist, payoffs=payoffs, stop=stop, assumed_rate=rate,
-                      accrued_by_key={k: round(v, 2) for k, v in paid_accrual.items()})
+                      accrued_by_key={k: round(v, 2) for k, v in paid_accrual.items()},
+                      interest_accrued_by_year={year: round(max(0.0, amount), 2)
+                                               for year, amount in accrued_by_year.items()})
 
 
 def outstanding_at_stop(proj: Projection) -> dict:

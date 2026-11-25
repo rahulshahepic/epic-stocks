@@ -133,11 +133,14 @@ def _run(ctx: ToolContext, args: dict):
 def _update(ctx: ToolContext, args: dict):
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
     patch = validate_changes(args.get("changes"))
+    ctx.db.refresh(owner, with_for_update=True)
     held = owner.retirement_params
     merged = {**(held if isinstance(held, dict) else {}), **patch}
     if "epicExit" in patch and "epicExitMode" not in patch:
         merged["epicExitMode"] = "manual"
     validate_combined(merged)
+    from app.expense_funding import sync_funding_plans
+    sync_funding_plans(merged, held if isinstance(held, dict) else {})
     owner.retirement_params = merged
     ctx.db.commit()
     # Do not return the saved blob: comp:write does not imply comp:read.

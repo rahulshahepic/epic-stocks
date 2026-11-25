@@ -1087,6 +1087,59 @@ test.describe('Screenshots', () => {
     })
   }
 
+  test('expense funding options - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.request.post(`${BASE}/api/auth/test-login`, {
+      data: { email: 'expense-funding@screenshots.example.test', name: 'Expense Funding Demo' },
+    })
+    const year = new Date().getFullYear()
+    const vestDate = `${year - 4}-01-01`
+    const dueDate = `${year + 1}-12-01`
+    expect((await page.request.post(`${BASE}/api/prices`, {
+      data: { effective_date: vestDate, price: 20 },
+    })).status()).toBe(201)
+    expect((await page.request.post(`${BASE}/api/grants`, {
+      data: { year: year - 4, type: 'Purchase', shares: 1000, price: 10, vest_start: vestDate,
+        periods: 1, exercise_date: vestDate },
+    })).status()).toBe(201)
+
+    await page.goto(`${BASE}/retirement?view=expenses`)
+    await page.getByRole('button', { name: /Add planned expense/ }).click()
+    await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('renovation')
+    await page.getByLabel('Purchase / start date').fill(dueDate)
+    await page.getByLabel(/One-time cost/).fill('30000')
+    await page.getByRole('button', { name: 'Add event', exact: true }).click()
+    const card = page.getByRole('listitem').filter({ hasText: 'Renovation' })
+    await expect(card.getByRole('heading', { name: 'Save from pay or use cash' })).toBeVisible()
+    await expect(card.getByText(/Savings would cover the remaining/)).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Add tentative sale' })).toBeVisible()
+    const audit = await new AxeBuilder({ page }).include('[aria-label="Planned expenses"]')
+      .withTags(['wcag2a', 'wcag2aa']).analyze()
+    expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
+    await card.screenshot({ path: `${OUT}/expense-funding-light-mobile.png`,
+      style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
+
+    await card.getByRole('button', { name: 'Keep as a tip' }).click()
+    await expect(card.getByRole('button', { name: 'Add tentative sale' })).toBeHidden()
+    expect(await (await page.request.get(`${BASE}/api/retirement/expense-funding`)).json()).toEqual({})
+    await page.reload()
+    await card.getByRole('button', { name: 'Funding options for Renovation' }).click()
+    await card.getByRole('button', { name: 'Add tentative sale' }).click()
+    await expect(card.getByText(/Tentative Epic sale · 1,000 shares/)).toBeVisible()
+    await page.goto(`${BASE}/sales`)
+    await expect(page.getByRole('heading', { name: 'Tentative sales for planned expenses' })).toBeVisible()
+    await expect(page.getByText(/Renovation · .*1,000 shares/)).toBeVisible()
+    expect(await (await page.request.get(`${BASE}/api/sales`)).json()).toEqual([])
+
+    expect((await page.request.put(`${BASE}/api/retirement/params`, {
+      data: { params: { retirementDate: `${year + 2}-01-01` }, preserve_planned_expenses: true },
+    })).ok()).toBe(true)
+    await page.getByRole('link', { name: 'Review in Planned Expenses' }).click()
+    await page.getByText('Review funding by year and expense').click()
+    await expect(page.getByRole('row').filter({ hasText: 'Renovation' })).toContainText('Tentative sale + savings for first bill')
+  })
+
   test('conditional purchase before changed retirement - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/auth/test-login`, {

@@ -1921,6 +1921,21 @@ same expenses, applying costs before the retirement month to starting assets
 and later costs to the simulation. **Compare one year later** reuses your plan.
 [Mobile Planned Expenses](screenshots/planning-expenses-light-mobile.png).
 
+For a future expense with **Decide later** selected, the expense card shows
+funding options after you save it. Compare the first bill and any ongoing
+monthly costs with what you could set aside from pay. If your projected vested
+shares, saved prices and loan status support a sale, the planner also estimates
+the shares and after-tax cash for the first bill. It shows any amount you'd
+still need to save. **Keep as a tip** leaves the options available on the
+expense. **Add tentative sale** saves a dated estimate under **Data → Sales**
+and links it to the expense. It stays tentative after that date. Editing the
+expense or clearing the funding choice removes the linked estimate. The retirement
+simulation continues to count the expense once.
+[Mobile funding options](screenshots/expense-funding-light-mobile.png).
+`backend/app/expense_funding.py` estimates first-bill funding using the existing
+sale and tax services. `ExpenseFunding.tsx` displays the options. Confirmed
+choices live with the encrypted retirement plan.
+
 **Automatic Epic exit projection** recalculates for the selected retirement date using saved prices and future estimates. The simulator does not add another share-growth assumption. If the projection fails or no data is available, simulation pauses and offers Retry or an explicit manual amount; it never silently runs with the old date's value. A manual override stays manual when the date changes. For a legacy plan without mode metadata, the saved amount is kept for its original date and clearly identified. The first date change recalculates automatically, matching previous behavior. Choose manual to pin it, or Refresh to project immediately. Saving pauses visibly if an automatic projection fails. New saves include `epicExitMode` (`auto` or `manual`); changing views preserves it. Shared viewers can explore without saving the owner's plan.
 
 ![Retirement basic view](screenshots/retirement-basic-light-mobile.png)

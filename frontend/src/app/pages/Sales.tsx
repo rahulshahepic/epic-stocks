@@ -298,6 +298,15 @@ export default function Sales() {
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
+  const [expenseFunding, setExpenseFunding] = useState<Awaited<ReturnType<typeof api.getExpenseFundingPlans>>>({})
+  useEffect(() => {
+    if (readOnly) return
+    let active = true
+    api.getExpenseFundingPlans().then(plans => { if (active) setExpenseFunding(plans) }).catch(() => {})
+    return () => { active = false }
+  }, [readOnly])
+  const tentativeSales = Object.values(expenseFunding).sort((a, b) => a.due_date.localeCompare(b.due_date))
+
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<SaleForm>(() => emptyForm(today))
   const [taxRates, setTaxRates] = useState<TaxRates>(DEFAULT_RATES)
@@ -726,6 +735,16 @@ export default function Sales() {
           </button>
         )}
       </div>
+
+      {!readOnly && tentativeSales.some(plan => plan.sale) && <section className="space-y-2 rounded-xl border border-cs-border p-4 text-sm text-cs-text">
+        <h3 className="font-semibold">Tentative sales for planned expenses</h3>
+        <ul className="space-y-2">
+          {tentativeSales.map(({ event_id, title, sale }) => sale && <li key={event_id} className="text-xs text-cs-text-2">
+            <strong className="text-cs-text">{title}</strong> · {fmtFullDate(sale.date)}{sale.date <= today ? ' (date passed)' : ''} · {fmtNum(sale.shares)} shares · {fmtUSD(sale.net_proceeds)} after estimated tax
+          </li>)}
+        </ul>
+        <Link to="/retirement?view=expenses" className="inline-flex min-h-11 items-center text-sm font-semibold underline">Review in Planned Expenses</Link>
+      </section>}
 
       {/* Mobile card layout */}
       {isMobile ? <div className="space-y-2">

@@ -685,7 +685,8 @@ register(Tool(
 
 def _get_retirement_params(ctx: ToolContext, args: dict):
     owner = _account(ctx, args)
-    return {"params": owner.retirement_params or {}}
+    from app.expense_funding import retirement_params_without_funding
+    return {"params": retirement_params_without_funding(owner.retirement_params) or {}}
 
 
 register(Tool(

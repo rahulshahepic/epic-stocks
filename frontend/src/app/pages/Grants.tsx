@@ -609,7 +609,7 @@ export default function Grants() {
           </div>
         )}
       </div>
-      <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax']} />
+      <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax', 'election_83b', 'tranche']} />
       {epicMode && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-cs-brand dark:bg-indigo-900/20 dark:text-rose-300">
           {readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic — view only'}

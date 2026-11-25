@@ -64,6 +64,7 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   return (
     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-xs dark:border-orange-800 dark:bg-orange-900/20">
       <h3 className="mb-3 text-sm font-semibold text-cs-text">Estimated Tax</h3>
+      <InlineTerm term="ordinary_income" figure={fmt$(e.income)} />
       <div className="space-y-1">
         <TaxRow
           label={`Ordinary income × ${fmtPct(incomeRate)}`}
@@ -88,6 +89,8 @@ function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-xs dark:border-violet-800 dark:bg-violet-900/20">
       <h3 className="mb-3 text-sm font-semibold text-cs-text">83(b) Election — Gain if you sold today</h3>
+      <InlineTerm term="election_83b" />
+      <InlineTerm term="long_term" />
       <div className="space-y-1">
         <TaxRow label="Gain at vesting (on paper)" value={fmt$(e.income)} />
         <TaxRow label="What you paid per share (83(b) sets this to $0)" value="$0" />
@@ -632,3 +635,4 @@ export default function Events() {
     </div>
   )
 }
+import { InlineTerm } from '../components/EquityTerms.tsx'

@@ -36,6 +36,13 @@ def save_my_retirement_params(
 ):
     if not isinstance(body.params, dict):
         raise HTTPException(status_code=422, detail="params must be an object")
+    from app.retirement_simulation import MILLIONS, THOUSANDS, validate_changes
+    money = {k: v for k, v in body.params.items() if k in MILLIONS or k in THOUSANDS}
+    if money:
+        try:
+            validate_changes(money)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if 'plannedEvents' in body.params:
         from app.retirement_simulation import validate_planned_events
         try:

@@ -299,11 +299,13 @@ test.describe('Screenshots', () => {
         await page.waitForLoadState('networkidle')
         await page.locator('input[type="date"]').first().fill('2026-12-31')
         await page.waitForLoadState('networkidle')
-        const card = page.getByRole('button', { name: /Share Price \(est\.\)/ })
+        const card = page.getByRole('link', { name: 'Open next event' })
         await expect(card).toBeVisible()
-        await card.click()
-        await page.getByText('Announcement expected', { exact: true }).scrollIntoViewIfNeeded()
+        await expect(card).toContainText('estimated price change')
+        await page.getByText(/^Announcement expected/).scrollIntoViewIfNeeded()
         await shoot(page, `dashboard-estimated-price-light-${size}`)
+        await card.click()
+        await expect(page).toHaveURL(/\/events\?date=2027-01-01/)
       } finally {
         await page.request.delete(`${BASE}/api/prices/${id}`)
       }
@@ -933,24 +935,14 @@ test.describe('Screenshots', () => {
     // which capped the 60s waitForSelector and failed these three outright.
     test.setTimeout(150_000)
     const saved = await (await page.request.get(`${BASE}/api/retirement/params`)).json()
-    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.put(`${BASE}/api/retirement/params`, { data: { params: { ...saved.params, epicExit: 5, taxableAdditional: 1, defaultSpend: 180, minSpend: 120, retirementDate: '2032-01-01', epicExitMode: 'manual', advanced: false, traditional: 0, roth: 0, additionalBasis: 0, plannedEvents: [], paths: 1000, seed: 1729 } } })).ok()).toBe(true)
+    expect((await page.request.patch(`${BASE}/api/me/profile`, {data: {date_of_birth: '1976-04-15'}})).ok()).toBe(true)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    // DOB is the first <input type="date"> on the page.
-    const dob = page.locator('input[type="date"]').first()
-    await dob.click()
-    await dob.fill('1976-04-15')
-    await page.locator('body').click()
-    await page.waitForTimeout(300)
-    const fill = async (label: RegExp, value: string) => {
-      const input = page.getByLabel(label, { exact: false })
-      await input.click()
-      await input.fill(value)
-    }
-    await fill(/Epic exit value/, '5')
-    await fill(/Taxable brokerage at retirement/, '1')
-    await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
+    // Initial results now run automatically from the synthetic saved plan.
+    // Setup-only API writes bypass the profile cache used by the UI.
+    await page.reload()
+    await expect(page.getByLabel(/^Date of birth/)).toHaveValue('1976-04-15')
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
     await page.getByText('Funding risk details', { exact: true }).click()
     await expect(page.getByText('Shortfall with assets remaining', { exact: true })).toBeVisible()

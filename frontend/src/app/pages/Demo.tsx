@@ -392,16 +392,19 @@ export default function Demo() {
                   <StatCard
                     variant="value"
                     label="Gross proceeds"
+                    explanation="gross_proceeds"
                     value={fmt$(data.sale.gross_proceeds)}
                   />
                   <StatCard
                     variant="value"
                     label="Estimated tax"
+                    explanation="tax"
                     value={fmt$(data.sale.estimated_tax)}
                   />
                   <StatCard
                     variant="value"
                     label="Net proceeds"
+                    explanation="net_proceeds"
                     value={fmt$(data.sale.net_proceeds)}
                   />
                 </div>
@@ -469,22 +472,27 @@ export default function Demo() {
                     <StatCard
                       variant="value"
                       label="Starting portfolio"
+                      explanation="portfolio"
                       value={fmt$(simulation.startingTotal * 1_000_000)}
                     />
                     <StatCard
                       variant="value"
                       label="Paths with a funding shortfall"
+                      explanation="funding_shortfall"
                       value={`${(simulation.pctRuin * 100).toFixed(1)}%`}
                     />
                     <StatCard
                       variant="value"
                       label="Median ending wealth"
+                      explanation="percentiles"
                       value={fmt$(simulation.medianFinalM * 1_000_000)}
                     />
                   </div>
                   <h3 className="text-sm font-semibold">
                     Wealth across possible markets
                   </h3>
+                  <InlineTerm term="percentiles" />
+                  <InlineTerm term="funding_shortfall" />
                   <p className="text-xs text-cs-muted">
                     10th percentile, median and 90th percentile; dollar amounts
                     in millions.
@@ -549,3 +557,4 @@ export default function Demo() {
     </main>
   )
 }
+import { InlineTerm } from '../components/EquityTerms.tsx'

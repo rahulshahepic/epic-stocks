@@ -1,5 +1,19 @@
 # Epic Stocks (Unofficial)
 
+Retirement money inputs accept **dollars**, with the interpreted amount below
+each field. Saved simulation parameters still use millions for assets and
+thousands for annual spending, so existing plans keep their units. Web and MCP
+share bounds from `backend/app/financial_terms.json`; invalid edits do not
+replace a saved value, and invalid legacy plans need correction before running.
+The HTTP save boundary checks the same money limits.
+
+That JSON file also supplies plain definitions and meanings to the web, public
+demo and MCP `explain` tool. Dotted explanations use existing server figures.
+After import, owners can choose a five-step position tour; dismissal is stored
+per account on that device. Changed tax and sale assumptions need a second
+confirmation before saving. Wisconsin defaults are a starting point, not a
+recommendation about a person's tax bracket.
+
 A mobile-first web app for Epic employees to track their own equity compensation — grants, vesting schedules, stock loans, share price history, and estimated tax impact over time. Built as a PWA so it works on any device, including your phone.
 
 > **⚠️ Unofficial — this is not an Epic site.** Epic Stocks is an independent, personal

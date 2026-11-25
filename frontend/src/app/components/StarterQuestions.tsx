@@ -5,7 +5,7 @@ export default function StarterQuestions({ questions }: { questions?: string[] }
   const [copied, setCopied] = useState('')
   const [error, setError] = useState('')
   if (!questions?.length) return null
-  return <section aria-label="Questions for your assistant" className="space-y-3 rounded-2xl border border-cs-border bg-cs-surface p-4">
+  return <section aria-label="Suggested equity questions" className="space-y-3 rounded-2xl border border-cs-border bg-cs-surface p-4">
     <h2 className="text-sm font-semibold text-cs-text">A good next question</h2>
     <p className="text-xs text-cs-text-2">Copy a question into your connected assistant. It will read your figures through Epic Stocks.</p>
     <ul className="space-y-2">{questions.map(q => <li key={q} className="flex items-start gap-3">

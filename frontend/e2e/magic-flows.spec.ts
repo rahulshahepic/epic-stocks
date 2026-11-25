@@ -4,10 +4,10 @@ import { resolve } from 'node:path'
 import { loginAs } from './helpers.ts'
 
 for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 'desktop'] as const) {
-  test(`position to retirement and price update ${theme} ${device}`, async ({page}) => {
+  test(`position to retirement and price update ${theme} ${device}`, async ({page}, testInfo) => {
     test.setTimeout(90000)
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
-    await loginAs(page, `magic-${theme}-${device}@example.test`)
+    await loginAs(page, `magic-${theme}-${device}-${testInfo.retry}@example.test`)
     await page.setViewportSize(device === 'mobile' ? {width: 375, height: 812} : {width: 1280, height: 900})
     await page.goto('/')
     await page.getByLabel('Stock files (.csv, .xlsx, .pdf)').setInputFiles([
@@ -60,6 +60,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
 }
 
 test('trial signup keeps the preview and focuses sign-in', async ({page}) => {
+  await page.route('**/api/auth/providers', route => route.fulfill({json: [{name: 'google', label: 'Google'}]}))
   await page.setViewportSize({width: 375, height: 812})
   await page.goto('/try')
   await page.getByLabel('Stock files (.csv, .xlsx, .pdf)').setInputFiles(resolve('../test_data/epic_share_summary.csv'))

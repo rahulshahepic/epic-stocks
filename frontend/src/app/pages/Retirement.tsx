@@ -1,5 +1,17 @@
 import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import financialTerms from '../../../../backend/app/financial_terms.json'
+import { InlineTerm } from '../components/EquityTerms.tsx'
+
+function moneyParamsValid(params: object) {
+  return [
+    [['epicExit', 'taxableAdditional', 'additionalBasis', 'traditional', 'roth'], financialTerms.limits.portfolio_millions],
+    [['defaultSpend', 'minSpend', 'healthInsurance', 'spouseWorkIncome'], financialTerms.limits.spending_thousands],
+  ].every(([keys, limit]) => (keys as string[]).every(key => {
+    const value = (params as Record<string, unknown>)[key]
+    return value === undefined || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number(limit))
+  }))
+}
 import {
   Area,
   Bar,
@@ -223,39 +235,52 @@ function NumInput({ label, value, onChange, step, min, max, suffix, hint, info }
   const [text, setText] = useState('')
   const [focused, setFocused] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [moneyError, setMoneyError] = useState('')
   const inputId = useId()
-
-  const asText = (n: number) => (Number.isFinite(n) ? String(n) : '0')
-  const shown = focused ? text : asText(value)
+  const scale = suffix === '$M' ? 1_000_000 : suffix === '$K/yr' ? 1000 : 1
+  const money = scale !== 1
+  const ceiling = scale === 1_000_000 ? financialTerms.limits.portfolio_millions * scale : financialTerms.limits.spending_thousands * scale
+  const asText = (n: number) => (Number.isFinite(n) ? String(Number((n * scale).toFixed(2))) : '0')
+  const shown = focused || moneyError ? text : asText(value)
+  const dollars = Number(shown).toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2})
+  const invalidMoney = moneyError || (money && (!Number.isFinite(value) || value < 0 || value * scale > ceiling) ? 'This saved dollar amount is outside the supported range. Correct it before simulating.' : '')
 
   // Note: the InfoButton lives OUTSIDE the <label> so testing-library doesn't
   // associate it with the input via label-contains-control matching (that
   // would make getByLabelText return the button instead of the input).
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" data-money-pending={!!invalidMoney || undefined}>
       <div className="flex items-center gap-1">
         <label htmlFor={inputId} className="text-[11px] font-medium text-cs-text-2">
           {label}
-          {suffix && <span className="ml-1 text-cs-muted">({suffix})</span>}
+          {suffix && <span className="ml-1 text-cs-muted">({money ? scale === 1000 ? '$/year' : '$' : suffix})</span>}
         </label>
         {info && <InfoButton open={infoOpen} onToggle={() => setInfoOpen(o => !o)} label={label} />}
       </div>
       <input
         id={inputId}
         type="number"
-        step={step ?? 'any'}
-        min={min}
-        max={max}
+        step={money ? 'any' : step ?? 'any'}
+        min={min == null ? undefined : min * scale}
+        max={money ? ceiling : max}
         value={shown}
-        onFocus={() => { setText(asText(value)); setFocused(true) }}
+        aria-invalid={!!invalidMoney}
+        aria-describedby={money ? `${inputId}-money` : undefined}
+        onFocus={() => { setText(shown); setFocused(true) }}
         onChange={e => {
           setText(e.target.value)
           const v = parseFloat(e.target.value)
-          onChange(Number.isFinite(v) ? v : 0)
+          if (money && (!Number.isFinite(v) || v < 0 || v > ceiling)) {
+            setMoneyError(`Enter a dollar amount between $0 and ${ceiling.toLocaleString('en-US', {style: 'currency', currency: 'USD', maximumFractionDigits: 0})}.`)
+            return
+          }
+          setMoneyError('')
+          onChange(Number.isFinite(v) ? v / scale : 0)
         }}
         onBlur={() => setFocused(false)}
         className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
       />
+      {money && <span id={`${inputId}-money`} role={invalidMoney ? 'alert' : undefined} className={`text-[10px] ${invalidMoney ? 'text-red-700 dark:text-red-300' : 'text-cs-muted'}`}>{invalidMoney || `= ${dollars}${scale === 1000 ? ' per year' : ''} · enter dollars`}</span>}
       {hint && <span className="text-[10px] text-cs-muted">{hint}</span>}
       {info && infoOpen && (
         <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] leading-snug text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
@@ -693,6 +718,7 @@ function RetirementAccount() {
   // user's already-saved plan during the post-load merge.
   useEffect(() => {
     if (vid || !paramsLoadedRef.current) return
+    if (!moneyParamsValid(params)) return
     const request = ++saveRequestRef.current
     const controller = new AbortController()
     setSaveStatus('saving')
@@ -744,6 +770,10 @@ function RetirementAccount() {
 
   const run = useCallback(() => {
     autoRan.current = true
+    if (!moneyParamsValid(params) || inputsRef.current?.querySelector('[data-money-pending="true"]')) {
+      setRunError('Check the highlighted dollar amounts before simulating.')
+      return
+    }
     if (params.epicExit + params.taxableAdditional + params.traditional + params.roth <= 0) {
       setRunError('Add your stock or savings to see a result.')
       return
@@ -1618,7 +1648,7 @@ function RetirementAccount() {
               {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Simulate ${params.paths.toLocaleString()} retirements × ${years} years`}
             </button>
           </div>
-          {totalPortfolio <= 0 && paramsLoaded && <p role="status" className="rounded-xl border border-cs-border p-4 text-sm text-cs-text">Add your stock or savings to see a result. <Link to="/import" className="font-semibold text-cs-brand underline">Import your stock files</Link>, or enter a brokerage or retirement balance above.</p>}
+          {totalPortfolio <= 0 && paramsLoaded && <p role="status" className="rounded-xl border border-cs-border p-4 text-sm text-cs-text">Add your stock or savings to see a result. <Link to="/import" className="font-semibold text-cs-brand underline dark:text-rose-300">Import your stock files</Link>, or enter a brokerage or retirement balance above.</p>}
         </div>
 
         <div ref={resultHeading} tabIndex={-1} className="scroll-mt-28" />
@@ -1639,6 +1669,7 @@ function RetirementAccount() {
         )}
         {result && result.preRetirementFundingGapM <= 1e-9 && (
           <>
+            <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
             <HeroCard
               className="campus-observatory-hero"
               watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}

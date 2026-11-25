@@ -607,6 +607,9 @@ export default function Sales() {
           </label>
         )}
 
+        <InlineTerm term="lot_selection" />
+        <InlineTerm term="tranche" />
+        <InlineTerm term="capital_gains" />
         {/* Input mode toggle (add mode only) */}
         {mode === 'add' && (
           <div className="flex gap-1 rounded-md border border-cs-border bg-cs-raised p-0.5 ">
@@ -905,3 +908,4 @@ export default function Sales() {
     </div>
   )
 }
+import { InlineTerm } from '../components/EquityTerms.tsx'

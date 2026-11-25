@@ -34,11 +34,12 @@ function groupOf(c: Change): NonNullable<Change['group']> {
  * Apply previews the rest exactly as the app would store it, then saves them
  * all together — or none, if any one is refused.
  */
-export default function ChangeList({ changes, extra = [], onApplied }: {
+export default function ChangeList({ changes, extra = [], onApplied, onBusyChange }: {
   changes: Change[]
   /** Edits added on the page itself, such as sales the person dated and priced. */
   extra?: Change[]
   onApplied?: (result: ChangeResult) => void
+  onBusyChange?: (busy: boolean) => void
 }) {
   const [picked, setPicked] = useState<boolean[]>(() => changes.map(c => c.selected !== false))
   const [preview, setPreview] = useState<ChangeResult | null>(null)
@@ -54,14 +55,16 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
   }
 
   async function check() {
+    onBusyChange?.(true)
     setBusy(true); setError('')
     try { setPreview(await api.previewChanges(chosen)) }
     catch (e) { setError(e instanceof Error ? e.message : 'These changes could not be checked') }
-    finally { setBusy(false) }
+    finally { setBusy(false); onBusyChange?.(false) }
   }
 
   async function apply() {
     if (!preview?.confirm) return
+    onBusyChange?.(true)
     setBusy(true); setError('')
     try {
       await measurementEvent('save_intent')
@@ -73,7 +76,7 @@ export default function ChangeList({ changes, extra = [], onApplied }: {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'These changes could not be saved')
       setPreview(null)
-    } finally { setBusy(false) }
+    } finally { setBusy(false); onBusyChange?.(false) }
   }
 
   if (done) {

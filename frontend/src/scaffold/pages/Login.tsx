@@ -61,7 +61,7 @@ export default function Login() {
     <p className="text-sm text-cs-text-2">{trialWaiting ? 'Your preview is waiting on this device. New records will be added to your account; existing records stay as they are.' : 'We’ll bring you straight back to the task you chose.'}</p>
     {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
     <div className="space-y-3">{providers.map(p => <button key={p.name} disabled={loading !== null} onClick={() => void handleSignIn(p.name)} className="min-h-11 w-full rounded-xl bg-cs-brand px-4 py-3 font-semibold text-white disabled:opacity-50">{loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}</button>)}{!providers.length && <p>No sign-in providers configured.</p>}</div>
-    {trialWaiting ? <Link to="/try" className="inline-block min-h-11 py-2 text-sm text-cs-brand underline">Back to my preview</Link> : <Link to="/login" onClick={() => window.location.assign('/login')} className="text-sm text-cs-brand underline">Back to the front gate</Link>}
+    {trialWaiting ? <Link to="/try" className="inline-block min-h-11 py-2 text-sm text-cs-brand underline">Back to my preview</Link> : <Link to="/login" onClick={() => { void platform.storage.remove('trial_preview_expired'); setTrialExpired(false) }} className="text-sm text-cs-brand underline">Back to the front gate</Link>}
     <DisclaimerNotice />
   </main>
 

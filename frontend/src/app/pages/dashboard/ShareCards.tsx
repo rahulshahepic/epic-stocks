@@ -25,6 +25,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
           value={totalValue !== null ? fmt$(totalValue) : '—'}
           variant="value"
+          explanation="stock_value"
           subtitle="Vested at FMV + unvested at cost basis"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}

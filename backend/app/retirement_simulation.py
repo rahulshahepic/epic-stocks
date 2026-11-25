@@ -14,6 +14,7 @@ import subprocess
 import threading
 
 from database import SessionLocal
+from app.financial_literacy import MAX_PORTFOLIO_MILLIONS, MAX_SPENDING_THOUSANDS
 
 RUNNER = Path(__file__).with_name("retirement_runner.mjs")
 SIM_SLOTS = threading.BoundedSemaphore(2)
@@ -205,8 +206,8 @@ def validate_changes(changes):
         elif key in NUMERIC:
             if type(value) not in (float, int) or not math.isfinite(value):
                 raise ValueError(f"{key} must be a finite number")
-            limit = (1_000 if key in MILLIONS else
-                     10_000 if key in THOUSANDS else
+            limit = (MAX_PORTFOLIO_MILLIONS if key in MILLIONS else
+                     MAX_SPENDING_THOUSANDS if key in THOUSANDS else
                      1 if key in FRACTIONS else
                      100_000 if key in {"ssMonthly", "spouseSsMonthly"} else
                      200 if key in {"currentAge", "endAge", "spouseCurrentAge",

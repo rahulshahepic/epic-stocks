@@ -362,6 +362,7 @@ export default function Loans() {
 
   return (
     <div className="space-y-4">
+      <EquityTerms terms={['loan', 'accrued_interest', 'capitalised_interest', 'lot_selection']} title="Understand loan balances and repayment" />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-cs-text">Loans</h2>
         {epicMode
@@ -638,3 +639,4 @@ export default function Loans() {
     </div>
   )
 }
+import EquityTerms from '../components/EquityTerms.tsx'

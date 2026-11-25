@@ -44,6 +44,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [repricing, setRepricing] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [pricedAt, setPricedAt] = useState<number | null>(null)
   const [answers, setAnswers] = useState<Record<number, { date: string; price: string }>>({})
 
@@ -57,7 +58,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   }), [result, answers])
 
   const files = { shareCsv: csv, statementPdf: pdf }
-  const busy = stage === 'analyzing'
+  const busy = stage === 'analyzing' || repricing || checking
 
   async function run(revisedJson?: string, revisedDraft?: File | null) {
     setStage('analyzing')
@@ -202,7 +203,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
             <div className="mt-3">
               <StalePriceNotice
                 latestPrice={latestPrice} latestDate={latestDate}
-                onApply={applyCurrentPrice} busy={repricing}
+                onApply={applyCurrentPrice} busy={busy}
               />
             </div>
           )}
@@ -239,7 +240,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
           )}
 
           {!result.blocked && (
-            <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} onApplied={onApplied} />
+            repricing ? <p role="status" className="py-3 text-sm text-cs-muted">Updating changes with your price…</p> : <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} onApplied={onApplied} onBusyChange={setChecking} />
           )}
 
           {needsHelp && (

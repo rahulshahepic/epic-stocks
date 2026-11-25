@@ -5,6 +5,8 @@ import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import ReminderOffer from '../components/ReminderOffer.tsx'
 import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
 import EquityTerms from '../components/EquityTerms.tsx'
+import PositionTour from '../components/PositionTour.tsx'
+import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
@@ -78,6 +80,11 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
       </button>
     </div>
   )
+}
+
+function OwnerPositionTour() {
+  const me = useMe()
+  return me ? <PositionTour key={me.id} accountId={me.id} /> : null
 }
 
 export default function Dashboard() {
@@ -428,6 +435,7 @@ export default function Dashboard() {
         </HeroCard>
       )}
 
+      {importSaved && !readOnly && <OwnerPositionTour />}
       {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-2xl border border-cs-border bg-cs-surface p-4">
         <summary className="cursor-pointer text-sm font-semibold text-cs-text">In plain words</summary>
         <ul className="mt-3 space-y-2 text-sm leading-relaxed text-cs-text-2">{snapshot.summary_sentences.map(s => <li key={s}>{s}</li>)}</ul>
@@ -521,9 +529,9 @@ export default function Dashboard() {
                     <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
                     <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
                   </button>
-                  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
-                  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" subtitle="Principal + accrued interest" />
-                  <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
+                  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" explanation="gross_proceeds" subtitle="Liquidated shares × price" />
+                  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" explanation="debt_settlement" subtitle="Principal + accrued interest" />
+                  <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" explanation="divest_tax" subtitle="Capital gains on liquidation" />
                 </div>
                 {exitBreakdownOpen && <>
                   <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>

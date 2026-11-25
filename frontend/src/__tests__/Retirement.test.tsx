@@ -26,6 +26,53 @@ beforeEach(() => {
   }
 })
 
+it.each([
+  ['Epic exit value', 'epicExit'],
+  ['Taxable brokerage', 'taxableAdditional'],
+  ['What you originally paid (basis)', 'additionalBasis'],
+  ['401(k) / Traditional IRA', 'traditional'],
+  ['Roth IRA / Roth 401(k)', 'roth'],
+] as const)('enters %s in dollars, saves millions, and refuses values above the shared ceiling', async (label, key) => {
+  mockApi({savedParams: {epicExitMode: 'manual', epicExit: 1, advanced: true, defaultSpend: 100, minSpend: 80}})
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  await screen.findByLabelText(/^Default spend/)
+  fireEvent.click(screen.getByRole('button', {name: 'Show advanced assumptions'}))
+  const field = screen.getAllByLabelText(label, {exact: false}).find(el => el.tagName === 'INPUT') as HTMLInputElement
+  fireEvent.change(field, {target: {value: '400000'}})
+  fireEvent.blur(field)
+  expect(field).toHaveValue(400000)
+  expect(field.parentElement).toHaveTextContent('= $400,000')
+  await waitFor(() => {
+    const saved = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT').map(([, init]) => JSON.parse(String(init?.body)).params)
+    expect(saved.some(params => params?.[key] === 0.4)).toBe(true)
+  })
+  fireEvent.change(field, {target: {value: '1000000001'}})
+  fireEvent.blur(field)
+  expect(field).toHaveAttribute('aria-invalid', 'true')
+  expect(field.parentElement).toHaveAttribute('data-money-pending', 'true')
+  fireEvent.click(screen.getByRole('button', {name: /Simulate.*retirements/}))
+  expect(await screen.findByText('Check the highlighted dollar amounts before simulating.')).toBeVisible()
+  await userEvent.clear(field)
+  await userEvent.type(field, '400000')
+  fireEvent.blur(field)
+  expect(field).toHaveValue(400000)
+  expect(field).toHaveAttribute('aria-invalid', 'false')
+})
+
+it('accepts plain-dollar spending and preserves thousands in saved parameters', async () => {
+  mockApi({savedParams: {epicExitMode: 'manual', epicExit: 1, defaultSpend: 100, minSpend: 80}})
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  const field = await screen.findByLabelText(/^Default spend/)
+  fireEvent.change(field, {target: {value: '140000'}})
+  expect(field.parentElement).toHaveTextContent('= $140,000 per year')
+  await waitFor(() => {
+    const saved = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT').map(([, init]) => JSON.parse(String(init?.body)).params)
+    expect(saved.some(params => params?.defaultSpend === 140)).toBe(true)
+  })
+  fireEvent.change(field, {target: {value: '10000001'}})
+  expect(field).toHaveAttribute('aria-invalid', 'true')
+})
+
 const TAX_SETTINGS = {
   federal_income_rate: 0.37,
   federal_lt_cg_rate: 0.20,
@@ -149,7 +196,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    expect(await screen.findByDisplayValue('4.5')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('4500000')).toBeInTheDocument()
   })
 
   it('mentions Wisconsin brackets and the user state LTCG rate in the spending notes', async () => {
@@ -309,10 +356,10 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     const defaultSpend = await screen.findByLabelText(/^Default spend/) as HTMLInputElement
-    await waitFor(() => expect(defaultSpend.value).toBe('240'))
+    await waitFor(() => expect(defaultSpend.value).toBe('240000'))
     const minSpend = screen.getByLabelText(/^Minimum spend \(floor\)/) as HTMLInputElement
     expect(minSpend.tagName).toBe('INPUT')
-    expect(minSpend.value).toBe('160')
+    expect(minSpend.value).toBe('160000')
   })
 
   it('respects user edits to spend (does not re-auto-fill after override)', async () => {
@@ -324,7 +371,7 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     const defaultSpend = await screen.findByLabelText(/^Default spend/) as HTMLInputElement
-    await waitFor(() => expect(defaultSpend.value).toBe('240'))
+    await waitFor(() => expect(defaultSpend.value).toBe('240000'))
     await user.clear(defaultSpend)
     await user.type(defaultSpend, '500')
     expect(defaultSpend.value).toBe('500')
@@ -638,11 +685,11 @@ it('keeps account balances and basis when hiding the breakdown or switching view
   mockApi({ savedParams: { epicExit: 5, taxableAdditional: 3, additionalBasis: 1.2,
     traditional: 1, roth: 0.5, advanced: true, defaultSpend: 150, minSpend: 90 } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
-  await screen.findByDisplayValue('1.2')
+  await screen.findByDisplayValue('1200000')
   await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
   await userEvent.click(screen.getByRole('button', { name: /Hide account breakdown/ }))
   await userEvent.click(screen.getByRole('button', { name: 'Show basic view' }))
-  fireEvent.change(screen.getByLabelText(/^Taxable brokerage at retirement/), {target: {value: '4'}})
+  fireEvent.change(screen.getByLabelText(/^Taxable brokerage at retirement/), {target: {value: '4000000'}})
   await waitFor(() => {
     const saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
       .map(([, init]) => JSON.parse(String(init?.body)).params).filter(Boolean)
@@ -653,22 +700,22 @@ it('keeps account balances and basis when hiding the breakdown or switching view
 it('keeps a legacy amount initially and automatically projects when its date changes', async () => {
   mockApi({ netCash: 6_000_000, savedParams: { epicExit: 5, retirementDate: '2032-01-01' } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
-  await screen.findByDisplayValue('5')
+  await screen.findByDisplayValue('5000000')
   expect(screen.getByText(/Saved exit amount kept for this date/)).toBeVisible()
   expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
   fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
-  expect(await screen.findByDisplayValue('6')).toBeVisible()
+  expect(await screen.findByDisplayValue('6000000')).toBeVisible()
   expect(screen.getByText(/Epic exit: projected automatically/)).toBeVisible()
 })
 
 it('preserves an explicitly manual amount when the retirement date changes', async () => {
   mockApi({ savedParams: { epicExit: 5, epicExitMode: 'manual', retirementDate: '2032-01-01' } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
-  await screen.findByDisplayValue('5')
+  await screen.findByDisplayValue('5000000')
   fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
   expect(screen.getByText(/Date changes keep this override/)).toBeVisible()
   expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
-  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5)
+  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5000000)
 })
 
 it('pauses an automatic plan when projection fails and allows an explicit manual fallback', async () => {
@@ -678,14 +725,14 @@ it('pauses an automatic plan when projection fails and allows an explicit manual
   expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeDisabled()
   await userEvent.click(screen.getByRole('button', { name: 'Enter a manual exit amount' }))
   expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeEnabled()
-  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5)
+  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5000000)
 })
 
 it('aborts the previous autosave when a newer spending edit supersedes it', async () => {
   mockApi({ netCash: 0, savedParams: { defaultSpend: 40, epicExitMode: 'manual', epicExit: 1 } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   const spending = await screen.findByLabelText(/^Default spend/)
-  fireEvent.change(spending, { target: { value: '60' } })
+  fireEvent.change(spending, { target: { value: '60000' } })
   let signal: AbortSignal | undefined
   await waitFor(() => {
     const calls = vi.mocked(globalThis.fetch).mock.calls
@@ -694,7 +741,7 @@ it('aborts the previous autosave when a newer spending edit supersedes it', asyn
     signal = first?.[1]?.signal ?? undefined
     expect(signal?.aborted).toBe(false)
   }, { timeout: 2500 })
-  fireEvent.change(spending, { target: { value: '77' } })
+  fireEvent.change(spending, { target: { value: '77000' } })
   await waitFor(() => expect(signal?.aborted).toBe(true))
 })
 
@@ -704,7 +751,7 @@ it('saves an empty-account plan with zero exit and preserves spending on reload'
   const first = render(<MemoryRouter><Retirement /></MemoryRouter>)
   expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
   expect(screen.getByRole('button', {name: /Simulate.*retirements/})).toBeDisabled()
-  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '77'}})
+  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '77000'}})
   let saved: Record<string, unknown> | undefined
   await waitFor(() => {
     saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
@@ -715,7 +762,7 @@ it('saves an empty-account plan with zero exit and preserves spending on reload'
   mockApi({ emptyGrants: true, netCash: null, savedParams: saved })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   expect(await screen.findByText(/No stock imported yet/)).toBeVisible()
-  expect(screen.getByLabelText(/^Default spend/)).toHaveValue(77)
+  expect(screen.getByLabelText(/^Default spend/)).toHaveValue(77000)
 })
 
 for (const noPrices of [true, false]) {
@@ -724,7 +771,7 @@ for (const noPrices of [true, false]) {
     const first = render(<MemoryRouter><Retirement /></MemoryRouter>)
     await screen.findByText(noPrices ? /Add a share price to project your exit/ : /No exit projection is available/)
     if (noPrices) expect(screen.getByRole('link', {name: 'Add a price'})).toHaveAttribute('href', '/prices')
-    fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80'}})
+    fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80000'}})
     let saved: Record<string, unknown> | undefined
     await waitFor(() => {
       saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
@@ -737,7 +784,7 @@ for (const noPrices of [true, false]) {
     mockApi({ noPrices, netCash: null, savedParams: saved })
     render(<MemoryRouter><Retirement /></MemoryRouter>)
     await screen.findByText(noPrices ? /Add a share price to project your exit/ : /No exit projection is available/)
-    expect(screen.getByLabelText(/^Default spend/)).toHaveValue(80)
+    expect(screen.getByLabelText(/^Default spend/)).toHaveValue(80000)
   })
 }
 
@@ -752,7 +799,7 @@ it('saves other inputs while an automatic preview is still pending, then saves t
   })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await screen.findByText(/exit projection pending/)
-  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80'}})
+  fireEvent.change(screen.getByLabelText(/^Default spend/), {target: {value: '80000'}})
   await waitFor(() => {
     const saved = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
       .map(([, init]) => JSON.parse(String(init?.body)).params).find(p => p?.defaultSpend === 80)

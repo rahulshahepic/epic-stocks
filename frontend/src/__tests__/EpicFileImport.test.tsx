@@ -230,6 +230,35 @@ describe('EpicFileImport → one screen of changes', () => {
 describe('EpicFileImport — current share price', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
+  it('locks the import source and hides old changes while repricing', async () => {
+    mockApi({...CLEAN, price_is_stale: true})
+    renderCard()
+    await readFiles()
+    let finish!: (response: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await userEvent.type(await screen.findByLabelText('Current share price'), '20')
+    await userEvent.click(screen.getByRole('button', {name: 'Use this price'}))
+    expect(screen.getByLabelText('Stock files (.csv, .xlsx, .pdf)')).toBeDisabled()
+    expect(screen.getByLabelText(/Data for Stock Workbook/)).toBeDisabled()
+    expect(screen.queryByRole('button', {name: 'Check 2 changes'})).toBeNull()
+    finish(new Response(JSON.stringify(CLEAN), {status: 200}))
+    expect(await screen.findByRole('button', {name: 'Check 2 changes'})).toBeEnabled()
+  })
+
+  it('locks repricing and source selection while checking changes', async () => {
+    mockApi({...CLEAN, price_is_stale: true})
+    renderCard()
+    await readFiles()
+    let finish!: (response: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await userEvent.click(await screen.findByRole('button', {name: 'Check 2 changes'}))
+    expect(screen.getByLabelText('Current share price')).toBeDisabled()
+    expect(screen.getByLabelText('Stock files (.csv, .xlsx, .pdf)')).toBeDisabled()
+    finish(new Response(JSON.stringify({confirm: 'fictional', changes: CLEAN.changes, position_before: {}, position_after: {}}), {status: 200}))
+    expect(await screen.findByRole('button', {name: 'Save 2 changes'})).toBeEnabled()
+    expect(screen.getByLabelText('Current share price')).toBeEnabled()
+  })
+
   it('asks for it when the files carry only older prices', async () => {
     mockApi({ ...CLEAN, price_is_stale: true })
     renderCard()

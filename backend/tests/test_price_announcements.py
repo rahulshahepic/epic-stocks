@@ -98,7 +98,7 @@ def test_no_notification_on_applicable_date_reminder_after_expected_announcement
     with patch("scaffold.email_sender.app_url", return_value="https://example.test"):
         subject, text, html, _ = build_event_email(events)
     assert subject == "Epic Stocks: update your share price"
-    assert "replace your estimate" in text
+    assert "add or update your price" in text
     assert "Log in at https://example.test/prices" in text
     assert 'href="https://example.test/prices"' in html
 
@@ -299,3 +299,43 @@ def test_shared_viewer_gets_no_reminder_and_owners_stays_pending(client, make_cl
             assert send.call_count == 0
         with user_key(db_session.query(User).filter(User.email == "owner@test.com").one()):
             assert db_session.query(Price).one().announcement_notified_at is None
+
+
+@pytest.mark.parametrize("delivered", [False, True])
+def test_missing_current_price_reminder_records_only_successful_delivery(client, db_session, delivered):
+    from unittest.mock import patch
+    from scaffold.models import User
+    from scaffold.notifications import get_todays_events_for_user, send_daily_notifications
+
+    register_user(client)
+    assert client.post("/api/grants", json=GRANT).status_code == 201
+    client.put("/api/notifications/email?enabled=true", json={})
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 100})
+    user = db_session.query(User).one()
+    with user_key(user):
+        assert not get_todays_events_for_user(user, db_session, date(2021, 2, 28))
+        events = get_todays_events_for_user(user, db_session, date(2021, 3, 2))
+        assert len(events) == 1 and events[0]["_price_reminder_year"] == 2021
+    with (patch("scaffold.notifications.SessionLocal", return_value=db_session),
+          patch("scaffold.email_sender.email_configured", return_value=True),
+          patch("scaffold.email_sender.send_email", return_value=delivered) as send):
+        send_daily_notifications(date(2021, 3, 2))
+        assert send.call_count == 1
+    user = db_session.query(User).one()
+    assert user.price_reminder_year == (2021 if delivered else None)
+    with user_key(user):
+        assert bool(get_todays_events_for_user(user, db_session, date(2021, 3, 3))) is (not delivered)
+        assert get_todays_events_for_user(user, db_session, date(2022, 3, 2))[0]["_price_reminder_year"] == 2022
+
+
+def test_current_confirmed_price_suppresses_annual_missing_price_reminder(client, db_session):
+    from scaffold.models import User
+    from scaffold.notifications import get_todays_events_for_user
+
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 100,
+                                   "announced_date": "2020-02-27"})
+    user = db_session.query(User).one()
+    with user_key(user):
+        assert not get_todays_events_for_user(user, db_session, date(2020, 3, 2))

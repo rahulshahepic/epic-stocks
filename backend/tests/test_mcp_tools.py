@@ -147,6 +147,7 @@ WRITING_TOOLS = {
     "add_compensation", "remove_compensation", "set_retirement_accounts",
     "update_retirement_params",
     "apply_changes",
+    "set_investment_interest_method",
 }
 
 # Of those, the ones that can take something away: the two comp writers only
@@ -555,6 +556,7 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
         },
         "remove_compensation": {"ids": ["nothing-with-this-id"]},
         "set_retirement_accounts": {"roth": 0.25},
+        "set_investment_interest_method": {"method": "cash"},
         "update_retirement_params": {"changes": {"defaultSpend": 180}},
         "plan_life_events": {"events": [{"id": "trip", "title": "Vacation", "kind": "travel",
                                          "date": "2033-06-01", "amountM": 0.02}],

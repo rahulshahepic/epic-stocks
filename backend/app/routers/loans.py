@@ -702,7 +702,7 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
             "skipped_user_owned": skipped_user_owned}
 
 
-PAYOFF_RESIZE_MARKER = "payoff_sales_sized:loan_projection_v1"
+PAYOFF_RESIZE_MARKER = "payoff_sales_sized:loan_projection_v2"
 
 
 def resize_generated_payoff_sales(db: Session) -> int:

@@ -87,7 +87,8 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
           )}
           {hasDeduction && (s.interest_deducted ?? 0) > 0 && (
             <p className="text-[10px] text-cs-muted">
-              {fmt$(s.interest_deducted ?? 0)} of interest paid by the exit, against gains realized in the year it was paid.
+              {fmt$(s.interest_deducted ?? 0)} of interest offset realized gains.
+              {' '}{s.investment_interest_method === 'cash' ? 'Interest counted when paid.' : 'Interest counted as it accrued.'}
             </p>
           )}
           {s.deduction_excluded_years.length > 0 && (

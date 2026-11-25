@@ -336,3 +336,21 @@ def test_an_implausible_salary_is_refused(mcp):
 def test_writes_refuse_another_account(mcp, name, arguments):
     """Own account only, and a write is the one that must not slip through."""
     assert "Unknown account" in mcp.error(name, account="7", **arguments)
+
+
+
+def test_investment_interest_method_respects_scopes_and_is_shared_with_web(client):
+    register_user(client)
+    reader = Mcp(client, scope="equity:read")
+    writer = Mcp(client, scope="equity:read equity:write")
+
+    assert reader.call("get_investment_interest_method") == {
+        "method": "accrual", "deduction_enabled": False,
+    }
+    assert "equity:write" in reader.error("set_investment_interest_method", method="cash")
+    assert writer.call("set_investment_interest_method", method="cash") == {"method": "cash"}
+    settings = client.get("/api/tax-settings").json()
+    assert settings["investment_interest_method"] == "cash"
+    assert settings["deduct_investment_interest"] is False
+    assert reader.call("get_investment_interest_method")["method"] == "cash"
+    assert "method" in writer.error("set_investment_interest_method", method="invalid")

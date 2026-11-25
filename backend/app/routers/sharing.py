@@ -657,16 +657,15 @@ def shared_tax_settings(
     owner = _get_shared_owner(invitation_id, user, db)
     from app.routers.sales import _get_or_create_tax_settings, _flexible_payoff_enabled
     from schemas import TaxSettingsRead
-    from scaffold.models import Grant
+    from scaffold.models import Grant, Loan
+    from app.tax_settings import investment_interest_years
     ts = _get_or_create_tax_settings(owner, db)
     result = TaxSettingsRead.model_validate(ts)
     result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
     grants = db.query(Grant).filter(Grant.user_id == owner.id).all()
-    years: set[int] = set()
     from services.vesting import vest_years
-    for g in grants:
-        years |= vest_years(g)
-    result.taxable_years = sorted(years)
+    loans = db.query(Loan).filter(Loan.user_id == owner.id).all()
+    result.taxable_years = sorted(investment_interest_years((y for g in grants for y in vest_years(g)), loans))
     return result
 
 

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.models import User, LoanPayment, Sale, TipAcceptance
 from scaffold.auth import get_current_user
-from app.tax_settings import tax_settings_or_defaults
+from app.tax_settings import investment_interest_years, tax_settings_or_defaults
+from app.date_utils import to_date
 from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
     _user_source_data, _enrich_timeline, _annotate_sale_taxes,
@@ -32,6 +33,7 @@ def _compute_scenario(
     loan_payoff_method: str | None = None,
     flexible_payoff_enabled: bool = False,
     projection=None,
+    deduction_interest=None,
 ) -> tuple[float, float]:
     """Return (total_tax, net_cash) for Sale/Liquidation events in the scenario.
 
@@ -52,7 +54,9 @@ def _compute_scenario(
                          lot_selection_method=lot_order, flexible_payoff_enabled=flexible_payoff_enabled,
                          sale_loan_ids=sale_loan_ids)
     if deduct_interest:
-        _apply_interest_deduction(enriched, projection.interest_paid_by_year(), excluded_years=excluded_years)
+        if deduction_interest is None:
+            deduction_interest = projection.interest_for_deduction(ts_dict.get("investment_interest_method", "accrual"))
+        _apply_interest_deduction(enriched, deduction_interest, excluded_years=excluded_years)
     sale_events = [
         e for e in enriched
         if e.get("event_type") in ("Sale", "Liquidation (projected)")
@@ -89,13 +93,14 @@ def _compute_scenario_tax(
     loan_payoff_method: str | None = None,
     flexible_payoff_enabled: bool = False,
     projection=None,
+    deduction_interest=None,
 ) -> float:
     tax, _ = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales, ts_dict, lot_order, horizon_date, deduct_interest,
         excluded_years=excluded_years, loan_grant_by_id=loan_grant_by_id,
         loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
-        projection=projection,
+        projection=projection, deduction_interest=deduction_interest,
     )
     return tax
 
@@ -114,8 +119,9 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
     loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
     loan_payoff_method = ts_row.loan_payoff_method
-    projection = _project(grants, prices, loans_db, loan_payments, sales,
-                          _projection_settings(ts_row), _tax_due_dates(db))
+    projection_settings = _projection_settings(ts_row)
+    tax_due = _tax_due_dates(db)
+    projection = _project(grants, prices, loans_db, loan_payments, sales, projection_settings, tax_due)
     db.close()
 
     ts_dict = {
@@ -142,13 +148,23 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     if scenario_horizon is None:
         return []
 
+    method = ts_row.investment_interest_method
+    if method == "accrual":
+        # Use the same settlement horizon as the dated exit preview.
+        stop = to_date(scenario_horizon) + timedelta(days=projection_settings["lag_days"])
+        deduction_projection = _project(grants, prices, loans_db, loan_payments, sales,
+                                        projection_settings, tax_due, stop=stop)
+    else:
+        deduction_projection = projection
+    deduction_interest = deduction_projection.interest_for_deduction(method)
+
     baseline_tax, _ = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales,
         ts_dict, current_lot, scenario_horizon, current_deduct,
         excluded_years=current_excl, loan_grant_by_id=loan_grant_by_id,
         loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
-        projection=projection,
+        projection=projection, deduction_interest=deduction_interest,
     )
     baseline = baseline_tax  # used by tips 2 & 3
 
@@ -165,14 +181,11 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
                              loan_grant_by_id=loan_grant_by_id, loan_payoff_method=loan_payoff_method,
                              lot_selection_method=current_lot, flexible_payoff_enabled=flexible_payoff_enabled,
                              sale_loan_ids=sale_loan_ids_for_tip)
-        # Determine past years from grant vest schedules (matches taxable_years)
-        vest_years: set[int] = set()
-        for g in grants:
-            vest_years |= {d.year for d, _ in g['vesting']}
-        past_years = sorted(y for y in vest_years if y < this_year)
+        vest_years = (day.year for grant in grants for day, _ in grant["vesting"])
+        past_years = sorted(y for y in investment_interest_years(vest_years, loans_db) if y < this_year)
         excl_set = set(past_years)
         # Apply deduction only to non-excluded (current + future) years
-        _apply_interest_deduction(enriched_for_tip, projection.interest_paid_by_year(), excluded_years=excl_set)
+        _apply_interest_deduction(enriched_for_tip, deduction_interest, excluded_years=excl_set)
         stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
         ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
         savings = round(sum(
@@ -209,7 +222,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
             ts_dict, lot_method, scenario_horizon, current_deduct,
             excluded_years=current_excl, loan_grant_by_id=loan_grant_by_id,
             loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
-            projection=projection,
+            projection=projection, deduction_interest=deduction_interest,
         )
         savings = round(baseline - new_tax, 2)
         if savings > best_savings:

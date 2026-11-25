@@ -543,24 +543,27 @@ def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depen
     ts = _get_or_create_tax_settings(user, db)
     result = TaxSettingsRead.model_validate(ts)
     result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
-    # Compute taxable years from grants so the frontend can show per-year toggles
-    grants = db.query(Grant).filter(Grant.user_id == user.id).all()
-    years: set[int] = set()
-    for g in grants:
-        years |= vest_years(g)
-    result.taxable_years = sorted(years)
     from app.loan_projection import assumed_rate_from
-    result.default_projected_loan_rate = assumed_rate_from(
-        db.query(Loan).filter(Loan.user_id == user.id).all()) or None
+    from app.tax_settings import investment_interest_years
+    grants = db.query(Grant).filter(Grant.user_id == user.id).all()
+    loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    result.taxable_years = sorted(investment_interest_years((y for g in grants for y in vest_years(g)), loans))
+    result.default_projected_loan_rate = assumed_rate_from(loans) or None
     return result
 
 
-@tax_router.put("", response_model=TaxSettingsRead)
-def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def _save_tax_settings(user: User, db: Session, body: TaxSettingsUpdate):
+    changes = body.model_dump(exclude_unset=True)
     ts = _get_or_create_tax_settings(user, db)
-    for k, v in body.model_dump(exclude_unset=True).items():
+    method_only = "investment_interest_method" in changes and all(
+        getattr(ts, key) == value for key, value in changes.items()
+        if key != "investment_interest_method"
+    )
+    for k, v in changes.items():
         setattr(ts, k, int(v) if k == 'prefer_stock_dp' else v)
     db.commit()
+    if method_only:
+        return
     db.refresh(ts)
     # Rates and lot method feed straight into how payoff sales are sized
     # (_compute_payoff_sale reads this same TaxSettings row) — refresh existing
@@ -568,4 +571,9 @@ def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_curren
     # no longer applies. Same reasoning as the price-change refresh.
     from app.routers.loans import _regenerate_future_payoff_sales
     _regenerate_future_payoff_sales(user, db, create_missing=False)
+
+
+@tax_router.put("", response_model=TaxSettingsRead)
+def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _save_tax_settings(user, db, body)
     return get_tax_settings(user, db)

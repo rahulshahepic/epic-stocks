@@ -29,12 +29,12 @@ test.describe('Getting started', () => {
     await page.getByLabel('Exercise Date').fill('2024-12-31')
     await page.getByRole('button', { name: /^Save$/ }).click()
     // Each part rounded down, the rest on the last date.
-    await expect(page.getByText(/250 on 2025-03-01, 250 on 2026-03-01, 250 on 2027-03-01, 251 on 2028-03-01/).first()).toBeVisible()
+    await expect(page.getByText(/250 on Mar 1, 2025, 250 on Mar 1, 2026, 250 on Mar 1, 2027, 251 on Mar 1, 2028/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Edit' }).first().click()
     await page.getByLabel('Vesting date 2', { exact: true }).fill('2026-09-15')
     await page.getByRole('button', { name: /^Save$/ }).click()
-    await expect(page.getByText(/250 on 2026-09-15/).first()).toBeVisible()
+    await expect(page.getByText(/250 on Sep 15, 2026/).first()).toBeVisible()
 
     await navigateTo(page, 'Dashboard')
     await expect(page.getByText('Events Timeline').or(page.getByText('Shares Over Time'))).toBeVisible({ timeout: 10000 })

@@ -21,10 +21,10 @@ for (const theme of ['light', 'dark'] as const) {
 
     await page.goto('/retirement')
     await expect(page.getByText(/Add a share price to project your exit/)).toBeVisible()
-    await page.getByLabel(/^Default spend/).fill('80')
+    await page.getByLabel(/^Default spend/).fill('80000')
     await expect.poll(async () => (await (await page.request.get('/api/retirement/params')).json()).params?.defaultSpend).toBe(80)
     await page.reload()
-    await expect(page.getByLabel(/^Default spend/)).toHaveValue('80')
+    await expect(page.getByLabel(/^Default spend/)).toHaveValue('80000')
     await expect(page.getByText(/Add a share price to project your exit/)).toBeVisible()
     if (process.env.SCREENSHOT_EMAIL) {
       await page.getByText(/Add a share price to project your exit/).scrollIntoViewIfNeeded()
@@ -37,6 +37,6 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto('/retirement')
     await expect(page.getByLabel(/^Epic exit value/)).not.toHaveValue('0')
     await expect(page.getByText(/Add a share price to project your exit/)).toHaveCount(0)
-    await expect(page.getByLabel(/^Default spend/)).toHaveValue('80')
+    await expect(page.getByLabel(/^Default spend/)).toHaveValue('80000')
   })
 }

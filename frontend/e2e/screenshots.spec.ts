@@ -290,6 +290,9 @@ test.describe('Screenshots', () => {
   for (const [viewport, size] of [[MOBILE, 'mobile'], [DESKTOP, 'desktop']] as const) {
     test(`dashboard estimated price - light - ${size}`, async ({ page }) => {
       await authedPage(page, viewport, 'light')
+      // A timed-out browser attempt may leave its synthetic price behind.
+      const existing = (await (await page.request.get(`${BASE}/api/prices`)).json()).find((p: {effective_date: string}) => p.effective_date === '2027-01-01')
+      if (existing) expect((await page.request.delete(`${BASE}/api/prices/${existing.id}`)).ok()).toBe(true)
       const created = await page.request.post(`${BASE}/api/prices`, {
         data: { effective_date: '2027-01-01', price: 9.5, is_estimate: true } })
       expect(created.ok()).toBeTruthy()
@@ -302,7 +305,7 @@ test.describe('Screenshots', () => {
         const card = page.getByRole('link', { name: 'Open next event' })
         await expect(card).toBeVisible()
         await expect(card).toContainText('estimated price change')
-        await page.getByText(/^Announcement expected/).scrollIntoViewIfNeeded()
+        await page.getByText(/Your estimate · announcement expected/).first().scrollIntoViewIfNeeded()
         await shoot(page, `dashboard-estimated-price-light-${size}`)
         await card.click()
         await expect(page).toHaveURL(/\/events\?date=2027-01-01/)
@@ -967,7 +970,7 @@ test.describe('Screenshots', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await shoot(page, `retirement-basic-${theme}-${size}`, { fullPage: true })
       await page.getByRole('button', { name: 'Show advanced assumptions' }).click()
-      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1')
+      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1000000')
       const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await shoot(page, `retirement-advanced-${theme}-${size}`, { fullPage: true })

@@ -45,5 +45,5 @@ When the user requests setup:
    do not save; save named settings only when requested. Verify units before
    saving: retirement balances use millions of dollars in MCP parameters.
 9. Explain disconnect/export/deletion controls and link the privacy policy at
-   https://epic-stocks.com/privacy when relevant. Do not repeat legal boilerplate
+   https://epic-stocks.com/privacy-policy when relevant. Do not repeat legal boilerplate
    on every result; state material assumptions and uncertainty where needed.

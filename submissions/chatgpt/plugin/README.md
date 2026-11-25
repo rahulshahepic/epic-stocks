@@ -23,7 +23,7 @@ connection expires, reconnect through OAuth. No static API key is required.
 
 ## Privacy Policy
 
-[Public privacy policy](https://epic-stocks.com/privacy) describes collected
+[Public privacy policy](https://epic-stocks.com/privacy-policy) describes collected
 profile/financial fields, storage, assistant sharing, retention, export,
 disconnect and deletion. The connector accesses only selected account scopes;
 no assistant memory/history/files are retrieved. Use the website parser for raw

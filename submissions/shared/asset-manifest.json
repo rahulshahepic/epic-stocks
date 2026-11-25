@@ -49,9 +49,9 @@
     "purpose": "Actual mobile website equity, fictional reviewer",
     "evidence_kind": "website",
     "width": 375,
-    "height": 3555,
-    "bytes": 399948,
-    "sha256": "a2a0fd135913696ac7287a711c31d37d1b74ef35906278d070436f8e9301afb3",
+    "height": 3599,
+    "bytes": 424319,
+    "sha256": "add81f38347971ce5d56bfcb905d52c154c1e08c7109379535f8b11a74b53d4e",
     "actual_host_capture": false
   },
   {
@@ -85,6 +85,17 @@
     "height": 1124,
     "bytes": 82819,
     "sha256": "bb94ef3300873138d87cbdc2e089aa0e7e21c33d55f0294ce40141e844adc296",
+    "actual_host_capture": false
+  },
+  {
+    "file": "assets/website-demo.webm",
+    "source": "frontend/public/review/epic-stocks-website-demo.webm",
+    "purpose": "Supplemental fictional website walkthrough; equity, sale what-if, timeline, retirement",
+    "evidence_kind": "website-video",
+    "width": 1280,
+    "height": 800,
+    "bytes": 2154412,
+    "sha256": "9219951fa033c7af30f1d3ae6d508abd326cc8236743a70715f128e3903824fc",
     "actual_host_capture": false
   }
 ]

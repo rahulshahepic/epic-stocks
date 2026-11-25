@@ -40,3 +40,12 @@ imports; the text statement is a human-readable reference (the PDF import
 expects a PDF, not this .txt). None contains real employee records or prices.
 Use the existing synthetic PDF in `test_data/` if an actual PDF upload test is
 needed; do not substitute a real statement.
+
+Supplemental [website walkthrough video](../../frontend/public/review/epic-stocks-website-demo.webm)
+(WebM, 1280×800) records the actual fictional website demo: equity, sale what-if,
+timeline and retirement simulation. It shows no credentials or private records.
+The materials archives include `assets/website-demo.webm`. It is **not** a
+ChatGPT/Claude recording and does not establish host compatibility.
+Regenerate with `SUBMISSION_DEMO_CAPTURE=1 PLAYWRIGHT_SPECS=e2e/submission-demo.spec.ts
+./screenshots/run.sh`; validate dimensions/duration with `ffprobe`. Viewing pauses
+are deliberate. The committed manifest contains its hash and byte size.

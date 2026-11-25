@@ -11,10 +11,12 @@ See [requirements](requirements.md), [public request evidence](evidence/public-p
   have been provisioned. Complete independent review, CI, staging test, promotion
   and owner deployment approval before provisioning production reviewers.
 - **Public privacy accessibility.** Audit client received 403 on `/privacy` on
-  production and staging. Discovery/setup endpoints worked. Cloudflare ruleset
-  version 10 has narrow setup/BIC exceptions but omits privacy/reviewer paths.
-  Proposed exact-path extension is in `ops/cloudflare_directory_review.json`;
-  it is not claimed applied. Validate WAF changes through the deployment policy.
+  production initially, and staging before the edge fix. Discovery/setup worked.
+  Independently reviewed staging-only exact-path/BIC changes are now applied at
+  ruleset12; production remains unchanged. Server-readable `/privacy-policy` and
+  `/privacy.md` are implemented but not yet deployed. A200 SPA shell is not proof
+  of policy or reviewer availability. The separate production recipe remains in
+  `ops/cloudflare_directory_review.json` for approved release.
 - **OpenAI terms, identity and video.** No verified operator identity/contact or
   adopted public terms can be invented. Draft terms supplied for owner review.
   Record actual-host walkthrough and publish reviewer-accessible video URL.
@@ -69,8 +71,8 @@ website parser. Necessary extracted fields can still be explicitly supplied.
 PR [#746](https://github.com/rahulshahepic/epic-stocks/pull/746) merged into staging
 as `5531a13` during this assignment. Its final scope includes public issue links
 and separately consented encrypted support diagnostics/original failed-import
-files, not only its earlier issue-form draft. The reviewer branch is being
-reconciled with that implementation rather than duplicating it.
+files, not only its earlier issue-form draft. The reviewer branch is
+reconciled with that implementation; no parallel support-data store was added.
 
 Ordinary `/api/report` reports remain anonymous by default and never attach
 financial values or files automatically. `/api/report/with-consent` uses separate

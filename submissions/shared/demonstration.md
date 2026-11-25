@@ -33,3 +33,7 @@ retirement plan, date comparison, conditional expense. Local simulations in
 Mobile check in each actual host: summary legibility, chart labels, tabs,
 keyboard/focus, scroll, simulation controls, callbacks, loading and errors.
 Website/local screenshot tests cover different evidence and cannot replace it.
+
+A completed, supplemental website-only recording is linked in [assets](assets.md).
+It demonstrates the actual public fictional demo, with settled results and no
+host chrome. The actual-host walkthrough and Claude carousel remain outstanding.

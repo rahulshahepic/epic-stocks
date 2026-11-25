@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 import database
 
-from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding, reviewers
+from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding, reviewers, public_privacy
 from app.routers import demo, interest_checkpoints, changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
@@ -639,6 +639,7 @@ _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(backups.router)
 _fastapi_app.include_router(plugin_downloads.router)
 _fastapi_app.include_router(mcp_setup.router)
+_fastapi_app.include_router(public_privacy.router)
 _fastapi_app.include_router(notifications.router)
 _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)

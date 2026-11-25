@@ -14,7 +14,7 @@ fields require owner completion; no personal/company facts are invented.
 | Slug | epic-stocks-unofficial — check availability; permanent once published |
 | Categories (1–5) | Choose the live categories matching personal finance, productivity and planning; do not invent unavailable labels |
 | Documentation | https://epic-stocks.com/mcp-setup |
-| Privacy | https://epic-stocks.com/privacy |
+| Privacy | https://epic-stocks.com/privacy-policy |
 | Support contact | **OWNER:** actual monitored contact; public GitHub issues are unsuitable for confidential reports |
 | Icon | Shared existing 512×512 SVG/PNG brand assets; manifest below |
 | Authentication | Required; OAuth 2.0, DCR (oauth_dcr), S256 PKCE; no Anthropic-held client secret required |

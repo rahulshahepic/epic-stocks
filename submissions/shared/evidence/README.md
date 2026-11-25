@@ -5,19 +5,19 @@ handoff. Local tests do not establish production deployment or host rendering.
 
 | Layer | Evidence/status |
 |---|---|
-| Existing OAuth/deletion/staging regression | 100 passed, 1 skipped in first targeted run |
-| New reviewer tests | Cover production-shaped OAuth, persistent writes, independent datasets/keys, rotation, expiration, revoke/delete/reset, old sessions, cross-account/admin refusal, human approval, shared rate limits, stale calls, Unicode input and public-page recovery |
-| Full backend initial run | 2320 passed, 20 skipped; two expected admin tool allowlist assertions needed updating for the added tool. Follow-up targeted run passed 143, skipped 3; subsequent full run: **2329 passed, 20 skipped**; final auth-counter/deletion-race tests also passed |
-| Frontend initial run | TypeScript passed; 59 files / 822 tests passed; all 822 passed again; subsequent focused 55 passed |
-| Security scans | pip-audit direct requirements: no known vulnerabilities. npm audit --omit=dev: zero vulnerabilities |
-| Independent review | Separate assistant security review found login/rotation and stale-grant races, expired-cookie recovery, approval clarity and nested-lock issues; fixes/regression tests added. PR #747 current-head re-review/CI pending after the automated Claude journal-eviction finding was fixed with separate bounded counters |
-| Screenshots | Required ./screenshots/run.sh running with temporary backend port 8100. Initial fixed-port screenshot tests revealed hardcoded 8000 references; tests now honor the runner's proxy origin. 27 focused captures passed, then 7 final form/privacy captures passed. New screenshot-only cases now skip outside the capture workflow (111 skipped in CI-shaped validation). |
-| E2E | Required ./e2e.sh workflow with local runner fallback prepared; 41 local reviewer/widget/resource cases passed; subsequent reviewer auth-counter flow passed |
-| Public endpoints | [Read-only production/staging probes](public-probes.json); OAuth/setup public, privacy 403 for audit client. No real data inspected |
-| PostgreSQL concurrency | A temporary PostgreSQL 16 container was used: **22 SQLite/PostgreSQL lock/concurrent-write cases passed**, including independent simultaneous reviewer financial writes. This remains separate from deployment/host acceptance |
-| Staging | No claim of deployed new reviewer validation yet; feature PR/review/CI/staging deployment must complete |
-| Production | Not deployed or approved by this agent. No production reviewer credentials provisioned. Owner approval remains required |
-| ChatGPT/Claude rendering | No actual-host rendering observed in this session. Website/local simulated-host tests are separate evidence |
+| Backend | Before final concurrency fix: **2365 passed, 2 skipped**, including actual PostgreSQL concurrency. Current-head full CI is the merge gate; do not substitute earlier-head results |
+| Reviewer/concurrency | Final focused run: **49 passed, 1 skipped**; additional owned-worker cancellation regression **3 passed**. Covers independent persistent data, key separation, rotation, expiration, revocation, reset, boundaries, approval, pool contention and cancellation |
+| Frontend | Merged reporting/reviewer baseline: TypeScript and **824 tests in 59 files passed**. Final screenshot lint formatting fixed; current-head CI pending |
+| Security | pip-audit direct requirements including AnyIO4.16.0: no known vulnerabilities; npm audit --omit=dev: zero |
+| Independent review | [Authentication PR #747](https://github.com/rahulshahepic/epic-stocks/pull/747). Separate assistant found/followed fixes for lifecycle races, journal eviction, pool contention and cancellation cleanup. Exact-head review and automated review remain gates |
+| Screenshots | Required ./screenshots/run.sh: 27 initial focused captures, 7 follow-up captures, 11 merged reporting/reviewer captures, **4 public-privacy accessibility/mobile captures passed**. Canonical screenshots committed; website/local host evidence distinguished |
+| E2E | ./e2e.sh supported local fallback: 41 reviewer/widget/resource cases passed; merged reporting/reviewer/resource3 passed. Real PostgreSQL browser testing reproduced the pool deadlock and verified requests progress after fix; full clean-database CI is authoritative. Reusing a populated test DB produces expected empty-account failures and is not counted as passing |
+| Public endpoints | [Actual production/staging probes](public-probes.json). Production reviewer/privacy paths still403 for audit client; staging edge now permits requests. A200 SPA shell is explicitly not treated as policy/login availability |
+| Cloudflare | Independently reviewed staging-only exact-path exceptions applied2026-11-25; ruleset12, challenge rule5/BIC rule2. 6,624 request combinations verified non-staging behavior unchanged. Production recipe remains unapplied |
+| Staging | New deployment acceptance module pending merge/deployment. No claim of deployed reviewer validation yet |
+| Production | Not deployed/approved. No production reviewer credentials provisioned; owner approval required |
+| ChatGPT/Claude rendering | No actual-host rendering observed. Website/local simulated-host tests do not establish it |
+| Supplemental video | Actual fictional website demo recorded1280×800 via required screenshot runner; WebM in public/review. Not a ChatGPT/Claude capture |
 
 Production-safe checks were limited to unauthenticated documentation/discovery
 requests and Cloudflare rule inspection. No user financial records or documents

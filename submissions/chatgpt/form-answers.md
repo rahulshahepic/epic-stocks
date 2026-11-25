@@ -11,7 +11,7 @@ required fields. Do not submit until the checklist is clear.
 | Category | Productivity (choose a finance category if the live selector offers a better applicable category) |
 | Website | https://epic-stocks.com |
 | Support documentation | https://epic-stocks.com/mcp-setup |
-| Privacy | https://epic-stocks.com/privacy |
+| Privacy | https://epic-stocks.com/privacy-policy |
 | Terms | **BLOCKED:** owner-adopted public terms URL; proposed https://epic-stocks.com/terms is not yet implemented |
 | MCP URL | https://epic-stocks.com/mcp |
 | Authentication | OAuth; Dynamic Client Registration. No static headers or embedded credentials. |

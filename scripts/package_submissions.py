@@ -19,7 +19,7 @@ ASSETS = {
     'equity-widget-local.png': ('screenshots/chatgpt-plugin-light-desktop.png', 'Local simulated host equity widget; NOT actual ChatGPT or Claude', 'local-simulation'),
     'retirement-widget-local.png': ('screenshots/mcp-apps-retirement-light-desktop.png', 'Local simulated host retirement widget; NOT actual ChatGPT or Claude', 'local-simulation'),
 }
-SAMPLES = ('test_data/epic_share_summary.csv', 'test_data/epic_loan_statement.txt', 'test_data/fixture.xlsx')
+SAMPLES = ('test_data/epic_share_summary.csv', 'test_data/epic_loan_statement.txt', 'test_data/epic_loan_statement.pdf', 'test_data/fixture.xlsx')
 
 
 def public_files(folder):
@@ -102,6 +102,15 @@ def main():
         manifest.append({'file': 'assets/' + name, 'source': source, 'purpose': purpose, 'evidence_kind': kind,
                          'width': width, 'height': height, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
                          'actual_host_capture': False})
+    # This is a real website recording, never a rendered ChatGPT/Claude session.
+    video_source = 'frontend/public/review/epic-stocks-website-demo.webm'
+    video = (ROOT / video_source).read_bytes()
+    assert video[:4] == bytes.fromhex('1a45dfa3')
+    assets['assets/website-demo.webm'] = video
+    manifest.append({'file': 'assets/website-demo.webm', 'source': video_source,
+        'purpose': 'Supplemental fictional website walkthrough; equity, sale what-if, timeline, retirement',
+        'evidence_kind': 'website-video', 'width': 1280, 'height': 800,
+        'bytes': len(video), 'sha256': hashlib.sha256(video).hexdigest(), 'actual_host_capture': False})
     assets['assets/manifest.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     (OUT / 'asset-manifest.json').write_bytes(assets['assets/manifest.json'])
     (ROOT / 'submissions/shared/asset-manifest.json').write_bytes(assets['assets/manifest.json'])

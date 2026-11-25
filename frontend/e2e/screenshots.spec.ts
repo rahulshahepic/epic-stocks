@@ -1214,43 +1214,58 @@ test.describe('Screenshots', () => {
 test.describe('Directory reviewer screenshots', () => {
   test.skip(!EMAIL, 'Run through screenshots/run.sh')
 
-test('directory reviewer login - light - mobile', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/reviewer-login')
-  await expect(page.getByRole('heading', { name: 'Directory reviewer sign-in' })).toBeVisible()
-  await page.screenshot({ path: `${OUT}/directory-reviewer-login-light-mobile.png`, fullPage: true })
+  test('directory reviewer login - light - mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/reviewer-login')
+    await expect(page.getByRole('heading', { name: 'Directory reviewer sign-in' })).toBeVisible()
+    await page.screenshot({ path: `${OUT}/directory-reviewer-login-light-mobile.png`, fullPage: true })
+  })
+
+  test('directory reviewer admin - light - mobile', async ({ page }) => {
+    await authedPage(page, { width: 390, height: 844 }, 'light')
+    await page.goto('/admin')
+    const panel = page.getByRole('heading', { name: 'Directory reviewer accounts', exact: true }).locator('..')
+    await expect(panel).toBeVisible()
+    await panel.screenshot({ path: `${OUT}/directory-reviewer-admin-light-mobile.png` })
+  })
+
+  test('directory reviewer fictional portfolio and loans', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    const created = await page.request.post(`${BASE}/api/admin/reviewers/access`, { data: { platform: 'openai', scenario: 'established', days: 30 } })
+    expect(created.ok()).toBeTruthy()
+    const account = await created.json()
+    const loginPage = await page.request.get(`${BASE}/reviewer-login`)
+    const csrf = (await loginPage.text()).split('name="csrf" value="')[1].split('"')[0]
+    const signed = await page.request.post(`${BASE}/reviewer-login`, { form: { login: account.login, password: account.password, csrf } })
+    expect(signed.ok()).toBeTruthy()
+    await page.goto(BASE)
+    await expect(page.getByText(/FICTIONAL REVIEW DATA/)).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Calculating exit…')).toHaveCount(0)
+    await page.screenshot({ path: `${OUT}/directory-equity-light-desktop.png` })
+    await page.goto(`${BASE}/loans`)
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: `${OUT}/directory-loans-light-desktop.png` })
+    await page.setViewportSize(MOBILE)
+    await page.goto(BASE)
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Calculating exit…')).toHaveCount(0)
+    await page.screenshot({ path: `${OUT}/directory-equity-light-mobile.png`, fullPage: true })
+  })
+
 })
 
-test('directory reviewer admin - light - mobile', async ({ page }) => {
-  await authedPage(page, { width: 390, height: 844 }, 'light')
-  await page.goto('/admin')
-  const panel = page.getByRole('heading', { name: 'Directory reviewer accounts', exact: true }).locator('..')
-  await expect(panel).toBeVisible()
-  await panel.screenshot({ path: `${OUT}/directory-reviewer-admin-light-mobile.png` })
-})
-
-test('directory reviewer fictional portfolio and loans', async ({ page }) => {
-  await authedPage(page, DESKTOP, 'light')
-  const created = await page.request.post(`${BASE}/api/admin/reviewers/access`, { data: { platform: 'openai', scenario: 'established', days: 30 } })
-  expect(created.ok()).toBeTruthy()
-  const account = await created.json()
-  const loginPage = await page.request.get(`${BASE}/reviewer-login`)
-  const csrf = (await loginPage.text()).split('name="csrf" value="')[1].split('"')[0]
-  const signed = await page.request.post(`${BASE}/reviewer-login`, { form: { login: account.login, password: account.password, csrf } })
-  expect(signed.ok()).toBeTruthy()
-  await page.goto(BASE)
-  await expect(page.getByText(/FICTIONAL REVIEW DATA/)).toBeVisible()
-  await page.waitForLoadState('networkidle')
-  await expect(page.getByText('Calculating exit…')).toHaveCount(0)
-  await page.screenshot({ path: `${OUT}/directory-equity-light-desktop.png` })
-  await page.goto(`${BASE}/loans`)
-  await page.waitForLoadState('networkidle')
-  await page.screenshot({ path: `${OUT}/directory-loans-light-desktop.png` })
-  await page.setViewportSize(MOBILE)
-  await page.goto(BASE)
-  await page.waitForLoadState('networkidle')
-  await expect(page.getByText('Calculating exit…')).toHaveCount(0)
-  await page.screenshot({ path: `${OUT}/directory-equity-light-mobile.png`, fullPage: true })
-})
-
+test.describe('Public privacy screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) for (const [size, viewport] of [['mobile', MOBILE], ['desktop', DESKTOP]] as const) {
+    test(`public privacy policy - ${theme} - ${size}`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(viewport)
+      await page.goto(`${BASE}/privacy-policy`)
+      await expect(page.getByRole('heading', { name: 'Privacy Policy', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-privacy-${theme}-${size}.png` })
+    })
+  }
 })

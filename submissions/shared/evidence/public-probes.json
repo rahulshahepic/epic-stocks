@@ -1,375 +1,236 @@
 {
-  "checked_at": "2026-11-25T16:48:57.629231+00:00",
+  "checked_at": "2026-11-25T17:32:14.806552+00:00",
   "method": "Public GET requests and unauthenticated MCP initialize POST only; no credentials or financial data",
   "results": [
     {
       "url": "https://epic-stocks.com/api/health",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "status": "ok"
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://epic-stocks.com/.well-known/oauth-protected-resource/mcp",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "resource": "https://epic-stocks.com/mcp",
-        "authorization_servers": [
-          "https://epic-stocks.com"
-        ],
-        "scopes_supported": [
-          "equity:read",
-          "comp:read",
-          "comp:write",
-          "import:propose",
-          "equity:write"
-        ],
-        "bearer_methods_supported": [
-          "header"
-        ],
-        "resource_documentation": "https://epic-stocks.com/mcp-setup"
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://epic-stocks.com/.well-known/oauth-authorization-server",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "issuer": "https://epic-stocks.com",
-        "authorization_endpoint": "https://epic-stocks.com/oauth/authorize",
-        "token_endpoint": "https://epic-stocks.com/oauth/token",
-        "registration_endpoint": "https://epic-stocks.com/oauth/register",
-        "revocation_endpoint": "https://epic-stocks.com/oauth/revoke",
-        "scopes_supported": [
-          "equity:read",
-          "comp:read",
-          "comp:write",
-          "import:propose",
-          "equity:write"
-        ],
-        "response_types_supported": [
-          "code"
-        ],
-        "grant_types_supported": [
-          "authorization_code",
-          "refresh_token"
-        ],
-        "code_challenge_methods_supported": [
-          "S256"
-        ],
-        "token_endpoint_auth_methods_supported": [
-          "none",
-          "client_secret_post",
-          "client_secret_basic"
-        ],
-        "revocation_endpoint_auth_methods_supported": [
-          "none",
-          "client_secret_post"
-        ],
-        "resource_indicators_supported": true,
-        "service_documentation": "https://epic-stocks.com/mcp-setup"
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://epic-stocks.com/mcp/setup.json",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "name": "Epic Stocks",
-        "environment": "production",
-        "server_url": "https://epic-stocks.com/mcp",
-        "transport": "streamable-http",
-        "authentication": {
-          "type": "oauth2",
-          "pkce": "S256",
-          "dynamic_client_registration": true,
-          "resource_metadata": "https://epic-stocks.com/.well-known/oauth-protected-resource/mcp",
-          "authorization_server_metadata": "https://epic-stocks.com/.well-known/oauth-authorization-server"
-        },
-        "guide_url": "https://epic-stocks.com/mcp-setup",
-        "downloads": {
-          "chatgpt": "https://epic-stocks.com/mcp-setup/plugin/chatgpt",
-          "claude": "https://epic-stocks.com/mcp-setup/plugin/claude"
-        },
-        "setup": [
-          "Create a custom MCP app in your assistant, or upload the matching plugin ZIP.",
-          "Use server_url with OAuth authentication; no API key or client secret is required.",
-          "Sign in to this environment and explicitly approve the account permissions.",
-          "Use equity:read for stock and loan questions and comp:read for compensation or retirement.",
-          "Select Epic Stocks in your chat after connecting."
-        ],
-        "purpose": "Track when your shares vest and what you owe on stock loans. Estimate how much cash you could receive if you left Epic after loan payoff and taxes, and compare retirement dates.",
-        "first_run": {
-          "account_overview": "Call get_dashboard for an overview. If the account is empty, offer to help with a first import.",
-          "import": {
-            "read_guide": "Call get_import_guide before asking for paperwork or proposing changes.",
-            "documents": "Start with one document you already have: an Epic DocuSign stock purchase agreement, a Stock Loan Statement, or the Eureka \u201cData for Stock Workbook\u201d CSV. Add other documents as needed.",
-            "review": "Check for existing records, preview changes with apply_changes, explain any assumptions, and ask the user to approve the preview before saving. Read back the saved result.",
-            "required_scope": "equity:write",
-            "permission": "Enable Equity editing before previewing or saving changes."
-          }
-        },
-        "data_notice": "Private account data stays behind OAuth. This public document contains no account data.",
-        "automatic_setup_limit": "Discovery can supply configuration; installation, sign-in and permission approval remain user actions."
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://epic-stocks.com/mcp-setup",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/html; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://epic-stocks.com/privacy",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
+    },
+    {
+      "url": "https://epic-stocks.com/privacy-policy",
+      "method": "GET",
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "policy_text_present": false,
+      "spa_shell": false
+    },
+    {
+      "url": "https://epic-stocks.com/privacy.md",
+      "method": "GET",
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "policy_text_present": false,
+      "spa_shell": false
     },
     {
       "url": "https://epic-stocks.com/llms.txt",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/plain; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://epic-stocks.com/robots.txt",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/plain; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://epic-stocks.com/reviewer-login",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
       "reviewer_form_present": false
     },
     {
       "url": "https://epic-stocks.com/reviewer-login.css",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://epic-stocks.com/terms",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
-      "www_authenticate": null
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "terms_verified": false
     },
     {
       "url": "https://epic-stocks.com/mcp",
       "method": "GET",
-      "status": 405,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/api/health",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
       "response_kind": "non-JSON"
     },
     {
       "url": "https://staging.epic-stocks.com/.well-known/oauth-protected-resource/mcp",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "resource": "https://staging.epic-stocks.com/mcp",
-        "authorization_servers": [
-          "https://staging.epic-stocks.com"
-        ],
-        "scopes_supported": [
-          "equity:read",
-          "comp:read",
-          "comp:write",
-          "import:propose",
-          "equity:write"
-        ],
-        "bearer_methods_supported": [
-          "header"
-        ],
-        "resource_documentation": "https://staging.epic-stocks.com/mcp-setup"
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://staging.epic-stocks.com/.well-known/oauth-authorization-server",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "issuer": "https://staging.epic-stocks.com",
-        "authorization_endpoint": "https://staging.epic-stocks.com/oauth/authorize",
-        "token_endpoint": "https://staging.epic-stocks.com/oauth/token",
-        "registration_endpoint": "https://staging.epic-stocks.com/oauth/register",
-        "revocation_endpoint": "https://staging.epic-stocks.com/oauth/revoke",
-        "scopes_supported": [
-          "equity:read",
-          "comp:read",
-          "comp:write",
-          "import:propose",
-          "equity:write"
-        ],
-        "response_types_supported": [
-          "code"
-        ],
-        "grant_types_supported": [
-          "authorization_code",
-          "refresh_token"
-        ],
-        "code_challenge_methods_supported": [
-          "S256"
-        ],
-        "token_endpoint_auth_methods_supported": [
-          "none",
-          "client_secret_post",
-          "client_secret_basic"
-        ],
-        "revocation_endpoint_auth_methods_supported": [
-          "none",
-          "client_secret_post"
-        ],
-        "resource_indicators_supported": true,
-        "service_documentation": "https://staging.epic-stocks.com/mcp-setup"
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://staging.epic-stocks.com/mcp/setup.json",
       "method": "GET",
-      "status": 200,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
-      "public_response": {
-        "name": "Epic Stocks Staging Test",
-        "environment": "staging",
-        "server_url": "https://staging.epic-stocks.com/mcp",
-        "transport": "streamable-http",
-        "authentication": {
-          "type": "oauth2",
-          "pkce": "S256",
-          "dynamic_client_registration": true,
-          "resource_metadata": "https://staging.epic-stocks.com/.well-known/oauth-protected-resource/mcp",
-          "authorization_server_metadata": "https://staging.epic-stocks.com/.well-known/oauth-authorization-server"
-        },
-        "guide_url": "https://staging.epic-stocks.com/mcp-setup",
-        "downloads": {
-          "chatgpt": "https://staging.epic-stocks.com/mcp-setup/plugin/chatgpt",
-          "claude": "https://staging.epic-stocks.com/mcp-setup/plugin/claude"
-        },
-        "setup": [
-          "Create a custom MCP app in your assistant, or upload the matching plugin ZIP.",
-          "Use server_url with OAuth authentication; no API key or client secret is required.",
-          "Sign in to this environment and explicitly approve the account permissions.",
-          "Use equity:read for stock and loan questions and comp:read for compensation or retirement.",
-          "Select Epic Stocks in your chat after connecting."
-        ],
-        "purpose": "Track when your shares vest and what you owe on stock loans. Estimate how much cash you could receive if you left Epic after loan payoff and taxes, and compare retirement dates.",
-        "first_run": {
-          "staging_setup": "Call get_account_context first. If uninitialized, call list_test_scenarios and setup_test_account.",
-          "account_overview": "Call get_dashboard for an overview. If the account is empty, offer to help with a first import.",
-          "import": {
-            "read_guide": "Call get_import_guide before asking for paperwork or proposing changes.",
-            "documents": "Use fictional documents only to try an import.",
-            "review": "Check for existing records, preview changes with apply_changes, explain any assumptions, and ask the user to approve the preview before saving. Read back the saved result.",
-            "required_scope": "equity:write",
-            "permission": "Enable Equity editing before previewing or saving changes."
-          }
-        },
-        "data_notice": "Staging isolates every MCP connection in a persistent fictional account. Financial tools refuse access until setup_test_account succeeds. Never sync these numbers into production, personal finances or financial advice.",
-        "automatic_setup_limit": "Discovery can supply configuration; installation, sign-in and permission approval remain user actions."
-      }
+      "response_kind": "non-JSON"
     },
     {
       "url": "https://staging.epic-stocks.com/mcp-setup",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/html; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/privacy",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
+    },
+    {
+      "url": "https://staging.epic-stocks.com/privacy-policy",
+      "method": "GET",
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "policy_text_present": false,
+      "spa_shell": false
+    },
+    {
+      "url": "https://staging.epic-stocks.com/privacy.md",
+      "method": "GET",
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "policy_text_present": false,
+      "spa_shell": false
     },
     {
       "url": "https://staging.epic-stocks.com/llms.txt",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/plain; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/robots.txt",
       "method": "GET",
-      "status": 200,
-      "content_type": "text/plain; charset=utf-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/reviewer-login",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null,
       "reviewer_form_present": false
     },
     {
       "url": "https://staging.epic-stocks.com/reviewer-login.css",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/terms",
       "method": "GET",
-      "status": 403,
-      "content_type": "text/html; charset=UTF-8",
-      "www_authenticate": null
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null,
+      "terms_verified": false
     },
     {
       "url": "https://staging.epic-stocks.com/mcp",
       "method": "GET",
-      "status": 405,
-      "content_type": "application/json",
+      "status": 503,
+      "content_type": "text/plain",
       "www_authenticate": null
     },
     {
       "url": "https://epic-stocks.com/mcp",
       "method": "POST",
-      "status": 401,
-      "content_type": "application/json",
-      "www_authenticate": "Bearer resource_metadata=\"https://epic-stocks.com/.well-known/oauth-protected-resource\""
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null
     },
     {
       "url": "https://staging.epic-stocks.com/mcp",
       "method": "POST",
-      "status": 401,
-      "content_type": "application/json",
-      "www_authenticate": "Bearer resource_metadata=\"https://staging.epic-stocks.com/.well-known/oauth-protected-resource\""
+      "status": 503,
+      "content_type": "text/plain",
+      "www_authenticate": null
     }
   ]
 }

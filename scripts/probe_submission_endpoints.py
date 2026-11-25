@@ -9,7 +9,7 @@ import urllib.request
 
 PATHS = ('/api/health', '/.well-known/oauth-protected-resource/mcp',
          '/.well-known/oauth-authorization-server', '/mcp/setup.json', '/mcp-setup',
-         '/privacy', '/llms.txt', '/robots.txt', '/reviewer-login', '/reviewer-login.css', '/terms', '/mcp')
+         '/privacy', '/privacy-policy', '/privacy.md', '/llms.txt', '/robots.txt', '/reviewer-login', '/reviewer-login.css', '/terms', '/mcp')
 PUBLIC_JSON = ('/api/health', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server', '/mcp/setup.json')
 
 
@@ -33,6 +33,11 @@ def probe(origin, path, method='GET'):
                 item['public_response'] = json.loads(raw)
             except ValueError:
                 item['response_kind'] = 'non-JSON'
+        if path in ('/privacy-policy', '/privacy.md'):
+            item['policy_text_present'] = b'Epic Stocks' in raw and b'Data Retention' in raw
+            item['spa_shell'] = b'<div id="root"></div>' in raw
+        if path == '/terms':
+            item['terms_verified'] = False  # Owner adoption of the draft remains outstanding.
         if path == '/reviewer-login':
             item['reviewer_form_present'] = b'name="password"' in raw
         return item

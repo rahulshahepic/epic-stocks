@@ -13,7 +13,7 @@ validated in production.
 [Download generated archives from Actions](https://github.com/rahulshahepic/epic-stocks/actions/workflows/submission-packages.yml) ·
 [Listing assets](shared/assets.md) · [Secure reviewer setup](shared/reviewer-setup.md) ·
 [Compliance audit](shared/audit.md) · [Official sources/requirements](shared/requirements.md) ·
-[Testing and deployment](shared/evidence/README.md) · [Walkthrough script](shared/demonstration.md).
+[Testing and deployment](shared/evidence/README.md) · [Walkthrough script](shared/demonstration.md) · [Website demo video](../frontend/public/review/epic-stocks-website-demo.webm).
 
 ## Before either submission
 

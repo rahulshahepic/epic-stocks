@@ -52,26 +52,28 @@ const PrivacyDataCollected = (
         the database — they exist only in memory during your request.
       </P>
     </Sub>
-    <Sub title="Problem reports (sent by you, only when you choose to)">
+    <Sub title="Problem reports">
       <P>
-        A report you send with <strong>Report a problem</strong> stores what you typed,
-        the page you were on, the kind of failure that prompted it, the error text the
-        app had already shown you, the build version, and a reference id pointing at the
-        matching server-side error log. The optional email field is stored only if you
-        fill it in, so you can be reached about what you reported.
+        Use GitHub for general bugs and suggestions. GitHub issues are public.
+        Keep financial information, Epic share prices, documents and unredacted screenshots out of them.
+        Use <strong>Report a problem</strong> in the app for private support, including when you cannot sign in.
       </P>
       <P>
-        Identifying details are opt-in: the "include details that identify me" box starts
-        unticked, and only ticking it attaches your account, your browser's user-agent,
-        and a short trail of the last few pages you visited and requests that failed.
-        Leave it off and the report is stored with no account attached, even if you were
-        signed in. No financial data is ever included — reports about a failed import
-        carry only the rule ids that fired, never the finding text, which quotes figures
-        from your own statement. The dialog shows you the whole payload before it sends.
+        A private report starts anonymous. It includes your message, page, build, safe import rule codes
+        and a server error reference when available. You can add a reply email. An ordinary report can store
+        a one-way IP fingerprint for abuse prevention. Separate access logs depend on operator configuration.
       </P>
       <P>
-        A one-way hash of your IP address is kept with each report to rate-limit abuse of
-        an endpoint that has to work without a login. The report does not store the raw address; separate server and proxy access logs depend on operator configuration.
+        Optional checkboxes let you include the signed-in account, browser and recent actions, and
+        available inputs and financial details from the affected workflow, or attach selected originals
+        from a failed import. The choices are independent and start off. The selected files are sent to
+        support storage only when you submit.
+      </P>
+      <P>
+        The administrator and authorized administrator-connected AI assistants can read this material.
+        The app encrypts it, audits access, expires it after 30 days and removes it earlier upon linked
+        account deletion or admin removal. It is excluded from scheduled off-site database backups.
+        Admin notifications contain only a report number and a link to Admin.
       </P>
     </Sub>
     <Sub title="Anonymous counts (no account needed)">
@@ -182,7 +184,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       viewerHiddenRoutes: new Set(['/import', '/wizard']),
       epicModeHiddenRoutes: new Set(['/import']),
       settingsSections: <AppSettingsSections />,
-      privacyLastUpdated: '2026-11-24',
+      privacyLastUpdated: '2026-11-25',
       privacyDataCollected: PrivacyDataCollected,
       privacyThirdParties: PrivacyThirdParties,
       notifyTemplates: NOTIFY_TEMPLATES,

@@ -58,9 +58,38 @@ describe('the report dialog', () => {
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
     const body = lastReportBody(fetchSpy)
-    expect(body.include_details).toBe(true)
+    expect(body.share_diagnostics).toBe(true)
     expect(body.user_agent).toBeTruthy()
     expect(body.client_log).toContain('/api/events → 500')
+  })
+
+  it('offers GitHub with a static safe URL and keeps private text on the page', async () => {
+    render(<ReportDialog prefill={{ errorMessage: 'Fictional account price $25.50' }} onClose={() => {}} />)
+    const link = screen.getByRole('link', { name: 'Open a public GitHub issue' })
+    expect(link).toHaveAttribute('href', 'https://github.com/rahulshahepic/epic-stocks/issues/new/choose')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('attaches only selected original files and keeps the diagnostics toggle separate', async () => {
+    const retained = new File(['share,price\n10,25.50'], 'example.csv', { type: 'text/csv' })
+    const removed = new File(['%PDF-1.4'], 'remove.pdf', { type: 'application/pdf' })
+    render(<ReportDialog prefill={{ source: 'import', workflow: 'Fictional current price: 25.50',
+      message: 'The import stopped', documents: [retained, removed] }} onClose={() => {}} />)
+    const diagnostics = screen.getByRole('checkbox', { name: /Include account and diagnostic details/ })
+    const attachments = screen.getByRole('checkbox', { name: /Attach the original import files/ })
+    expect(diagnostics).not.toBeChecked()
+    expect(attachments).not.toBeChecked()
+    await userEvent.click(attachments)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove remove.pdf' }))
+    expect(fetchSpy).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }))
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const body = lastReportBody(fetchSpy)
+    expect(body.share_diagnostics).toBe(false)
+    expect(body.attach_documents).toBe(true)
+    expect(body.workflow).toBeUndefined()
+    expect(body.documents).toEqual([{ name: 'example.csv', base64: btoa('share,price\n10,25.50') }])
   })
 
   it('freezes the page behind it, and lets go on close', () => {
@@ -83,7 +112,7 @@ describe('the report dialog', () => {
   it('says so once the report will identify you', async () => {
     render(<ReportDialog onClose={() => {}} />)
     await userEvent.click(screen.getByRole('checkbox'))
-    expect(screen.getByText('This report will identify you.')).toBeInTheDocument()
+    expect(screen.getByText('Shared details may identify you.')).toBeInTheDocument()
   })
 
   it('carries the last server error ref without being asked', async () => {
@@ -165,7 +194,7 @@ describe('the crash screen', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
     const body = lastReportBody(fetchSpy)
     expect(body.source).toBe('crash')
-    expect(body.error_message).toContain('render exploded')
+    expect(body.error_message).toBeNull()
     quiet.mockRestore()
   })
 })

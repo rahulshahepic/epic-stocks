@@ -21,6 +21,7 @@ from sqlalchemy import text
 # (table, user_id column) in FK-safe order: children before parents.
 USER_OWNED_TABLES: list[tuple[str, str]] = [
     ("mcp_test_accounts", "user_id"),
+    ("sensitive_reports", "user_id"),
     ("sales", "user_id"),
     ("loan_interest_checkpoints", "user_id"),
     ("loan_payments", "user_id"),
@@ -119,6 +120,10 @@ def _delete_user(db, user_id: int) -> None:
     from scaffold.onboarding import delete_account_linkage
     delete_account_linkage(db, user_id)
     _clear_self_references(db, user_id)
+
+    db.execute(text(
+        "DELETE FROM user_reports WHERE id IN (SELECT report_id FROM sensitive_reports WHERE user_id = :uid)"
+    ), {"uid": user_id})
 
     for table, col in USER_OWNED_TABLES:
         db.execute(text(f"DELETE FROM {table} WHERE {col} = :uid"), {"uid": user_id})

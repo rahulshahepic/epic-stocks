@@ -1,3 +1,4 @@
+import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import EpicFileImport from '../components/EpicFileImport.tsx'
@@ -66,6 +67,7 @@ export default function ImportExport() {
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
+  const [failedImport, setFailedImport] = useState<{ file: File; generatePayoffSales: boolean } | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [generatePayoffSales, setGeneratePayoffSales] = useState(true)
   const [showGuide, setShowGuide] = useState(false)
@@ -75,6 +77,7 @@ export default function ImportExport() {
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    setFailedImport(null)
     setSelectedFile(file)
     setStatus('confirm')
     setError('')
@@ -89,6 +92,7 @@ export default function ImportExport() {
 
   async function confirmImport() {
     if (!selectedFile) return
+    setFailedImport(null)
     setStatus('uploading')
     setError('')
     try {
@@ -102,6 +106,7 @@ export default function ImportExport() {
       setResult(data)
       setStatus('success')
     } catch (e: unknown) {
+      setFailedImport({ file: selectedFile, generatePayoffSales })
       setError(e instanceof Error ? e.message : 'Import failed')
       setStatus('error')
     } finally {
@@ -111,6 +116,7 @@ export default function ImportExport() {
   }
 
   async function handleExport() {
+    setFailedImport(null)
     setStatus('exporting')
     setError('')
     try {
@@ -125,6 +131,7 @@ export default function ImportExport() {
   }
 
   async function handleTemplateDownload() {
+    setFailedImport(null)
     try {
       const blob = await apiFetchBlob('/api/import/template', 'Download failed')
       await platform.files.saveBlob(blob, 'Vesting_Template.xlsx')
@@ -241,7 +248,9 @@ export default function ImportExport() {
 
         {status === 'error' && error && (
           <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
-            <p className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{error}</p>
+            <ReportableError message={error} source={failedImport ? 'import' : 'manual'} documents={[failedImport?.file]}
+              workflow={failedImport ? `Import workbook; plan loan repayment sales: ${failedImport.generatePayoffSales}` : undefined}
+              className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400" />
           </div>
         )}
       </div>

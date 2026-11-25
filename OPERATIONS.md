@@ -619,3 +619,13 @@ failures recur, investigate the fixed `onboarding_measurement_unavailable`
 server warning and database/schema health; do not collect request bodies or
 financial records for this diagnosis. The report's last-failure timestamp is
 historical evidence and remains visible after recovery.
+
+### Private support reports
+
+The scheduled database backup excludes the contents of `sensitive_reports`
+and `sensitive_report_documents`. Deploy verifies the installed backup
+executable before running migrations. Report stubs and access audit records can
+remain in backups. The service refuses access once material is 30 days old.
+Daily maintenance deletes expired ciphertext and wrapped keys. Account
+deletion or an approved admin purge removes it sooner. See
+[problem reporting architecture](docs/problem-reporting.md).

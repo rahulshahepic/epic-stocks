@@ -214,6 +214,12 @@ jobs:
                  bash ops/install_backup.sh "$(sed -n 's/^APP_ENV=//p' .env)" "${{ vars.DEPLOY_PATH }}"; then
               echo "::warning::Off-site backup setup failed; deployment will continue. Check backup state in Admin diagnostics."
             fi
+            # A previous backup executable would include consented report material.
+            # Require the data-exclusion code before migrations or traffic switch.
+            if ! cmp -s ops/backup_database.py /usr/local/lib/epic-stocks/backup_database.py; then
+              echo "::error::The installed backup executable does not match this release. No application upgrade was performed."
+              exit 1
+            fi
 
             # ── Signal maintenance before taking the app down ────────────────
             # Write the sentinel file first so Caddy immediately starts serving

@@ -161,7 +161,8 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
 
     if payload is None:
         return Response(status_code=202)
-    return JSONResponse(payload)
+    headers = {"Cache-Control": "private, no-store"} if request.url.path == "/admin-mcp" else None
+    return JSONResponse(payload, headers=headers)
 
 
 def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, admin: bool = False) -> dict | None:

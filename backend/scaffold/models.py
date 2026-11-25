@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint, Index, text
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, LargeBinary, Text, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, reconstructor, relationship, validates
 from database import Base
 from scaffold.crypto import (
@@ -387,6 +387,27 @@ class UserReport(Base):
     # reporters on a directly-exposed deployment.
     ip_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="new", server_default="new", index=True)
+
+
+class SensitiveReport(Base):
+    __tablename__ = "sensitive_reports"
+
+    report_id: Mapped[int] = mapped_column(ForeignKey("user_reports.id", ondelete="CASCADE"), primary_key=True)
+    # Used for erasure only. Whether identity was shared is inside the ciphertext.
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    document_bytes: Mapped[int] = mapped_column(Integer)
+    wrapped_key: Mapped[str] = mapped_column(Text)
+    details: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+
+
+class SensitiveReportDocument(Base):
+    __tablename__ = "sensitive_report_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("sensitive_reports.report_id", ondelete="CASCADE"), index=True)
+    metadata_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    original: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
 
 
 class SystemMetric(Base):

@@ -86,7 +86,7 @@ describe('import findings', () => {
 
 
 describe('an inline error message', () => {
-  it('carries the failure text into the report', async () => {
+  it('keeps raw failure text out of the anonymous report', async () => {
     render(
       <MemoryRouter>
         <ReportProvider>
@@ -102,7 +102,7 @@ describe('an inline error message', () => {
       String(url).includes('/api/report'))
     const body = JSON.parse(String((call![1] as RequestInit).body))
     expect(body.source).toBe('import')
-    expect(body.error_message).toBe('Could not read those files')
+    expect(body.error_message).toBeNull()
   })
 
   it('renders nothing when there is no error', () => {

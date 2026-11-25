@@ -249,7 +249,7 @@ test('projected exits and derived defaults never become inputs when projection i
   await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
   await expect(card.locator('#resultsView')).toBeVisible()
   await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
-  await expect(card.locator('#spend')).toHaveValue('270')
+  await expect(card.locator('#spend')).toHaveValue('270000')
   await card.locator('#projectExit').uncheck()
   await card.getByRole('button', { name: 'Save these inputs' }).click()
   await expect(card.getByRole('status')).toContainText('No changed inputs to save')
@@ -296,7 +296,7 @@ test('saving a projected exit requires a completed projection for the selected d
 test('lowering spending does not send a resolved spending floor or other derived values', async ({ page }) => {
   const card = await retirementHost(page)
   await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
-  await card.locator('#spend').fill('50')
+  await card.locator('#spend').fill('50000')
   await card.getByRole('button', { name: 'Run simulation', exact: true }).click()
   await expect(card.locator('#resultsView')).toBeVisible()
   await card.getByRole('button', { name: 'Save these inputs' }).click()
@@ -469,7 +469,7 @@ test('date-based Epic sale estimate is the default while explicit amounts stay f
 test('saving ordinary inputs does not require or save an Epic sale projection', async ({ page }) => {
   const card = await retirementHost(page)
   await card.getByRole('button', { name: 'Edit plan assumptions' }).click()
-  await card.locator('#spend').fill('200')
+  await card.locator('#spend').fill('200000')
   await card.getByRole('button', { name: 'Save these inputs' }).click()
   await expect(card.getByRole('status')).toContainText('Saved to your Epic Stocks retirement plan')
   const calls = await page.evaluate(() => (window as unknown as { pluginCalls: { params: { name?: string; arguments?: { changes?: Record<string, unknown> } } }[] }).pluginCalls)

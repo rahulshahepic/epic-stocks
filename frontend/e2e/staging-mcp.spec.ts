@@ -44,7 +44,7 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('public setup is discoverable before signing in', async ({ page }) => {
   await page.goto('/login')
-  await page.getByRole('link', { name: 'Connect an AI assistant — setup guide' }).click()
+  await page.getByRole('link', { name: 'Open the setup guide' }).click()
   await expect(page.getByRole('heading', { name: 'Connect an AI assistant' })).toBeVisible()
   const doc = await (await page.request.get('/mcp/setup.json')).json()
   expect(doc.transport).toBe('streamable-http')

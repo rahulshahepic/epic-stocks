@@ -258,6 +258,42 @@ def test_life_event_planner_compares_without_persisting(mcp, client, monkeypatch
     assert "plan_life_events" in {t["name"] for t in mcp.list_tools()}
 
 
+def test_expense_only_save_preserves_unsupplied_retirement_fields(client):
+    register_user(client)
+    original = {"defaultSpend": 120, "taxableAdditional": 2}
+    assert client.put("/api/retirement/params", json={"params": original}).status_code == 200
+    event = {"id": "trip", "title": "Trip", "kind": "travel",
+             "date": "2033-01-01", "amountM": 0.01, "priceBasisDate": "2026-11-25"}
+    saved = client.patch("/api/retirement/params", json={"plannedEvents": [event]})
+    assert saved.status_code == 200
+    expected = {**original, "plannedEvents": [event]}
+    assert saved.json()["params"] == expected
+    for invalid in ("20261125", "2026-W48-3"):
+        rejected = client.patch("/api/retirement/params", json={
+            "plannedEvents": [{**event, "priceBasisDate": invalid}],
+        })
+        assert rejected.status_code == 422
+        assert client.put("/api/retirement/params", json={"params": {
+            **original, "plannedEvents": [{**event, "priceBasisDate": invalid}],
+        }}).status_code == 422
+    assert client.get("/api/retirement/params").json()["params"] == expected
+    assert client.put("/api/retirement/params", json={"params": expected}).status_code == 200
+
+
+def test_web_retirement_save_preserves_latest_planned_expenses(client):
+    register_user(client)
+    expense = {"id": "car", "title": "Car", "kind": "vehicle",
+               "date": "2033-01-01", "amountM": 0.04}
+    assert client.patch("/api/retirement/params", json={"plannedEvents": [expense]}).status_code == 200
+    changed = client.put("/api/retirement/params", json={
+        "params": {"retirementDate": "2032-01-01", "defaultSpend": 120},
+        "preserve_planned_expenses": True,
+    })
+    assert changed.json()["params"] == {
+        "retirementDate": "2032-01-01", "defaultSpend": 120, "plannedEvents": [expense],
+    }
+
+
 def test_retirement_api_rejects_invalid_planned_events(client):
     register_user(client)
     invalid = {"id": "trip", "title": "Trip", "kind": "travel",

@@ -21,6 +21,7 @@ class _Params(BaseModel):
     # Loose dict so we don't have to migrate every time we add a slider.
     # The frontend owns the schema; backend just stores/retrieves the blob.
     params: dict[str, Any]
+    preserve_planned_expenses: bool = False
 
 
 @retirement_router.get("/params")
@@ -37,6 +38,8 @@ def save_my_retirement_params(
     if not isinstance(body.params, dict):
         raise HTTPException(status_code=422, detail="params must be an object")
     from app.retirement_simulation import MILLIONS, THOUSANDS, validate_changes
+    if body.preserve_planned_expenses:
+        db.refresh(user, with_for_update=True)
     previous = user.retirement_params or {}
     # A legacy value can be carried forward while unrelated inputs are saved.
     # New and changed amounts must satisfy the current limits.
@@ -61,9 +64,35 @@ def save_my_retirement_params(
             validate_planned_events(body.params['plannedEvents'])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    user.retirement_params = body.params
+    params = dict(body.params)
+    if body.preserve_planned_expenses:
+        params.pop("plannedEvents", None)
+        if "plannedEvents" in previous:
+            params["plannedEvents"] = previous["plannedEvents"]
+    user.retirement_params = params
     db.commit()
-    return {"params": body.params}
+    return {"params": params}
+
+
+class _PlannedExpenses(BaseModel):
+    plannedEvents: list[dict[str, Any]]
+
+
+@retirement_router.patch("/params")
+def save_my_planned_expenses(
+    body: _PlannedExpenses,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.retirement_simulation import validate_planned_events
+    try:
+        validate_planned_events(body.plannedEvents)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.refresh(user, with_for_update=True)
+    user.retirement_params = {**(user.retirement_params or {}), "plannedEvents": body.plannedEvents}
+    db.commit()
+    return {"params": user.retirement_params}
 
 
 class _CompEntries(BaseModel):

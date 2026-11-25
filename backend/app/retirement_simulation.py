@@ -94,7 +94,7 @@ EVENT_FUNDING = {"epic", "brokerage", "cash", "mixed"}
 EVENT_NUMBERS = {"amountM", "annualCostM", "downPaymentPct", "loanRate", "loanYears",
                  "saleOffsetM", "resaleValueM", "replacementEveryYears", "replacementCostM", "inflationRate", "lifetimeYears", "depreciationRate", "durationYears", "vehicleAgeYears"}
 EVENT_FIELDS = {"id", "title", "kind", "date", "endDate", "resaleDate", "funding", "condition",
-                "conditionFailure", "deadlineDate", "depreciationProfile"} | EVENT_NUMBERS
+                "conditionFailure", "deadlineDate", "depreciationProfile", "priceBasisDate"} | EVENT_NUMBERS
 
 
 def validate_planned_events(events):
@@ -120,6 +120,10 @@ def validate_planned_events(events):
         if not isinstance(event.get("funding", "mixed"), str) or event.get("funding", "mixed") not in EVENT_FUNDING:
             raise ValueError(f"{label} has an unsupported funding source")
         when = _date(event["date"], f"{label}.date", historical=True)
+        if "priceBasisDate" in event:
+            basis = _date(event["priceBasisDate"], f"{label}.priceBasisDate", historical=True)
+            if basis.isoformat() != event["priceBasisDate"]:
+                raise ValueError(f"{label}.priceBasisDate must be a YYYY-MM-DD date")
         if "conditionFailure" in event:
             if event["conditionFailure"] not in ("skip", "defer") or "condition" not in event:
                 raise ValueError(f"{label}.conditionFailure requires a condition and must be skip or defer")

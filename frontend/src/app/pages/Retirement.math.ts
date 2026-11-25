@@ -1684,6 +1684,7 @@ export interface PlannedEvent {
   kind: PlannedEventKind
   date: string                  // YYYY-MM-DD
   amountM: number               // purchase or one-time expense
+  priceBasisDate?: string       // amounts saved without a retirement date use this month's dollars
   annualCostM?: number          // recurring real cost, from date through endDate
   endDate?: string
   durationYears?: number        // recurring non-asset costs, from actual start
@@ -1723,7 +1724,17 @@ function monthIndex(date: string): number {
 // an asset that was never bought. A replacement starts a fresh decision.
 function vehicleOwnershipPeriods(events: PlannedEvent[], retirementDate: string, months: number): Array<PlannedEvent & { sourceEventId?: string }> {
   const lastMonth = monthIndex(retirementDate) + months - 1
-  return events.flatMap(event => {
+  return events.flatMap(input => {
+    let event = input
+    if (input.priceBasisDate) {
+      const months = monthIndex(retirementDate) - monthIndex(input.priceBasisDate)
+      const factor = Math.pow(1 + (input.inflationRate ?? 0.025), months / 12)
+      event = { ...input, amountM: input.amountM * factor }
+      delete event.priceBasisDate
+      for (const key of ['annualCostM', 'saleOffsetM', 'resaleValueM', 'replacementCostM'] as const) {
+        if (input[key] != null) event[key] = input[key] * factor
+      }
+    }
     if (event.lifetimeYears == null || event.conditionFailure === 'defer') return [event]
     if (event.kind !== 'vehicle' || !Number.isInteger(event.lifetimeYears) || event.lifetimeYears < 1 || event.lifetimeYears > 50)
       throw new Error('Vehicle lifetime must be a whole number from 1 to 50 years')

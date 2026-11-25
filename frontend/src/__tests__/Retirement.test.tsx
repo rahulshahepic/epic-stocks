@@ -210,7 +210,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    expect(screen.getByRole('heading', { name: /retirement simulator/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Planning' })).toBeInTheDocument()
     expect(screen.getByText(/total portfolio:/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Simulate.*retirements.*years/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Retirement date/i)).toBeInTheDocument()
@@ -698,17 +698,122 @@ describe('Retirement saved-params load failure', () => {
   })
 })
 
-it('puts core inputs before expense entry and keeps working-life funding in its own view', async () => {
+it('shows both working-life and retirement expenses in one list', async () => {
   mockApi({ savedParams: { retirementDate: '2032-01-01', epicExit: 5, paths: 10,
-    plannedEvents: [{ id: 'pre', title: 'Before retirement car', kind: 'vehicle', date: '2030-01-01', amountM: 0.1 }] } })
+    plannedEvents: [
+      { id: 'pre', title: 'First car', kind: 'vehicle', date: '2030-01-01', amountM: 0.1 },
+      { id: 'post', title: 'Later car', kind: 'vehicle', date: '2035-01-01', amountM: 0.05 },
+    ] } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await waitFor(() => expect(screen.getByLabelText(/^Retirement date/)).toHaveValue('2032-01-01'))
-  await userEvent.click(screen.getByRole('button', { name: 'Show advanced assumptions' }))
-  expect(screen.getByText('Who & when').compareDocumentPosition(screen.getByRole('heading', { name: 'Life events & major purchases' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(screen.queryByText('Before retirement car')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: /^Before retirement$/ }))
+  expect(screen.queryByText('First car')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Planned Expenses' }))
   expect(screen.getByRole('region', { name: 'Before retirement funding schedule' })).toHaveTextContent('$100,000')
-  expect(screen.getAllByText('Before retirement car').length).toBeGreaterThan(0)
+  const expenses = screen.getByRole('region', { name: 'Planned expenses' })
+  expect(expenses).toHaveTextContent('First car')
+  expect(expenses).toHaveTextContent('Later car')
+  expect(expenses).toHaveTextContent('Starts before retirement')
+  expect(expenses).toHaveTextContent('Starts during retirement')
+})
+
+it('saves the displayed retirement date when someone edits a retirement plan without changing its date', async () => {
+  mockApi({ savedParams: { epicExitMode: 'manual', epicExit: 1, defaultSpend: 60 } })
+  render(<MemoryRouter initialEntries={['/planning']}><Retirement /></MemoryRouter>)
+  const spending = await screen.findByDisplayValue('60000')
+  const date = (screen.getByLabelText(/^Retirement date/) as HTMLInputElement).value
+  fireEvent.change(spending, { target: { value: '70000' } })
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT')
+    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)).params).find(params => params.defaultSpend === 70)
+    expect(saved).toMatchObject({ retirementDate: date })
+  })
+})
+
+it('saves only the new expense when there is no retirement date', async () => {
+  mockApi({ savedParams: {} })
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  const date = screen.getByLabelText('Purchase / start date')
+  expect(screen.getByLabelText(/^Retirement date/)).not.toBeVisible()
+  fireEvent.change(date, { target: { value: '2029-02-01' } })
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')
+    const saved = writes.map(([, init]) => JSON.parse(String(init?.body)))[0]
+    expect(saved).toEqual({ plannedEvents: [expect.objectContaining({ date: '2029-02-01', amountM: 0.033, priceBasisDate: expect.any(String) })] })
+  })
+  expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/retirement/params' && init?.method === 'PUT')).toBe(false)
+})
+
+it('updates only expenses when a sparse retirement plan already has a date', async () => {
+  mockApi({ savedParams: { retirementDate: '2033-01-01' } })
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(await screen.findByText('Expenses saved')).toBeVisible()
+  const writes = vi.mocked(fetch).mock.calls.filter(([url, init]) => url === '/api/retirement/params' && init?.method)
+  expect(writes.map(([, init]) => init?.method)).toEqual(['PATCH'])
+})
+
+it('shows a failed expense save and supports retry after a background tax refresh', async () => {
+  mockApi({ savedParams: {} })
+  const fetchOtherEndpoints = vi.mocked(fetch).getMockImplementation()!
+  let releaseTaxRefresh = () => {}
+  let releaseExpenseSave = () => {}
+  const taxRefresh = new Promise<void>(resolve => { releaseTaxRefresh = resolve })
+  const expenseSave = new Promise<void>(resolve => { releaseExpenseSave = resolve })
+  let writes = 0
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (input === '/api/tax-settings') await taxRefresh
+    if (input === '/api/retirement/params' && init?.method === 'PATCH' && ++writes === 1) {
+      await expenseSave
+      return new Response(JSON.stringify({ detail: 'Temporary save failure' }), { status: 500 })
+    }
+    return fetchOtherEndpoints(input, init)
+  })
+
+  render(<MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  expect(await screen.findByText('Saving expenses…')).toBeVisible()
+  releaseTaxRefresh()
+  releaseExpenseSave()
+  fireEvent.click(await screen.findByRole('button', { name: 'Try saving again' }))
+  expect(await screen.findByText('Expenses saved')).toBeVisible()
+  expect(writes).toBe(2)
+})
+
+it('waits for an expense save when reopening Planning during the write', async () => {
+  mockApi({ savedParams: {} })
+  const fetchOtherEndpoints = vi.mocked(fetch).getMockImplementation()!
+  let saved = {}
+  let writeStarted = false
+  let releaseWrite = () => {}
+  const canFinish = new Promise<void>(resolve => { releaseWrite = resolve })
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (input !== '/api/retirement/params') return fetchOtherEndpoints(input, init)
+    if (init?.method === 'PATCH') {
+      writeStarted = true
+      await canFinish
+      saved = JSON.parse(String(init.body))
+    }
+    return new Response(JSON.stringify({ params: saved }))
+  })
+  const page = <MemoryRouter initialEntries={['/planning?view=expenses']}><Retirement /></MemoryRouter>
+  const first = render(page)
+  fireEvent.click(await screen.findByRole('button', { name: /Add planned expense/ }))
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Weekend cabin' } })
+  fireEvent.change(screen.getByLabelText(/Purchase price/), { target: { value: '33000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
+  await waitFor(() => expect(writeStarted).toBe(true))
+  first.unmount()
+  render(page)
+  expect(screen.getByText('Loading your planned expenses…')).toBeVisible()
+  releaseWrite()
+  expect(await screen.findByText('Weekend cabin')).toBeVisible()
 })
 
 it('keeps account balances and basis when hiding the breakdown or switching views', async () => {
@@ -746,6 +851,22 @@ it('preserves an explicitly manual amount when the retirement date changes', asy
   expect(screen.getByText(/Changing the date keeps it/)).toBeVisible()
   expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
   expect(screen.getByLabelText(/^Epic cash in retirement plan/)).toHaveValue(5000000)
+})
+
+it.each([
+  { saved: { epicExitMode: 'manual' }, action: 'Use automatic exit projection' },
+  { saved: {}, action: 'Refresh exit projection now' },
+])('saves the updated exit after clicking $action', async ({ saved, action }) => {
+  mockApi({ netCash: 2000000, savedParams: { ...saved, retirementDate: '2033-01-01', epicExit: 1 } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: action }))
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([url, init]) => url === '/api/retirement/params' && init?.method === 'PUT')
+    expect(writes.some(([, init]) => {
+      const params = JSON.parse(String(init?.body)).params
+      return params.epicExitMode === 'auto' && params.epicExit === 2 && params.retirementDate === '2033-01-01'
+    })).toBe(true)
+  })
 })
 
 it('pauses an automatic plan when projection fails and allows an explicit manual fallback', async () => {

@@ -37,7 +37,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const intent = ['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(location.pathname) ? `?intent=${encodeURIComponent(location.pathname)}` : ''
   const annualSummary = location.hash === '#annual-summary' && ['/', '/events'].includes(location.pathname)
-  const signIn = annualSummary ? `/login?next=${encodeURIComponent('/events#annual-summary')}` : `/login${intent}`
+  const planning = location.pathname === '/planning'
+  const signIn = planning ? `/login?next=${encodeURIComponent(location.pathname + location.search)}` : annualSummary ? `/login?next=${encodeURIComponent('/events#annual-summary')}` : `/login${intent}`
   return isLoggedIn() ? <>{children}</> : <Navigate to={signIn} replace />
 }
 
@@ -85,6 +86,7 @@ export default function App() {
                       <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
                       <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
                       <Route path="comp-calculator" element={<FinancialRoute><CompCalculator /></FinancialRoute>} />
+                      <Route path="planning" element={<FinancialRoute><Retirement /></FinancialRoute>} />
                       <Route path="retirement" element={<FinancialRoute><Retirement /></FinancialRoute>} />
                       <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
                       <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />

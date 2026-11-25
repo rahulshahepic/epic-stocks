@@ -44,6 +44,7 @@ export interface Breakdowns {
 }
 export interface DashboardSnapshot extends DashboardData {
   as_of: string
+  outstanding_loan_balance?: number
   cards: CardValues
   grant_holdings: GrantHolding[]
   active_loans: ActiveLoan[]

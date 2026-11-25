@@ -26,7 +26,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api } from '../../api.ts'
+import { api, type ExitPreview } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
@@ -62,7 +62,7 @@ import {
   type SimParams,
   type SimResult,
 } from './Retirement.math.ts'
-import { fmt$M, fmtPct, fmtFullDate } from '../format.ts'
+import { fmt$M, fmtPct, fmtFullDate, sharePriceBasis } from '../format.ts'
 import LifeEventsPlanner from './LifeEventsPlanner.tsx'
 import PurchaseResults from './PurchaseResults.tsx'
 import BeforeRetirement from './BeforeRetirement.tsx'
@@ -460,6 +460,7 @@ function RetirementAccount() {
   const [exitMode, setExitMode] = useState<'auto' | 'manual'>('auto')
   const [legacyExitDate, setLegacyExitDate] = useState<string | null>(null)
   const legacyExitHeld = legacyExitDate === retirementDate
+  const [exitQuote, setExitQuote] = useState<ExitPreview | null>(null)
   const [exitError, setExitError] = useState('')
   const [emptyEquity, setEmptyEquity] = useState(false)
   const [missingPrice, setMissingPrice] = useState(false)
@@ -478,6 +479,7 @@ function RetirementAccount() {
     seed: number
     exitMode: 'auto' | 'manual'
     legacyExitHeld: boolean
+    exitQuote: ExitPreview | null
   } | null>(null)
   const [dateComparison, setDateComparison] = useState<{
     base: NonNullable<typeof completedRun>
@@ -489,6 +491,7 @@ function RetirementAccount() {
   const [runError, setRunError] = useState('')
   const [planStage, setPlanStage] = useState<'before' | 'retirement'>('retirement')
   const resultHeading = useRef<HTMLDivElement>(null)
+  const assumptionsHeading = useRef<HTMLHeadingElement>(null)
   const [lifeEventComparison, setLifeEventComparison] = useState<{ baseline: SimResult; withEvents: SimResult } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
@@ -631,6 +634,7 @@ function RetirementAccount() {
     setExitError('')
     setEmptyEquity(false)
     setMissingPrice(false)
+    setExitQuote(null)
     const fetcher = vid ? api.getSharedPreviewExit(vid, retirementDate) : api.previewExit(retirementDate)
     fetcher
       .then(async p => {
@@ -652,6 +656,7 @@ function RetirementAccount() {
           }
         }
         if (!p || p.date !== retirementDate) throw new Error('No exit projection is available for this date. Retry, or choose a manual exit amount.')
+        setExitQuote(p)
         const m = Number((p.net_cash / 1_000_000).toFixed(3))
         setParams(prev => ({ ...prev, epicExit: Math.max(0, m) }))
       })
@@ -819,12 +824,13 @@ function RetirementAccount() {
         seed,
         exitMode,
         legacyExitHeld,
+        exitQuote: exitMode === 'auto' && !legacyExitHeld && exitQuote?.date === retirementDate ? exitQuote : null,
       })
       setHasRun(true)
       const unchanged = editVersion.current === version
       if (unchanged) setEditInputs(false)
       setRunning(false)
-      if (unchanged) requestAnimationFrame(() => resultHeading.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
+      if (unchanged) requestAnimationFrame(() => resultHeading.current?.focus())
     }
     const fail = (error: unknown) => {
       setCompletedRun(null)
@@ -853,7 +859,7 @@ function RetirementAccount() {
         finally { runTimer.current = null }
       }, 30)
     }
-  }, [params, retirementDate, spouseDOB, exitMode, exitPreviewLoading, exitError, legacyExitHeld])
+  }, [params, retirementDate, spouseDOB, exitMode, exitPreviewLoading, exitError, legacyExitHeld, exitQuote])
 
   async function compareOneYearLater() {
     if (!completedRun || resultsStale || running) return
@@ -910,6 +916,12 @@ function RetirementAccount() {
     }
   }
 
+  function changeAssumptionsView(edit: boolean) {
+    setEditInputs(edit)
+    requestAnimationFrame(() => (edit ? assumptionsHeading : resultHeading).current?.focus())
+  }
+
+  const showingResults = !!result && result.preRetirementFundingGapM <= 1e-9 && !editInputs && planStage === 'retirement'
   const comparison = !resultsStale && dateComparison?.base === completedRun ? dateComparison : null
   const comparisonExitNote = completedRun?.exitMode === 'manual' ? 'Epic cash stays fixed.'
     : completedRun?.legacyExitHeld ? 'The first date uses your saved Epic cash. The later date uses a new projection.'
@@ -973,51 +985,52 @@ function RetirementAccount() {
         </p>
       )}
 
-      <div className="rounded-xl border border-cs-border bg-cs-raised ">
-        <button
-          type="button"
-          onClick={() => setExplainerOpen(o => !o)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-cs-text-2"
-        >
-          <span>What is this?</span>
-          <span className="text-cs-muted">{explainerOpen ? '▲' : '▼'}</span>
-        </button>
-        {explainerOpen && (
-          <div className="border-t border-cs-border px-4 py-3 text-xs leading-relaxed text-cs-text-2 ">
-            <p className="mb-2">
-              We simulate your retirement {params.paths.toLocaleString()} times — from age {params.currentAge} to {params.endAge} — and show you how often things turn out well vs. badly.
-              Every run uses real U.S. stock and bond returns from history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}), borrowing multi-year stretches at a time so a 2008-style crash stays glued to the 2009 recovery (instead of cherry-picking only good or bad years).
-              Your money is split into stocks, bonds, and cash based on the percentages you set.
-            </p>
-            <p className="mb-2">
-              We track four account types because they're taxed differently:
-              {' '}<strong>cash</strong> (spend it freely, no tax),
-              {' '}<strong>brokerage</strong> (you only owe tax on the gains — not the money you originally put in),
-              {' '}<strong>401(k) / IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like regular income when you withdraw), and
-              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then completely tax-free).
-              We pull from cash first, then brokerage, then 401(k), then Roth — and calculate your tax bill each year.
-              If you retire before {RETIREMENT_ACCESS_AGE}, the 401(k) and Roth are off-limits, so those early years have to run on cash and brokerage.
-            </p>
-            <p className="mb-2">
-              Your <strong>spending</strong> number is what you actually spend — groceries, housing, travel, everything. Think of it as your annual take-home needs, not a gross salary. Taxes are figured out separately and added on top.
-              Health insurance is tracked separately too — your estimated premium before 65, then Medicare after.
-              All dollar amounts use <strong>purchasing power in your retirement year</strong>, so "$150K in year 20" means what $150K buys when you retire.
-              Cash earns 0% after inflation — an approximation for savings keeping pace with prices.
-              Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
-            </p>
-            <p>
-              Your Epic exit number is pre-filled from the dashboard's "If you exited" estimate for the retirement date you pick. State tax rates come from <em>Settings → Tax Rates</em>.
-            </p>
-          </div>
-        )}
-      </div>
+      {!showingResults && planStage === 'retirement' && (
+        <div className="rounded-xl border border-cs-border bg-cs-raised ">
+          <button
+            type="button"
+            onClick={() => setExplainerOpen(o => !o)}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-cs-text-2"
+          >
+            <span>What is this?</span>
+            <span className="text-cs-muted">{explainerOpen ? '▲' : '▼'}</span>
+          </button>
+          {explainerOpen && (
+            <div className="border-t border-cs-border px-4 py-3 text-xs leading-relaxed text-cs-text-2 ">
+              <p className="mb-2">
+                We simulate your retirement {params.paths.toLocaleString()} times — from age {params.currentAge} to {params.endAge} — and show you how often things turn out well vs. badly.
+                Every run uses real U.S. stock and bond returns from history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}), borrowing multi-year stretches at a time so a 2008-style crash stays glued to the 2009 recovery (instead of cherry-picking only good or bad years).
+                Your money is split into stocks, bonds, and cash based on the percentages you set.
+              </p>
+              <p className="mb-2">
+                We track four account types because they're taxed differently:
+                {' '}<strong>cash</strong> (spend it freely, no tax),
+                {' '}<strong>brokerage</strong> (you only owe tax on the gains — not the money you originally put in),
+                {' '}<strong>401(k) / IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like regular income when you withdraw), and
+                {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then completely tax-free).
+                We pull from cash first, then brokerage, then 401(k), then Roth — and calculate your tax bill each year.
+                If you retire before {RETIREMENT_ACCESS_AGE}, the 401(k) and Roth are off-limits, so those early years have to run on cash and brokerage.
+              </p>
+              <p className="mb-2">
+                Your <strong>spending</strong> number is what you actually spend — groceries, housing, travel, everything. Think of it as your annual take-home needs, not a gross salary. Taxes are figured out separately and added on top.
+                Health insurance is tracked separately too — your estimated premium before 65, then Medicare after.
+                All dollar amounts use <strong>purchasing power in your retirement year</strong>, so "$150K in year 20" means what $150K buys when you retire.
+                Cash earns 0% after inflation — an approximation for savings keeping pace with prices.
+                Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
+              </p>
+              <p>
+                Automatic Epic cash includes the estimated exit cash, cash from earlier sales, and modeled tax savings from investment interest. State tax rates come from <em>Settings → Tax Rates</em>.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {runError && <p role="alert" className="rounded-lg border border-cs-border p-3 text-sm text-cs-text">{runError}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-        {result && <button type="button" onClick={() => setEditInputs(v => !v)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">{editInputs ? 'Back to results' : 'Edit plan assumptions'}</button>}
+      {!showingResults && planStage === 'retirement' && <div className="flex flex-wrap items-center gap-3">
+        {result && <button type="button" onClick={() => changeAssumptionsView(!editInputs)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">{editInputs ? 'Back to results' : 'Edit plan assumptions'}</button>}
         <button type="button" aria-pressed={advancedView} onClick={() => { setEditInputs(true); setAdvancedView(v => !v) }} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-medium text-cs-text">{advancedView ? 'Show basic view' : 'Show advanced assumptions'}</button>
-        <p className="text-xs text-cs-muted">One saved plan. Switching views keeps every assumption.</p>
-      </div>
+      </div>}
       <div className="flex gap-2" role="group" aria-label="Planning phase">
         <button type="button" aria-pressed={planStage === 'before'} onClick={() => setPlanStage('before')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Before retirement</button>
         <button type="button" aria-pressed={planStage === 'retirement'} onClick={() => setPlanStage('retirement')} className="min-h-11 flex-1 rounded-lg border border-cs-border-strong px-4 py-2 text-sm text-cs-text aria-pressed:border-rose-700 aria-pressed:bg-rose-700 aria-pressed:text-white">Retirement</button>
@@ -1046,9 +1059,9 @@ function RetirementAccount() {
 
           {/* Card 1: Who & when */}
           <Card pad="md">
-            <p className="mb-3 text-xs font-semibold text-cs-text-2">
+            <h2 ref={assumptionsHeading} tabIndex={-1} className="mb-3 scroll-mt-28 text-xs font-semibold text-cs-text-2">
               {vid ? `${ownerName ?? 'Owner'}'s details` : 'Who & when'}
-            </p>
+            </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] font-medium text-cs-text-2">
@@ -1155,7 +1168,7 @@ function RetirementAccount() {
           <Card pad="md">
             <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
             <div className="mb-3 space-y-2">
-              <p className="text-xs text-cs-text-2">{legacyExitHeld ? 'Saved exit amount kept for this date. Changing the date will project a new amount; choose manual to keep a fixed override.' : exitMode === 'auto' ? 'Epic exit: projected automatically for the retirement date using saved share prices and future price estimates. No additional Epic share growth is assumed here; edit future prices on the Prices page.' : 'Epic exit: manual amount. Date changes keep this override.'}</p>
+              <p className="text-xs text-cs-text-2">{legacyExitHeld ? 'Saved exit amount kept for this date. Changing the date will project a new amount; choose manual to keep a fixed override.' : exitMode === 'auto' ? 'Epic cash is projected for the retirement date. It includes estimated exit cash, earlier sale cash, and modeled tax savings from investment interest. Future share prices come from your saved price estimates.' : 'Epic cash is a fixed amount you entered. Changing the date keeps it.'}</p>
               <button type="button" onClick={() => { setLegacyExitDate(null); setExitMode(m => m === 'auto' ? 'manual' : 'auto') }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
               {legacyExitHeld && <button type="button" onClick={() => setLegacyExitDate(null)} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
               {exitMode === 'auto' && emptyEquity && <p className="text-xs text-cs-text-2">No stock imported yet. Epic exit is $0; you can save your other inputs. Import your stock to project an exit, or enter a manual amount.</p>}
@@ -1164,7 +1177,7 @@ function RetirementAccount() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
               <NumInput
-                label="Epic exit value"
+                label="Epic cash in retirement plan"
                 value={params.epicExit}
                 onChange={v => {
                   setLegacyExitDate(null)
@@ -1738,7 +1751,7 @@ function RetirementAccount() {
           {totalPortfolio <= 0 && paramsLoaded && <p role="status" className="rounded-xl border border-cs-border p-4 text-sm text-cs-text">Add your stock or savings to see a result. <Link to="/import" className="font-semibold text-cs-brand underline dark:text-rose-300">Import your stock files</Link>, or enter a brokerage or retirement balance above.</p>}
         </div>
 
-        <div ref={resultHeading} tabIndex={-1} className="scroll-mt-28" />
+        <div ref={resultHeading} role="region" aria-label="Retirement results" tabIndex={-1} className="scroll-mt-28" />
         {result && resultsStale && (
           <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
             Inputs changed. Re-run to update these results; the figures below belong to the previous run.
@@ -1765,6 +1778,8 @@ function RetirementAccount() {
                 <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white"><IconCompass className="h-4 w-4" /></IconTile>
               </div>
               <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">{fmtPct(1 - result.pctRuin, 1)} fully funded</p>
+              <p className="mt-2 text-sm text-white">Retire {completedRun && fmtFullDate(completedRun.retirementDate)}</p>
+              {completedRun?.exitQuote?.price_effective_date && <p className="mt-1 text-xs text-white">{sharePriceBasis(completedRun.exitQuote.price_effective_date, completedRun.exitQuote.price_is_estimate)} for the Epic cash in this plan.</p>}
               <p className="mt-2 text-xs text-white">Through age {resultEndAge} · {result.finalWealth.length.toLocaleString()} simulations · amounts in {resultDollarYear} dollars</p>
             </HeroCard>
             {!resultsStale && completedRun && <Card pad="md">
@@ -1777,32 +1792,44 @@ function RetirementAccount() {
               {comparison?.result && <div className="mt-3" role="status">
                 {comparison.result.preRetirementFundingGapM > 1e-9
                   ? <p className="text-sm text-cs-text">The later plan has a pre-retirement funding gap of {fmt$M(comparison.result.preRetirementFundingGapM)}. Fund the gap to compare retirement outcomes.</p>
-                  : <table className="w-full table-fixed text-left text-xs tabular-nums">
-                    <caption className="sr-only">Comparison of retirement dates</caption>
-                    <thead><tr>
-                      <th className="w-2/5 pb-2 pr-2" scope="col">Measure</th>
-                      <th className="pb-2 pr-2" scope="col">{fmtFullDate(completedRun.retirementDate)}</th>
-                      <th className="pb-2" scope="col">{fmtFullDate(comparison.date)}</th>
-                    </tr></thead>
-                    <tbody>{[
-                      ['Epic cash at exit', fmt$M(completedRun.params.epicExit), fmt$M(comparison.exit ?? 0)],
-                      ['Starting portfolio', fmt$M(result.startingTotal), fmt$M(comparison.result.startingTotal)],
-                      ['Any funding shortfall', fmtPct(result.pctRuin, 1), fmtPct(comparison.result.pctRuin, 1)],
-                      ['Assets exhausted', fmtPct(result.pctExhausted, 1), fmtPct(comparison.result.pctExhausted, 1)],
-                      ...(result.purchaseSummary || comparison.result.purchaseSummary ? [[
-                        'Any optional purchase',
-                        fmtPct(result.purchaseSummary?.purchaseProbability ?? 0, 1),
-                        fmtPct(comparison.result.purchaseSummary?.purchaseProbability ?? 0, 1),
-                      ]] : []),
-                    ].map(([label, first, later]) => <tr key={label} className="border-t border-cs-border">
-                      <th scope="row" className="py-2 pr-2 font-medium">{label}</th>
-                      <td className="py-2 pr-2">{first}</td><td className="py-2">{later}</td>
-                    </tr>)}</tbody>
-                  </table>}
+                  : <>
+                    <p className="mb-3 text-sm font-semibold text-cs-text">
+                      {fmtPct(result.pctRuin, 1) === fmtPct(comparison.result.pctRuin, 1)
+                        ? `Funding shortfall risk rounds to ${fmtPct(result.pctRuin, 1)} at both dates.`
+                        : `Waiting a year ${comparison.result.pctRuin < result.pctRuin ? 'lowers' : 'raises'} modeled funding shortfall risk from ${fmtPct(result.pctRuin, 1)} to ${fmtPct(comparison.result.pctRuin, 1)}.`}
+                    </p>
+                    <p className="mb-3 text-xs text-cs-text-2">{comparisonExitNote}</p>
+                    <table className="w-full table-fixed text-left text-xs tabular-nums">
+                      <caption className="sr-only">Comparison of retirement dates</caption>
+                      <thead><tr>
+                        <th className="w-2/5 pb-2 pr-2" scope="col">Measure</th>
+                        <th className="pb-2 pr-2" scope="col">{fmtFullDate(completedRun.retirementDate)}</th>
+                        <th className="pb-2" scope="col">{fmtFullDate(comparison.date)}</th>
+                      </tr></thead>
+                      <tbody>{[
+                        ['Epic cash in retirement plan', fmt$M(completedRun.params.epicExit), fmt$M(comparison.exit ?? 0)],
+                        ['Starting portfolio', fmt$M(result.startingTotal), fmt$M(comparison.result.startingTotal)],
+                        ['Any funding shortfall', fmtPct(result.pctRuin, 1), fmtPct(comparison.result.pctRuin, 1)],
+                        ['Assets exhausted', fmtPct(result.pctExhausted, 1), fmtPct(comparison.result.pctExhausted, 1)],
+                        ...(result.purchaseSummary || comparison.result.purchaseSummary ? [[
+                          'Any optional purchase',
+                          fmtPct(result.purchaseSummary?.purchaseProbability ?? 0, 1),
+                          fmtPct(comparison.result.purchaseSummary?.purchaseProbability ?? 0, 1),
+                        ], [
+                          'Buy and fully fund retirement',
+                          fmtPct(result.purchaseSummary?.fundedPurchaseProbability ?? 0, 1),
+                          fmtPct(comparison.result.purchaseSummary?.fundedPurchaseProbability ?? 0, 1),
+                        ]] : []),
+                      ].map(([label, first, later]) => <tr key={label} className="border-t border-cs-border">
+                        <th scope="row" className="py-2 pr-2 font-medium">{label}</th>
+                        <td className="py-2 pr-2">{first}</td><td className="py-2">{later}</td>
+                      </tr>)}</tbody>
+                    </table></>}
                 {comparison.result.eventWarnings?.map(warning => <p key={warning} className="mt-2 text-xs text-cs-text-2">{warning}</p>)}
-                <p className="mt-2 text-xs text-cs-muted">Same market samples, spending and savings inputs. {comparisonExitNote} Amounts use each retirement year’s purchasing power. Your saved plan stays as entered.</p>
+                <p className="mt-2 text-xs text-cs-muted">Same market samples, spending and savings inputs. {completedRun.exitMode === 'auto' && !emptyEquity && 'Projected Epic cash includes earlier sale cash and modeled tax savings from investment interest. '}Amounts use each retirement year’s purchasing power. Your saved plan stays as entered.</p>
               </div>}
             </Card>}
+            {showingResults && <button type="button" onClick={() => changeAssumptionsView(true)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">Edit plan assumptions</button>}
             <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
             <div className="grid grid-cols-2 gap-3">
               <StatCard

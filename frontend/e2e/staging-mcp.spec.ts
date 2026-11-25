@@ -28,7 +28,7 @@ for (const theme of ['light', 'dark'] as const) {
       expect((await seeded).status()).toBe(200)
       await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toHaveCount(0)
       await expect(page.getByText('Staging environment — fictional test data')).toBeVisible()
-      await expect(page.getByText('Estimated cash from leaving on this date', { exact: false })).toBeVisible()
+      await expect(page.getByText('Estimated cash if you left today', { exact: false })).toBeVisible()
       await page.goto('/connect-ai')
       await expect(page.getByRole('heading', { name: 'Staging test connector' })).toBeVisible()
       await page.getByLabel('Your assistant').selectOption('chatgpt')

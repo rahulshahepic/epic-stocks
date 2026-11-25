@@ -286,7 +286,7 @@ def test_a_supplied_price_is_used_everywhere_not_just_labelled(client):
     today = date.today().isoformat()
     assert len(after["prices"]) == len(before["prices"]) + 1
     newest = after["prices"][-1]
-    assert (newest["effective_date"], newest["price"]) == (today, 99.50)
+    assert (newest["effective_date"], newest["price"]) == (f"{today[:4]}-01-01", 99.50)
 
     def price_today(body):
         return [e for e in body["timeline"] if e["date"] <= today][-1]["share_price"]
@@ -304,7 +304,7 @@ def test_a_supplied_price_carries_into_signup(client):
     body = client.post("/api/trial/analyze", files=upload_files(),
                        data={"current_price": "99.50"}).json()
     prices = body["draft"]["prices"]
-    assert {"effective_date": date.today().isoformat(), "price": 99.50} in prices
+    assert {"effective_date": date(date.today().year, 1, 1).isoformat(), "price": 99.50} in prices
 
 
 def test_a_price_no_newer_than_the_files_is_ignored(client):

@@ -12,7 +12,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.goto('/')
     await page.getByLabel('Stock files (.csv, .xlsx, .pdf)').setInputFiles(resolve('../test_data/epic_share_summary.csv'))
     await page.getByRole('button', {name: 'Read my files', exact: true}).click()
-    await page.getByRole('button', {name: /^Check \d+ changes/}).click()
+    await page.getByRole('button', {name: 'Review and save'}).click()
     await page.getByRole('button', {name: /^Save \d+ changes/}).click()
     const tour = page.getByRole('region', {name: 'Your position tour'})
     await expect(tour).toBeVisible()

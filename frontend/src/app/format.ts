@@ -68,3 +68,14 @@ export function fmtMonthYear(d: string): string {
   if (!d) return ''
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
+
+
+export const stockValueLabel = 'Stock value before loans and taxes'
+
+export function exitCashLabel(today: boolean): string {
+  return today ? 'Estimated cash if you left today' : 'Estimated cash if you left on this date'
+}
+
+export function sharePriceBasis(date?: string | null, tentative = false): string {
+  return `${tentative ? 'Tentative' : 'Recorded'} share price${date ? ` effective ${fmtFullDate(date)}` : ''}`
+}

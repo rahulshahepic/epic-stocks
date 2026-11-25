@@ -121,6 +121,24 @@ def test_portfolio_labels_the_next_share_price_estimate(client):
     assert next_event["expected_announcement_date"] == announcement.isoformat()
 
 
+def test_exit_preview_discloses_the_price_used_at_each_date(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    today = date.today()
+    recorded = today - timedelta(days=30)
+    tentative = today + timedelta(days=60)
+    for effective, price, estimate in ((recorded, 10, False), (tentative, 12, True)):
+        response = client.post("/api/prices", json={
+            "effective_date": effective.isoformat(), "price": price, "is_estimate": estimate,
+        })
+        assert response.status_code in (200, 201), response.text
+    for when, effective, price, estimate in ((today, recorded, 10, False), (tentative, tentative, 12, True)):
+        quote = client.get("/api/preview-exit", params={"date": when.isoformat()}).json()
+        assert quote["price_effective_date"] == effective.isoformat()
+        assert quote["price_is_estimate"] is estimate
+        assert quote["share_price"] == price
+
+
 def test_the_unbounded_endpoint_is_the_one_that_runs_to_the_projection(mcp, client):
     """Why the tool passes as_of at all. The app never shows this either — it
     computes its own card values for the date in its picker."""

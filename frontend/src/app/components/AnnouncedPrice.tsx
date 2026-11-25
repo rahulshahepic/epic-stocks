@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type Change, type ChangeResult } from '../../api.ts'
 import { useToday } from '../dateUtils.ts'
-import { fmt$ } from '../format.ts'
+import { fmt$, stockValueLabel } from '../format.ts'
 import StarterQuestions from './StarterQuestions.tsx'
 
 /** A confirmed price uses the existing atomic preview/apply services. */
@@ -56,8 +56,8 @@ export default function AnnouncedPrice({ onSaved }: { onSaved?: () => void }) {
     </>}
     {position && <div className="text-sm text-cs-text" aria-live="polite"><p className="font-semibold">{saved ? 'Saved confirmed price.' : 'Before you save'}</p>
       <p>Confirmed price: ${Number(price).toFixed(2)} per share, applicable {applicable}.</p>
-      <p>Stock equity before exit tax: {position.position_before.net_equity == null ? 'Not priced' : fmt$(position.position_before.net_equity)} → {position.position_after.net_equity == null ? 'Not priced' : fmt$(position.position_after.net_equity)}</p>
-      <p className="mt-1 text-xs text-cs-text-2">The same holdings and loan records, valued before and after this price update.</p>
+      <p>{stockValueLabel}: {position.position_before.total_stock_value == null ? 'Not priced' : fmt$(position.position_before.total_stock_value)} → {position.position_after.total_stock_value == null ? 'Not priced' : fmt$(position.position_after.total_stock_value)}</p>
+      <p className="mt-1 text-xs text-cs-text-2">The same shares valued before and after this price update.</p>
     </div>}
     {preview && <button disabled={busy} onClick={() => void save()} className="min-h-11 rounded-lg bg-cs-brand px-4 text-sm font-semibold text-white disabled:opacity-50">Save confirmed price</button>}
     {saved && <><ul className="space-y-2 text-sm text-cs-text-2">{story.map(s => <li key={s}>{s}</li>)}</ul><Link to="/retirement" className="inline-block min-h-11 py-2 text-sm font-semibold text-cs-brand">See what this means for retirement →</Link><StarterQuestions questions={questions} /></>}

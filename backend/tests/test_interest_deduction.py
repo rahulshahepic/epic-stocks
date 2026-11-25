@@ -58,6 +58,7 @@ TAX_SETTINGS_WITH_DEDUCTION = {
     "lot_selection_method": "epic_lifo",
     "prefer_stock_dp": False,
     "deduct_investment_interest": True,
+    "investment_interest_method": "cash",
 }
 
 
@@ -416,6 +417,7 @@ def test_dated_deduction_preview_matches_exit_without_recorded_sales(client):
 
 def test_historical_deduction_preview_matches_dated_snapshot(client):
     _setup_basic(client)
+    client.put("/api/tax-settings", json={"investment_interest_method": "cash"})
     as_of = "2022-12-31"
     preview = client.get("/api/preview-deduction", params={"as_of": as_of, "enabled": True}).json()
     assert preview["interest_deduction_total"] == 2000
@@ -431,3 +433,65 @@ def test_historical_deduction_preview_matches_dated_snapshot(client):
     client.put("/api/tax-settings", json={"deduct_investment_interest": True})
     cards = client.get("/api/dashboard", params={"as_of": as_of}).json()["cards"]
     assert preview["tax_savings_from_deduction"] == cards["tax_savings_from_deduction"]
+
+
+
+def test_accrual_default_applies_booked_interest_before_repayment(client):
+    register_user(client)
+    assert client.get("/api/tax-settings").json()["investment_interest_method"] == "accrual"
+    posted = dict(INTEREST_LOAN_2021, due_date="2090-01-01", interest_rate=0)
+    for path, body in (
+        ("/api/grants", GRANT),
+        ("/api/prices", PRICE_INITIAL),
+        ("/api/prices", PRICE_RISE),
+        ("/api/loans?generate_payoff_sale=false", posted),
+        ("/api/sales", {"date": "2022-07-01", "shares": 200, "price_per_share": 20}),
+    ):
+        response = client.post(path, json=body)
+        assert response.status_code in (200, 201), response.text
+    client.put("/api/tax-settings", json={"deduct_investment_interest": True})
+    query = {"as_of": "2022-12-31"}
+    accrual = client.get("/api/dashboard", params=query).json()
+    assert accrual["cards"]["interest_deduction_total"] == 2000
+    assert accrual["breakdowns"]["interest"]["booked"] == 3000
+    annotated_sale = next(e for e in client.get("/api/events").json() if e["event_type"] == "Sale")
+    assert annotated_sale["interest_deduction_applied"] == 2000
+
+    change = client.put("/api/tax-settings", json={"investment_interest_method": "cash"})
+    assert change.json()["investment_interest_method"] == "cash"
+    cash = client.get("/api/dashboard", params=query).json()
+    assert cash["cards"]["interest_deduction_total"] == 0
+    assert cash["breakdowns"]["interest"]["booked"] == 3000
+    assert client.put("/api/tax-settings", json={"investment_interest_method": "anything"}).status_code == 422
+    assert client.put("/api/tax-settings", json={"investment_interest_method": None}).status_code == 422
+
+
+def test_accrual_year_exclusions_cover_the_loan_beyond_the_vest_schedule(client):
+    register_user(client)
+    for path, body in (
+        ("/api/grants", GRANT),
+        ("/api/prices", PRICE_INITIAL),
+        ("/api/prices", PRICE_RISE),
+        ("/api/loans?generate_payoff_sale=false", {
+            **INTEREST_LOAN_2021, "loan_type": "Purchase", "loan_year": 2020,
+            "amount": 10_000, "due_date": "2033-01-01", "disbursed_on": "2020-01-01",
+        }),
+    ):
+        response = client.post(path, json=body)
+        assert response.status_code in (200, 201), response.text
+
+    tax = client.get("/api/tax-settings").json()
+    assert {2020, 2025} <= set(tax["taxable_years"])
+    request = {"enabled": True, "as_of": "2026-11-25", "include_exit": True}
+    all_years = client.get("/api/preview-deduction", params=request).json()
+    going_forward = client.get("/api/preview-deduction", params={
+        **request, "exclude_past": True, "past_year_cutoff": 2026,
+    }).json()
+
+    client.put("/api/tax-settings", json={
+        "deduct_investment_interest": True,
+        "deduction_excluded_years": [y for y in tax["taxable_years"] if y < 2026],
+    })
+    saved = client.get("/api/preview-exit", params={"date": request["as_of"]}).json()
+    assert all_years["interest_deduction_total"] > going_forward["interest_deduction_total"] > 0
+    assert going_forward["interest_deduction_total"] == saved["interest_deducted"]

@@ -6,7 +6,8 @@ would store; the apply must carry the preview's confirm token, so it cannot
 save something other than what they saw.
 """
 from app.changes import KINDS, MAX_CHANGES, ChangeError, apply_changes
-from scaffold.oauth.scopes import EQUITY_WRITE
+from scaffold.oauth.scopes import EQUITY_READ, EQUITY_WRITE
+from app.tax_settings import tax_settings_or_defaults
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 
@@ -59,4 +60,45 @@ register(Tool(
         "account": ACCOUNT_PROPERTY,
     }, required=["changes"]),
     handler=_apply, read_only=False, idempotent=False, destructive=True,
+))
+
+
+
+def _get_investment_interest_method(ctx: ToolContext, args: dict):
+    owner = resolve_account(ctx.user, args.get("account"), ctx.db)
+    settings = tax_settings_or_defaults(owner, ctx.db)
+    return {"method": settings.investment_interest_method,
+            "deduction_enabled": settings.deduct_investment_interest}
+
+
+def _set_investment_interest_method(ctx: ToolContext, args: dict):
+    from app.routers.sales import _save_tax_settings
+    from schemas import TaxSettingsUpdate
+
+    owner = resolve_account(ctx.user, args.get("account"), ctx.db)
+    method = args.get("method")
+    if method not in ("accrual", "cash"):
+        raise ValueError("method must be accrual or cash")
+    _save_tax_settings(owner, ctx.db, TaxSettingsUpdate(investment_interest_method=method))
+    return {"method": method}
+
+
+register(Tool(
+    name="get_investment_interest_method", title="Read investment interest projection method",
+    scope=EQUITY_READ, handler=_get_investment_interest_method,
+    description=("Read the saved investment interest projection method (accrual by default or cash) "
+                 "and whether estimated deductions are enabled."),
+    input_schema=object_schema({"account": ACCOUNT_PROPERTY}),
+))
+
+register(Tool(
+    name="set_investment_interest_method", title="Set investment interest projection method",
+    scope=EQUITY_WRITE, handler=_set_investment_interest_method, read_only=False,
+    description=("With the person's permission, set only the investment interest projection method. "
+                 "Accrual counts interest in the year it accrues. Cash counts it in the year it is paid. "
+                 "This changes app estimates, not the person's tax return or whether the deduction is enabled."),
+    input_schema=object_schema({
+        "method": {"type": "string", "enum": ["accrual", "cash"]},
+        "account": ACCOUNT_PROPERTY,
+    }, required=["method"]),
 ))

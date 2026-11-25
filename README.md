@@ -650,16 +650,17 @@ If you later change tax rates or add new share prices, the stored share count wi
 
 ### Investment Interest Deduction
 
-Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
+Toggle the deduction estimate on the **Dashboard**. In **Settings → Tax Rates**, choose the investment interest method that matches the tax treatment you want to model. The default is **Accrual**. Changing the app setting changes projections.
 
 **Background:** Investment interest is interest paid on loans used to buy investments. Under IRS Form 4952 you can elect to deduct it against *net investment income* — and you may elect to treat net capital gains as investment income for this purpose. The trade-off: gains treated as investment income lose their preferential cap-gains rate and are taxed as ordinary income instead. For large enough interest amounts, the tax saving from reducing the gain can outweigh the rate difference; this estimate helps you model that.
 
 **How the estimate works:**
 
-- Interest is deductible in the year it is **paid**: an Interest loan when it is repaid (with its purchase loan, or at an exit), accrued interest when its loan is. Projected interest counts the same way once paid.
+- **Accrual** estimates interest in the year it accrues. It uses booked statement interest for the year recorded and actual/365 accrual where interest has yet to be booked. Capitalization and refinancing do not add the same charges again.
+- **Cash** counts interest in the year it is paid, including repayment of an Interest loan or settlement at exit.
 - It offsets only gains actually **realized** that year — sales, payoff sales and the projected liquidation. Vesting is not a realized gain (under 83(b) it is no tax event at all), so nothing is deducted against it.
 - It is applied first to short-term gains, then long-term, and saves the rate of the gain it offsets. Any unused amount carries forward indefinitely.
-- Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction; interest paid in an excluded year is forfeited.
+- Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction; interest attributed to an excluded year is left out of the app’s estimate.
 
 **What changes on the dashboard when enabled:**
 
@@ -785,6 +786,8 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 | `list_loans` | Loans against equity, with early payments and balance outstanding. Refinanced loans stay on the list as history, marked and zero-balance, so a chain is never read as several debts |
 | `list_prices` | Real share price history and the price in effect today. Your own future estimates are kept out unless asked for, and labelled when they come |
 | `list_sales` | Sales recorded and planned |
+| `get_investment_interest_method` | Read the saved investment interest projection method and whether the deduction estimate is enabled |
+| `set_investment_interest_method` | Under `equity:write`, save `accrual` or `cash` when you ask. This changes the estimate's accounting method |
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
@@ -1642,7 +1645,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET | `/api/dashboard` | Legacy cumulative summary; `?as_of=YYYY-MM-DD` returns the dated position, server-prepared cards, grant/loan breakdowns and chart series |
 | GET | `/api/dashboard/charts` | Date-independent dashboard financial chart series and loan-payment schedule; shared viewers use `/api/sharing/view/{invitation_id}/dashboard/charts` |
 | GET | `/api/events` | Computed event timeline |
-| GET | `/api/preview-deduction?enabled=` | Preview investment interest deduction impact without saving |
+| GET | `/api/preview-deduction?enabled=` | Preview investment interest deduction impact without saving. Pass `as_of` for a dashboard date and `include_exit=true` for the hypothetical exit |
 | GET | `/api/preview-exit?date=` | Preview full-liquidation scenario on a given date |
 | GET/POST | `/api/grants` | List/create grants |
 | GET/PUT/DELETE | `/api/grants/{id}` | Get/update/delete grant |

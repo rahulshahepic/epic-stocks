@@ -649,3 +649,45 @@ def test_a_loan_disbursed_after_a_snapshot_in_the_same_year_does_not_change_it()
     a = outstanding_at_stop(project([_purchase_2020()], [], [], today=date(2026, 1, 1), stop=stop))
     b = outstanding_at_stop(project([_purchase_2020(), later], [], [], today=date(2026, 1, 1), stop=stop))
     assert a == b
+
+
+
+def test_accrual_pool_uses_actual_years_without_counting_capitalization_twice():
+    start = date(2026, 7, 1)
+    due = date(2030, 1, 1)
+    stop = date(2028, 2, 1)
+    loan = _loan(1, 2026, "Purchase", "Purchase", 2026, 10_000, 0.05, due, start)
+    estimate = project([loan], [], [], today=stop, stop=stop, assumed_rate=0)
+    stub = 10_000 * 0.05 * _days(start, date(2027, 1, 1)) / 365
+    feb = 10_000 * 0.05 * _days(date(2028, 1, 1), stop) / 365
+    assert estimate.interest_for_deduction("accrual") == {
+        2026: round(stub, 2), 2027: 500, 2028: round(feb, 2),
+    }
+    assert estimate.interest_for_deduction("cash") == {2028: pytest.approx(stub + 500 + feb, abs=0.02)}
+    assert sum(row.amount for row in estimate.projected) == round(stub + 500, 2)
+
+
+def test_refinancing_booked_interest_preserves_the_charge_and_later_accrual():
+    due = date(2030, 1, 1)
+    stop = date(2024, 1, 1)
+    purchase = _loan(1, 2020, "Purchase", "Purchase", 2020, 10_000, 0.05, due, date(2020, 1, 1))
+    original = _loan(2, 2020, "Purchase", "Interest", 2021, 300, 0.05, due)
+    refinance = _loan(3, 2020, "Purchase", "Interest", 2023, 300, 0.05, due, ref=2)
+    before = project([purchase, original], [], [], today=stop, stop=stop, assumed_rate=0)
+    after = project([purchase, original, refinance], [], [], today=stop, stop=stop, assumed_rate=0)
+    expected = {2021: 300, 2022: 515, 2023: 515}
+    assert before.interest_for_deduction("accrual") == expected
+    assert after.interest_for_deduction("accrual") == expected
+    assert after.interest_for_deduction("cash") == before.interest_for_deduction("cash")
+
+
+def test_accrual_checkpoint_reconciles_a_stub_crossing_year_end():
+    start = date(2025, 7, 1)
+    anchor = date(2026, 1, 1)
+    stop = date(2026, 3, 1)
+    loan = _loan(1, 2025, "Purchase", "Purchase", 2025, 10_000, 0.05, date(2030, 1, 1), start)
+    loan["interest_checkpoints"] = [{"accrued_through": anchor, "accrued_interest": 30}]
+    estimate = project([loan], [], [], today=stop, stop=stop, assumed_rate=0)
+    new_year = round(10_000 * 0.05 * _days(anchor, stop) / 365, 2)
+    assert estimate.interest_for_deduction("accrual") == {2025: 30, 2026: new_year}
+    assert estimate.interest_for_deduction("cash") == {2026: 30 + new_year}

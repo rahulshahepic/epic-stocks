@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Annotated, ClassVar, Optional
+from typing import Annotated, ClassVar, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
@@ -543,6 +543,9 @@ class LoanPaymentOut(LoanPaymentCreate):
 
 
 # Tax Settings
+InvestmentInterestMethod = Literal["accrual", "cash"]
+
+
 class TaxSettingsRead(InputModel):
     federal_income_rate: float
     federal_lt_cg_rate: float
@@ -557,6 +560,7 @@ class TaxSettingsRead(InputModel):
     flexible_payoff_enabled: bool = False  # virtual field; populated from grant_program_settings by the endpoint
     prefer_stock_dp: bool = False
     deduct_investment_interest: bool = False
+    investment_interest_method: InvestmentInterestMethod = "accrual"
     deduction_excluded_years: list[int] | None = None
     tax_withholding_rate: float | None = None
     projected_loan_rate: float | None = None
@@ -567,7 +571,7 @@ class TaxSettingsRead(InputModel):
 
 class TaxSettingsUpdate(UpdateModel):
     non_nullable = {
-        "deduct_investment_interest", "federal_income_rate", "federal_lt_cg_rate",
+        "deduct_investment_interest", "investment_interest_method", "federal_income_rate", "federal_lt_cg_rate",
         "federal_st_cg_rate", "loan_payoff_method", "lot_selection_method",
         "lt_holding_days", "niit_rate", "prefer_stock_dp", "state_income_rate",
         "state_lt_cg_rate", "state_st_cg_rate",
@@ -584,6 +588,7 @@ class TaxSettingsUpdate(UpdateModel):
     loan_payoff_method: str | None = None
     prefer_stock_dp: bool | None = None
     deduct_investment_interest: bool | None = None
+    investment_interest_method: InvestmentInterestMethod | None = None
     deduction_excluded_years: list[int] | None = None
     tax_withholding_rate: TaxRate | None = None
     projected_loan_rate: InterestRate | None = None

@@ -342,6 +342,7 @@ export interface ExitSummary {
   prior_sales_net: number
   income_tax: number
   deduction_savings: number
+  investment_interest_method?: 'accrual' | 'cash'
   deduction_years: number[]
   deduction_excluded_years: number[]
   net_cash: number
@@ -1151,6 +1152,7 @@ export interface TaxSettings {
   flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
   deduct_investment_interest: boolean
+  investment_interest_method?: 'accrual' | 'cash'
   deduction_excluded_years: number[] | null
   /** Null means the 0.52 default. */
   tax_withholding_rate?: number | null

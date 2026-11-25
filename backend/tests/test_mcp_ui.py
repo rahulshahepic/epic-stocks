@@ -6,7 +6,7 @@ import pytest
 from tests.conftest import register_user
 from tests.test_mcp_tools import Mcp, seed
 from app.mcp.ui_tools import RESOURCE_URI
-from app.mcp.retirement_tools import RETIREMENT_RESOURCE_URI
+from app.mcp.retirement_tools import RETIREMENT_COMPARE_RESOURCE_URI, RETIREMENT_RESOURCE_URI
 
 
 @pytest.fixture()
@@ -52,7 +52,9 @@ def test_scope_denies_tools_and_resources(client):
     assert "show_equity" not in {t["name"] for t in mcp.list_tools()}
     assert "permission" in mcp.error("show_equity")
     assert "permission" in mcp.error("refresh_equity_view")
-    assert {r["uri"] for r in mcp.rpc("resources/list")["result"]["resources"]} == {RETIREMENT_RESOURCE_URI}
+    assert {r["uri"] for r in mcp.rpc("resources/list")["result"]["resources"]} == {
+        RETIREMENT_RESOURCE_URI, RETIREMENT_COMPARE_RESOURCE_URI,
+    }
     assert "error" in mcp.rpc("resources/read", {"uri": RESOURCE_URI})
 
 
@@ -128,7 +130,8 @@ def test_cached_ui_descriptors_remain_loadable(client, scope, uri, current):
     assert contents["_meta"] == canonical["_meta"]
     assert "access_token" not in contents["text"]
     # New discovery advertises only the current version, not every compatibility URI.
-    assert {r["uri"] for r in connection.rpc("resources/list")["result"]["resources"]} == {current}
+    expected = {current, RETIREMENT_COMPARE_RESOURCE_URI} if scope == "comp:read" else {current}
+    assert {r["uri"] for r in connection.rpc("resources/list")["result"]["resources"]} == expected
 
 
 @pytest.mark.parametrize("scope,uri,current", CACHED_UI_RESOURCES)

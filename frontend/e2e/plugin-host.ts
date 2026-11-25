@@ -77,6 +77,27 @@ export const retirementSnapshot = {
     wealthByAge:[{age:48,p10:7.7,p50:7.7,p90:7.7},{age:68,p10:4,p50:10,p90:20},{age:91,p10:2,p50:12.4,p90:40}]},
 }
 
+const comparisonResult = {
+  ...retirementSnapshot.result,
+  modelFeasible: true, preRetirementFundingGapM: 0, modelWarning: null,
+  pctLiquidityShortfall: .02,
+  finalPercentiles: [{ q: .05, value: 1 }, { q: .10, value: 2 },
+    { q: .50, value: 12.4 }, { q: .90, value: 40 }, { q: .95, value: 45 }],
+}
+export const comparisonSnapshot = {
+  scenarios: [
+    { ...retirementSnapshot, name: 'Retire sooner', exitSource: 'projected_exit', result: comparisonResult },
+    { ...retirementSnapshot, name: 'Work one more year', retirementDate: '2033-01-02',
+      assumptions: { ...retirementSnapshot.assumptions, epicExit: 7 },
+      result: { ...comparisonResult, startingTotalM: 8.7, pctFundingShortfall: .018,
+        finalPercentiles: comparisonResult.finalPercentiles.map(row => ({ ...row, value: row.value + 1 })) } },
+    { ...retirementSnapshot, name: 'Buy before retiring',
+      result: { ...comparisonResult, modelFeasible: false, preRetirementFundingGapM: .45 } },
+  ],
+  saved: false,
+  note: 'All scenarios use the same random seed by default. Epic exit projections use the date-specific price assumptions and are not guarantees.',
+}
+
 export const mobileEditorSnapshot = {
   ...retirementSnapshot,
   saved: true,
@@ -104,7 +125,7 @@ export const purchaseSnapshot = {
   },
 }
 
-export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string; resourceHtml?: string } = {}) {
+export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string; resourceHtml?: string; readyText?: string } = {}) {
   await page.goto('/login')
   await page.evaluate(({html,initial,theme,refreshed,refreshResponses,comparisonFailure}) => {
     document.body.innerHTML=''
@@ -140,6 +161,6 @@ export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'ligh
     document.body.append(frame)
   },{html:options.resourceHtml ?? retirementHtml,initial:options.initial ?? retirementSnapshot,theme,refreshed:options.refreshed,refreshResponses:options.refreshResponses,comparisonFailure:options.comparisonFailure})
   const widget=page.frameLocator('iframe')
-  await widget.getByText('97.00%',{exact:true}).waitFor()
+  await widget.getByText(options.readyText ?? '97.00%', { exact: true }).waitFor()
   return widget
 }

@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { openFailedImportReport, REPORT_CSV } from './reporting-fixture'
 
+test.skip(!process.env.E2E_KEY_ENCRYPTION_KEY && !process.env.SCREENSHOT_EMAIL,
+  'Requires the encrypted-report browser fixture')
+
 test('failed import report discloses options, sends only selected files and supports browser admin retrieval', async ({ page }) => {
   const dialog = await openFailedImportReport(page)
   const github = dialog.getByRole('link', { name: 'Open a public GitHub issue' })

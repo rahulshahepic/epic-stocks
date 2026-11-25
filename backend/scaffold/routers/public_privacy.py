@@ -75,3 +75,29 @@ def privacy_policy():
 @router.api_route('/privacy.md', methods=['GET', 'HEAD'])
 def privacy_markdown():
     return PlainTextResponse(policy_text(), headers={'Cache-Control': 'public, max-age=300'})
+
+
+@router.api_route('/support', methods=['GET', 'HEAD'])
+def public_support():
+    text = '''# Epic Stocks support
+
+Epic Stocks is independently operated and is not an official Epic Systems product.
+
+## Report a problem privately
+
+Sign in to Epic Stocks and use Report a problem. Ordinary reports do not automatically include financial records or documents. You can separately choose to share encrypted diagnostics or original failed-import files for support. Review the consent choices before sending. Authorized administrators can retrieve this explicitly shared material, including through a separately permitted administrator-connected assistant. Access expires after 30 days; scheduled cleanup removes the material.
+
+## Public bug reports
+
+For a general bug or setup question, use [GitHub issue templates](https://github.com/rahulshahepic/epic-stocks/issues/new/choose). Public issues are visible to everyone. Never include private financial records, actual Epic prices, statements, credentials or unredacted screenshots there. A GitHub account is needed to post an issue.
+
+## Connection and account controls
+
+Read [connection instructions](https://epic-stocks.com/mcp-setup). You can disconnect an assistant in Settings → AI connections. Use Settings to export your records or delete your account. Reviewer accounts use a separate fictional identity and are managed by the administrator.
+
+## Privacy
+
+Read the [privacy policy](https://epic-stocks.com/privacy-policy) before sharing support material. Epic Stocks tracks records and estimates; it cannot trade securities or move money.
+'''
+    return HTMLResponse(policy_html(text).replace('<title>Epic Stocks privacy policy</title>', '<title>Epic Stocks support</title>'),
+                        headers={'Cache-Control': 'public, max-age=300'})

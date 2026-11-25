@@ -78,6 +78,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), stagingAssetsPlugin()],
   server: {
     proxy: {
+      '/support': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/privacy-policy': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/privacy.md': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/reviewer-login': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',

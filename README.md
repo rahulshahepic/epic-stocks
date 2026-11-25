@@ -2182,7 +2182,7 @@ database/network and never prints credentials. No new secrets or environment
 settings are required. Narrow staging edge exemptions must allow the reviewer
 login and consent flow; a failure blocks promotion rather than claiming success.
 
-Directory metadata links the [server-readable privacy policy](https://epic-stocks.com/privacy-policy)
+Directory metadata links the [server-readable privacy policy](https://epic-stocks.com/privacy-policy) · [Support](https://epic-stocks.com/support)
 (with a [plain-text alternative](https://epic-stocks.com/privacy.md)). These public endpoints render the
 same repository `PRIVACY.md` without requiring JavaScript or sign-in;
 `scaffold/routers/public_privacy.py` handles them and the Docker image includes

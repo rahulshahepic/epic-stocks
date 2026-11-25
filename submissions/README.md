@@ -18,10 +18,12 @@ validated in production.
 ## Release status
 
 [Reviewer security PR #747](https://github.com/rahulshahepic/epic-stocks/pull/747):
-required checks and independent security review passed at `e190e04`; automated
-review/merge/deployment still pending.
+merged into staging as `3112916` after both independent reviews and all required
+checks passed at `e190e04`. Staging deployment is being verified.
 [Submission PR #749](https://github.com/rahulshahepic/epic-stocks/pull/749):
 independent review and current-head CI pending. No production release approved.
+[Staging → main promotion #750](https://github.com/rahulshahepic/epic-stocks/pull/750)
+is temporarily held until the submission/acceptance follow-up is included.
 
 ## Before either submission
 

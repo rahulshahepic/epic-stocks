@@ -21,3 +21,12 @@ def test_public_privacy_renderer_never_interprets_raw_html_or_script_links():
     assert '&lt;script&gt;' in rendered
     assert 'href="javascript:' not in rendered
     assert '<li><strong>safe</strong></li>' in rendered
+
+
+def test_public_support_is_readable_without_sign_in(client):
+    response = client.get('/support')
+    assert response.status_code == 200
+    assert 'Report a problem privately' in response.text
+    assert 'Public issues are visible to everyone' in response.text
+    assert '30 days' in response.text
+    assert client.head('/support').status_code == 200

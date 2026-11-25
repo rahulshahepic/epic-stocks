@@ -1269,3 +1269,22 @@ test.describe('Public privacy screenshots', () => {
     })
   }
 })
+
+
+test.describe('Public support screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) {
+    test(`public support - ${theme} - mobile`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(MOBILE)
+      await page.goto(`${BASE}/support`)
+      await expect(page.getByRole('heading', { name: 'Epic Stocks support', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-support-${theme}-mobile.png`, fullPage: true })
+      await page.goto(`${BASE}/mcp-setup`)
+      await expect(page.getByRole('link', { name: 'Support', exact: true })).toBeVisible()
+      await page.screenshot({ path: `${OUT}/public-setup-${theme}-mobile.png`, fullPage: true })
+    })
+  }
+})

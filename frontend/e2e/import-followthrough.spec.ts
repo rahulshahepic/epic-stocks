@@ -1,0 +1,45 @@
+import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { loginAs } from './helpers.ts'
+import { resolve } from 'node:path'
+
+for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 'desktop'] as const) {
+  test(`first import reaches valued dashboard ${theme} ${device}`, async ({page}, testInfo) => {
+    await page.emulateMedia({colorScheme: theme})
+    await loginAs(page, `import-followthrough-${theme}-${device}-${testInfo.retry}@example.test`)
+    await page.setViewportSize(device === 'mobile' ? {width: 375, height: 812} : {width: 1366, height: 900})
+    await page.goto('/')
+    await expect(page.getByRole('heading', {name: 'Get your stock in'})).toBeVisible()
+    await page.getByLabel(/Data for Stock Workbook/).setInputFiles(resolve('../test_data/epic_share_summary.csv'))
+    await page.getByLabel('Stock Loan Statement (.pdf)', {exact: true}).setInputFiles(resolve('../test_data/epic_loan_statement.pdf'))
+    await page.getByRole('button', {name: 'Read my files', exact: true}).click()
+    await expect(page.getByText('Needs you', {exact: true})).toBeVisible()
+    await expect(page.getByText(/^FYI ·/)).toBeVisible()
+    await page.getByLabel('Current share price').fill('20')
+    await page.getByRole('button', {name: 'Use this price', exact: true}).click()
+    await expect(page.getByText(/Includes the \$20.00/)).toBeVisible()
+    await page.addStyleTag({content: '[aria-label="Mobile navigation"]{visibility:hidden!important}'})
+    await page.evaluate(() => new Promise<void>(resolve => {window.scrollTo(0, 0); requestAnimationFrame(() => requestAnimationFrame(() => resolve()))}))
+    await page.screenshot({path: `../screenshots/import-review-${theme}-${device}.png`, fullPage: true})
+    await page.getByRole('button', {name: /^Check \d+ changes/}).click()
+    await page.getByRole('button', {name: /^Save \d+ changes/}).click()
+    await expect(page.getByText('Your import is saved. Here’s your position.')).toBeVisible()
+    await expect(page.getByRole('heading', {name: 'Get your stock in'})).toBeHidden()
+    const hero = page.locator('.campus-hero')
+    await expect(hero).toContainText('est. tax')
+    await expect(hero).not.toContainText('Settlement interest includes')
+    await expect(page.getByText('Cash from exit plus earlier activity')).toBeVisible()
+    const exit = await (await page.request.get('/api/preview-exit?date=' + new Date().toISOString().slice(0, 10))).json()
+    const amount = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', maximumFractionDigits: 0}).format(exit.liquidation_net_cash)
+    await expect(hero).toContainText(amount)
+    expect((await new AxeBuilder({page}).analyze()).violations.filter(v => v.impact === 'serious' || v.impact === 'critical')).toEqual([])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.evaluate(() => new Promise<void>(resolve => {window.scrollTo(0, 0); requestAnimationFrame(() => requestAnimationFrame(() => resolve()))}))
+    await page.screenshot({path: `../screenshots/import-saved-${theme}-${device}.png`, fullPage: true})
+    await page.goto('/sales')
+    await expect(page.getByText(/Planned by the app for loan repayment/).first()).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByRole('link', {name: 'Repayment settings'}).first().click()
+    await expect(page.getByRole('heading', {name: 'Tax Rates'})).toBeVisible()
+  })
+}

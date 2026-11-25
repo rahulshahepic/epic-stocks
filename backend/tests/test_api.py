@@ -304,7 +304,9 @@ def test_dashboard_empty(client):
     resp = client.get("/api/dashboard")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["current_price"] == 0
+    assert data["current_price"] is None
+    assert data["account_empty"] is True
+    assert data["next_step"]["tool"] == "get_import_guide"
     assert data["total_shares"] == 0
     assert data["next_event"] is None
 

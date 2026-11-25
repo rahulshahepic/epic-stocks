@@ -269,7 +269,7 @@ describe('Dashboard', () => {
       expect(screen.getByText(/Estimated cash from leaving/)).toBeInTheDocument()
     })
     expect(await screen.findByText('Additional cash needed to settle: $55,000')).toBeInTheDocument()
-    expect(screen.getByText('$20,000 in shares − $75,000 loans')).toBeInTheDocument()
+    expect(screen.getByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')).toBeInTheDocument()
   })
 
   it('labels the value card with the selected date, not always "Today"', async () => {
@@ -516,20 +516,19 @@ describe('server dashboard snapshots', () => {
       return original(input, init)
     })
     renderDashboard()
-    await screen.findByText('$20,000 in shares − $75,000 loans')
+    await screen.findByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')
     const input = document.querySelector('input[type=date]')!
     fireEvent.change(input, {target: {value: '2028-01-01'}})
-    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
+    expect(screen.queryByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')).not.toBeInTheDocument()
     await waitFor(() => expect(pending.has('2028-01-01')).toBe(true))
     fireEvent.change(input, {target: {value: '2028-02-01'}})
     await waitFor(() => expect(pending.has('2028-02-01')).toBe(true))
     await act(async () => pending.get('2028-02-01')!(new Response(JSON.stringify({
       ...snapshotFor('2028-02-01'), cards: {...snapshotFor('2028-02-01').cards, total_stock_value: 123456},
     }))))
-    await screen.findByText('$123,456 in shares − $75,000 loans')
+    await screen.findByText('$123,456')
     await act(async () => pending.get('2028-01-01')!(new Response(JSON.stringify(snapshotFor('2028-01-01')))))
-    expect(screen.getByText('$123,456 in shares − $75,000 loans')).toBeInTheDocument()
-    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
+    expect(screen.getByText('$123,456')).toBeInTheDocument()
     expect(input).toHaveValue('2028-02-01')
   })
 
@@ -542,13 +541,13 @@ describe('server dashboard snapshots', () => {
       return original(input, init)
     })
     renderDashboard()
-    await screen.findByText('$20,000 in shares − $75,000 loans')
+    await screen.findByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')
     fireEvent.change(document.querySelector('input[type=date]')!, {target: {value: '2028-01-01'}})
     await screen.findByRole('button', {name: 'Retry'})
-    expect(screen.queryByText('$20,000 in shares − $75,000 loans')).not.toBeInTheDocument()
+    expect(screen.queryByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')).not.toBeInTheDocument()
     fail = false
     fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
-    await screen.findByText('$20,000 in shares − $75,000 loans')
+    await screen.findByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')
   })
 })
 
@@ -564,7 +563,7 @@ it('retries an initial failed snapshot request', async () => {
   await screen.findByText('Failed to load dashboard')
   fail = false
   fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
-  await screen.findByText('$20,000 in shares − $75,000 loans')
+  await screen.findByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')
 })
 
 it('keeps charts mounted and does not refetch them when the card date changes', async () => {
@@ -639,3 +638,15 @@ for (const historical of [false, true]) {
     else expect(screen.queryByText(/Your \d{4} stock summary/)).not.toBeInTheDocument()
   })
 }
+
+it('offers eligibility information instead of directly applying a deduction tip', async () => {
+  mockApi()
+  const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+  vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => String(input).includes('/api/tips')
+    ? new Response(JSON.stringify([{type: 'deduction', title: 'Investment interest', description: 'Tip', savings: 100, apply: {deduct_investment_interest: true}}]))
+    : original(input, init))
+  renderDashboard()
+  expect(await screen.findByRole('link', {name: 'Learn more'})).toHaveAttribute('href', '/settings#tax')
+  expect(screen.queryByRole('button', {name: 'Apply'})).not.toBeInTheDocument()
+  expect(screen.getByText(/You may be able to deduct/)).toBeInTheDocument()
+})

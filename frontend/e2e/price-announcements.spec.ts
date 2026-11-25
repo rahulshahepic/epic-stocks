@@ -21,5 +21,5 @@ test('backdated estimate stays tentative until announced, without another increa
   await expect(page.getByText('1 price entry', {exact: true})).toBeVisible()
   await expect(page.getByText('Announced 2020-02-27')).toBeVisible()
   await expect(page.getByText('$112.00')).toBeVisible()
-  await expect(page.getByText('2020-01-01', {exact: true})).toBeVisible()
+  await expect(page.getByText('Jan 1, 2020', {exact: true})).toBeVisible()
 })

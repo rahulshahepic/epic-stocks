@@ -31,7 +31,7 @@ function Stat({ label, value }: { label: string; value: string }) {
  * back the same way. What it would change is listed on one screen: untick
  * anything you do not want, check, and save.
  */
-export default function EpicFileImport({ allowAssistant = false }: { allowAssistant?: boolean }) {
+export default function EpicFileImport({ allowAssistant = false, onApplied }: { allowAssistant?: boolean; onApplied?: () => void }) {
   const [csv, setCsv] = useState<File | null>(null)
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('idle')
@@ -178,10 +178,10 @@ export default function EpicFileImport({ allowAssistant = false }: { allowAssist
               ? 'The statement does not add up to its own totals — some of it was misread.'
               : counts.errors > 0
                 ? `${counts.errors} figure(s) do not agree between your two files.`
-                : 'No blocking discrepancies found. Review the checks and missing evidence above before saving.'}
+                : 'No blocking discrepancies found. Review Needs you, FYI checks and any missing evidence before saving.'}
           </p>
 
-          <FindingList findings={result.findings} />
+          <FindingList findings={result.findings} grouped collapseAll={!result.blocked && counts.errors === 0 && !result.changes.length && !answered.length} />
 
           {(result.blocked || counts.errors > 0 || counts.warnings > 0) && (
             <p className="mt-2">
@@ -230,7 +230,7 @@ export default function EpicFileImport({ allowAssistant = false }: { allowAssist
           )}
 
           {!result.blocked && (
-            <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} />
+            <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} onApplied={onApplied} />
           )}
 
           {needsHelp && (

@@ -82,6 +82,7 @@ export default function Dashboard() {
   const vid = viewing?.invitationId
   const readOnly = !!viewing
   const today = useToday()
+  const [importSaved, setImportSaved] = useState(false)
 
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
@@ -89,8 +90,8 @@ export default function Dashboard() {
   const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
 
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
-  const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
-  const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: prices, reload: reloadPrices } = useApiData<PriceEntry[]>(fetchPrices)
+  const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
   const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -320,7 +321,7 @@ export default function Dashboard() {
   const isEmpty = events?.length === 0
 
   if (isEmpty && !readOnly) {
-    return <GetStarted />
+    return <GetStarted onImported={() => { setImportSaved(true); reloadEvents(); reloadPrices(); reloadLoans(); reloadDash(); reloadCharts(); reloadTaxSettings() }} />
   }
 
   if (isEmpty && readOnly) {
@@ -341,6 +342,7 @@ export default function Dashboard() {
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
+      {importSaved && <p role="status" className="text-sm text-cs-text">Your import is saved. Here’s your position.</p>}
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
@@ -366,14 +368,24 @@ export default function Dashboard() {
               </p>
               <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitPreview ? 'Estimated cash from leaving on this date' : 'Stock equity before exit tax'}</p>
               {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
-              {hasPrice && showExitPreview && datedExit && <p className="mt-2 text-xs text-white">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection come from your saved settings; price {cv.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>}
+
               {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
             </div>
             <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
               <p className="font-bold tabular-nums">
-                {totalValue === null ? 'Stock value needs a share price' : `${fmt$(totalValue)} in shares`}
-                {cv.total_loan_principal > 0 && <> − {fmt$(cv.total_loan_principal)} loans</>}
-                {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
+                {showExitPreview && datedExit ? <>
+                  {fmt$(datedExit.gross_vested)} vested shares
+                  {datedExit.unvested_cost_proceeds > 0 && <> + {fmt$(datedExit.unvested_cost_proceeds)} unvested at cost</>}
+                  {datedExit.outstanding_principal > 0 && <> − {fmt$(datedExit.outstanding_principal)} loans</>}
+                  {datedExit.outstanding_accrued_interest > 0 && <> − {fmt$(datedExit.outstanding_accrued_interest)} accrued interest</>}
+                  {(datedExit.outstanding_projected_loans ?? 0) > 0 && <> − {fmt$(datedExit.outstanding_projected_loans!)} projected tax loans</>}
+                  {(datedExit.projected_payoffs_before_exit ?? 0) > 0 && <> − {fmt$(datedExit.projected_payoffs_before_exit!)} earlier projected payoffs</>}
+                  <> − {fmt$(datedExit.liquidation_tax)} est. tax</>
+                </> : <>
+                  {totalValue === null ? 'Stock value needs a share price' : `${fmt$(totalValue)} in shares`}
+                  {cv.total_loan_principal > 0 && <> − {fmt$(cv.total_loan_principal)} loans</>}
+                  {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
+                </>}
               </p>
               {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
               <p className="font-semibold tabular-nums">
@@ -475,7 +487,7 @@ export default function Dashboard() {
                       <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </span>
                   </div>
-                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Total Cash Through Exit</p>
+                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Cash from exit plus earlier activity</p>
                   <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
                   <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
                 </button>
@@ -483,7 +495,10 @@ export default function Dashboard() {
                 <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest + (exitPreview.outstanding_projected_loans ?? 0) + (exitPreview.projected_payoffs_before_exit ?? 0))} variant="loans" subtitle="Principal + accrued interest" />
                 <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
               </div>
-              {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
+              {exitBreakdownOpen && <>
+                <p className="text-xs text-cs-muted">Settlement interest includes {taxSettings?.exit_payoff_lag_days ?? 0} extra days after exit. Tax rates and lot selection use your saved settings; the price {cv?.price_is_estimate ? 'is tentative' : 'uses the applicable saved record'}.</p>
+                <ExitBreakdownCard s={exitPreview} />
+              </>}
               <ExitDateComparison date={cardDate} invitationId={vid} />
             </>
           ) : (
@@ -562,6 +577,7 @@ export default function Dashboard() {
               )}
               <button
                 role="switch"
+                aria-label="Investment interest deduction"
                 aria-checked={displayEnabled}
                 onClick={() => setPendingDeduction(!displayEnabled)}
                 disabled={savingDeduction}

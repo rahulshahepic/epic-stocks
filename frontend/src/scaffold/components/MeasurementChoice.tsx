@@ -8,6 +8,6 @@ export default function MeasurementChoice() {
       setMeasurementAllowed(e.target.checked)
       setEnabled(measurementAllowed())
     }} />
-    Share optional onboarding counts. A random key joins this tab’s import, save and reminder steps for up to 24 hours. No identity or financial values; Do Not Track is respected.
+    Help improve setup (optional). Count import, save and reminder steps together for up to 24 hours, without your identity or financial figures. Off unless you choose it; respects Do Not Track.
   </label>
 }

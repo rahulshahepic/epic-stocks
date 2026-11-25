@@ -9,8 +9,17 @@ const TONE: Record<string, string> = {
 }
 
 /** Findings the importer raised while reading the files. */
-export default function FindingList({ findings }: { findings: Finding[] }) {
+export default function FindingList({ findings, grouped = false, collapseAll = false }: { findings: Finding[]; grouped?: boolean; collapseAll?: boolean }) {
   if (findings.length === 0) return null
+  if (grouped) {
+    const needsYou = findings.filter(f => f.severity === 'error' || ['G1', 'G2', 'C12'].includes(f.code))
+    const fyi = findings.filter(f => !needsYou.includes(f))
+    const groups = <>
+      {needsYou.length > 0 && <section className="mt-3"><h3 className="text-sm font-semibold text-cs-text">Needs you</h3><FindingList findings={needsYou} /></section>}
+      {fyi.length > 0 && <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-cs-text-2">FYI · {fyi.length} check{fyi.length === 1 ? '' : 's'}</summary><FindingList findings={fyi} /></details>}
+    </>
+    return collapseAll ? <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-cs-text-2">Import checks · {findings.length}</summary>{groups}</details> : groups
+  }
   const order = { error: 0, warning: 1, info: 2 } as const
   const sorted = [...findings].sort((a, b) => order[a.severity] - order[b.severity])
 
@@ -19,9 +28,13 @@ export default function FindingList({ findings }: { findings: Finding[] }) {
       {sorted.map((f, i) => (
         <li key={`${f.code}-${f.subject}-${i}`}
           className={`rounded-md border p-2 text-xs ${TONE[f.severity]}`}>
-          <span className="font-mono font-semibold">{f.code}</span>
+          <span className="font-mono text-[10px] text-cs-muted">{f.code}</span>
           {f.subject && <span className="ml-2 font-medium">{f.subject}</span>}
-          <p className="mt-1 leading-relaxed">{f.message}</p>
+          <p className="mt-1 leading-relaxed">{f.code === 'S1' && f.severity !== 'error' ? `Review the vesting dates against your grant agreement on the Grants page after saving.`
+            : f.code === 'C9' ? `The loan rate differs from the company schedule; check it against your statement.`
+              : f.code === 'G3' ? `Cost per share was calculated from the file's total cost.`
+                : f.message}</p>
+          {['S1', 'C9', 'G3'].includes(f.code) && !(f.code === 'S1' && f.severity === 'error') && <details className="mt-1"><summary className="cursor-pointer text-[11px]">Check details</summary><p className="mt-1">{f.message}</p></details>}
         </li>
       ))}
     </ul>

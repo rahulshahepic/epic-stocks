@@ -42,7 +42,7 @@ test.describe('Sales journey', () => {
 
     // Back to list with 1 sale
     await expect(page.getByText('1 sales')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('2026-03-01')).toBeVisible()
+    await expect(page.getByText('Mar 1, 2026')).toBeVisible()
 
     // Tax breakdown auto-expands after save
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible()
@@ -79,7 +79,7 @@ test.describe('Sales journey', () => {
     expect(resp.ok()).toBeTruthy()
 
     await navigateTo(page, 'Sales')
-    await expect(page.getByText('2026-02-01')).toBeVisible()
+    await expect(page.getByText('Feb 1, 2026')).toBeVisible()
 
     // Edit it via pencil icon
     await page.getByRole('button', { name: 'Edit sale' }).first().click()

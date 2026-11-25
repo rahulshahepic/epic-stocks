@@ -15,7 +15,7 @@ handoff. Local tests do not establish production deployment or host rendering.
 | Public endpoints | [Actual production/staging probes](public-probes.json). Production reviewer/privacy paths still403 for audit client; staging edge now permits requests. A200 SPA shell is explicitly not treated as policy/login availability |
 | Cloudflare | Independently reviewed staging-only exact-path exceptions applied2026-11-25; ruleset12, challenge rule5/BIC rule2. 6,624 request combinations verified non-staging behavior unchanged. Production recipe remains unapplied |
 | Submission follow-up | 216 tools/writes/retirement tests and149 smoke/reviewer/annotation tests passed (overlapping selections). The smoke now tests both real host callback URLs, MCP negotiation, tool visibility/annotations and persistence |
-| Staging | Reviewer auth merged3112916; its deploy is being verified. New deployed acceptance module pending #749 merge/deployment. No claim of deployed reviewer validation yet |
+| Staging | Reviewer auth3112916 staging Deploy passed. #749 adds deployed acceptance; its final exact-head verdict is in the staging Deploy step. Do not infer that verdict from these local tests |
 | Production | Not deployed/approved. No production reviewer credentials provisioned; owner approval required |
 | Live connected staging calls | The connected ChatGPT staging tool returned a verified established fictional context, equity summary and unsaved retirement simulation (100 paths, seed1729). An initial32-path call correctly failed validation; schema/range error now disclose the minimum. No record writes or resets were made. These structured tool calls do not establish visible host rendering/callbacks |
 | ChatGPT/Claude rendering | No actual-host UI rendering observed. Website/local simulated-host tests and live structured calls do not establish it |
@@ -29,6 +29,6 @@ A staging-only deployment acceptance module now exercises public HTTPS login, OA
 financial reads/confirmed writes, admin refusal, revocation and cleanup using only
 its own temporary fictional identities. Unit integration uses the real ASGI routes
 through an HTTP transport adapter (4 passed); that is not deployed staging evidence.
-The workflow gate is pending review/deployment. GitHub notification subscription
+The final workflow result is linked from the control center; require its exact staging head to pass before promotion. GitHub notification subscription
 was attempted but the integration token lacks updateSubscription permission; check
 watching is used in-session instead.

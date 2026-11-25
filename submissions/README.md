@@ -17,18 +17,23 @@ validated in production.
 
 ## Release status
 
-[Reviewer security PR #747](https://github.com/rahulshahepic/epic-stocks/pull/747):
-merged into staging as `3112916` after both independent reviews and all required
-checks passed at `e190e04`. Staging deployment is being verified.
-[Submission PR #749](https://github.com/rahulshahepic/epic-stocks/pull/749):
-independent review and current-head CI pending. No production release approved.
-[Staging → main promotion #750](https://github.com/rahulshahepic/epic-stocks/pull/750)
-is temporarily held until the submission/acceptance follow-up is included.
+- [Reviewer security #747](https://github.com/rahulshahepic/epic-stocks/pull/747)
+  merged as `3112916`; its [staging deployment passed](https://github.com/rahulshahepic/epic-stocks/actions/runs/45667332221).
+- [Submission/acceptance #749](https://github.com/rahulshahepic/epic-stocks/pull/749)
+  contains these packages, public policy/support and the deployed acceptance gate.
+  Its live PR records exact-head independent reviews and required CI.
+- [Staging → main #750](https://github.com/rahulshahepic/epic-stocks/pull/750)
+  is the release promotion. Follow its latest head/checks, not an older green run.
+- [Staging Deploy runs](https://github.com/rahulshahepic/epic-stocks/actions/workflows/deploy.yml?query=branch%3Astaging)
+  contain the final HTTPS reviewer acceptance result; **that step must pass**.
+- [Production Deploy / approval](https://github.com/rahulshahepic/epic-stocks/actions/workflows/deploy.yml?query=branch%3Amain)
+  is owner-gated. No production release or reviewer workflow is claimed validated
+  by these materials. The agent must leave the final run waiting for you.
 
 ## Before either submission
 
-- [ ] Complete required independent review/CI and staging acceptance, then review
-  the promotion and approve the gated production deployment yourself.
+- [ ] Open the final production Deploy run above, check the intended release,
+  and approve its environment gate yourself.
 - [ ] Verify privacy and reviewer-login accessibility for automated clients;
   review/apply the narrow Cloudflare rule changes through the release process.
 - [ ] Provision separate production OpenAI and Anthropic established reviewers;

@@ -6,6 +6,8 @@
     "name": "rahulshahepic"
   },
   "homepage": "https://epic-stocks.com/mcp-setup",
+  "privacyPolicyUrl": "https://epic-stocks.com/privacy-policy",
+  "supportUrl": "https://epic-stocks.com/support",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "license": "MIT",
   "keywords": [

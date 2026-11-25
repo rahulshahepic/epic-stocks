@@ -853,6 +853,22 @@ it('preserves an explicitly manual amount when the retirement date changes', asy
   expect(screen.getByLabelText(/^Epic cash in retirement plan/)).toHaveValue(5000000)
 })
 
+it.each([
+  { saved: { epicExitMode: 'manual' }, action: 'Use automatic exit projection' },
+  { saved: {}, action: 'Refresh exit projection now' },
+])('saves the updated exit after clicking $action', async ({ saved, action }) => {
+  mockApi({ netCash: 2000000, savedParams: { ...saved, retirementDate: '2033-01-01', epicExit: 1 } })
+  render(<MemoryRouter><Retirement /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: action }))
+  await waitFor(() => {
+    const writes = vi.mocked(fetch).mock.calls.filter(([url, init]) => url === '/api/retirement/params' && init?.method === 'PUT')
+    expect(writes.some(([, init]) => {
+      const params = JSON.parse(String(init?.body)).params
+      return params.epicExitMode === 'auto' && params.epicExit === 2 && params.retirementDate === '2033-01-01'
+    })).toBe(true)
+  })
+})
+
 it('pauses an automatic plan when projection fails and allows an explicit manual fallback', async () => {
   mockApi({ netCash: null, savedParams: { epicExit: 5, epicExitMode: 'auto', retirementDate: '2032-01-01' } })
   render(<MemoryRouter><Retirement /></MemoryRouter>)

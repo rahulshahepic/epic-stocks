@@ -1218,11 +1218,21 @@ function RetirementAccount() {
             <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
             <div className="mb-3 space-y-2">
               <p className="text-xs text-cs-text-2">{legacyExitHeld ? 'Saved exit amount kept for this date. Changing the date will project a new amount; choose manual to keep a fixed override.' : exitMode === 'auto' ? 'Epic cash is projected for the retirement date. It includes estimated exit cash, earlier sale cash, and modeled tax savings from investment interest. Future share prices come from your saved price estimates.' : 'Epic cash is a fixed amount you entered. Changing the date keeps it.'}</p>
-              <button type="button" onClick={() => { setLegacyExitDate(null); setExitMode(m => m === 'auto' ? 'manual' : 'auto') }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
-              {legacyExitHeld && <button type="button" onClick={() => setLegacyExitDate(null)} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
+              <button type="button" onClick={() => {
+                setRetirementEdited(true)
+                setLegacyExitDate(null)
+                setExitMode(m => m === 'auto' ? 'manual' : 'auto')
+              }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">{exitMode === 'auto' ? 'Enter a manual exit amount' : 'Use automatic exit projection'}</button>
+              {legacyExitHeld && <button type="button" onClick={() => {
+                setRetirementEdited(true)
+                setLegacyExitDate(null)
+              }} className="min-h-10 rounded-lg border border-cs-border-strong px-3 py-2 text-xs font-medium text-cs-text">Refresh exit projection now</button>}
               {exitMode === 'auto' && emptyEquity && <p className="text-xs text-cs-text-2">No stock imported yet. Epic exit is $0; you can save your other inputs. Import your stock to project an exit, or enter a manual amount.</p>}
               {exitMode === 'auto' && missingPrice && <p className="text-xs text-cs-text-2">Add a share price to project your exit. Epic exit is temporarily $0; your other inputs still save. {!vid && <Link to="/prices" className="font-semibold underline">Add a price</Link>}</p>}
-              {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => setExitRetry(n => n + 1)} className="underline">Retry exit projection</button></p>}
+              {exitMode === 'auto' && exitError && <p role="alert" className="text-xs text-amber-800 dark:text-amber-200">{exitError} <button type="button" onClick={() => {
+                setRetirementEdited(true)
+                setExitRetry(n => n + 1)
+              }} className="underline">Retry exit projection</button></p>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
               <NumInput

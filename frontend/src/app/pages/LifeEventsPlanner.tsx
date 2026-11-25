@@ -224,6 +224,29 @@ export default function LifeEventsPlanner({
             </label>
 
             {recurringType ? money('annualCostM', annualLabel) : money('amountM', asset ? 'Purchase price' : 'One-time cost (0 if recurring only)')}
+          </div>
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-cs-text">
+            <input type="checkbox" checked={!!draft.condition} onChange={e => setDraft(prev => ({
+              ...prev, condition: e.target.checked ? { requireFullSpending: true } : undefined,
+              conditionFailure: undefined, deadlineDate: undefined,
+            }))} />
+            Optional purchase
+          </label>
+          {draft.kind === 'vehicle' && <section aria-label="Car plan summary" className="sticky top-16 z-10 rounded-lg border border-cs-border-strong bg-cs-surface p-3 text-sm text-cs-text">
+            <p className="font-semibold">Your car plan</p>
+            <p className="mt-1 text-xs leading-relaxed text-cs-text-2">
+              {draft.amountM > 0 ? `Buy for ${dollar(draft.amountM * 1_000_000)}` : 'Add a price to complete the plan'}
+              {draft.amountM > 0 && draft.date ? ` ${draft.conditionFailure === 'defer' && draft.condition ? 'from' : 'on'} ${fmtFullDate(draft.date)}` : ''}
+              {financed && (draft.downPaymentPct ?? 1) < 1 ? `, with ${Number(((draft.downPaymentPct ?? 1) * 100).toFixed(8))}% down and a ${draft.loanYears}-year loan` : ''}.
+              {draft.annualCostM ? ` Budget ${dollar(draft.annualCostM * 1_000_000)} a year while you own it.` : ''}
+              {draft.lifetimeYears ? ` Sell after ${draft.lifetimeYears} ${draft.lifetimeYears === 1 ? 'year' : 'years'}.` :
+                draft.resaleDate ? ` Sell on ${fmtFullDate(draft.resaleDate)}.` : ''}
+              {draft.replacementEveryYears ? ` Replace ${linkedReplacement ? 'when sold' : `every ${draft.replacementEveryYears} years`}${draft.replacementCostM ? ` for ${dollar(draft.replacementCostM * 1_000_000)}` : ''}.` : ''}
+              {' '}Amounts in {amountYear} dollars.
+            </p>
+            {draft.condition && <p className="mt-1 text-xs leading-relaxed text-cs-text-2">{purchaseRule(draft)}</p>}
+          </section>}
+          <div className="grid grid-cols-2 gap-3">
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
               <summary className="cursor-pointer font-semibold">Price basis · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
               <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Prices entered in
@@ -234,46 +257,40 @@ export default function LifeEventsPlanner({
               </label>
               <p className="mt-2 text-cs-muted">Today's amounts are converted automatically to {retirementYear} dollars when saved, using {(conversionRate * 100).toFixed(1)}% inflation.</p>
             </details>
-            <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><summary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</summary><fieldset className="mt-3 space-y-3">
+            {draft.condition && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><summary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</summary><fieldset className="mt-3 space-y-3">
               <legend className="sr-only">Purchase conditions</legend>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={!!draft.condition} onChange={e => set('condition', e.target.checked ? { requireFullSpending: true } : undefined)} />
-                Buy only when conditions hold
+              <label className="min-w-0 flex flex-col gap-1">Minimum portfolio as % of starting retirement wealth (optional)
+                <PercentInput min="0" max="10000" step="5" value={draft.condition.minStartingWealthRatio}
+                  onChange={value => set('condition', { ...draft.condition, minStartingWealthRatio: value })}
+                  className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
               </label>
-              {draft.condition && <>
-                <label className="min-w-0 flex flex-col gap-1">Minimum portfolio as % of starting retirement wealth (optional)
-                  <PercentInput min="0" max="10000" step="5" value={draft.condition.minStartingWealthRatio}
-                    onChange={value => set('condition', { ...draft.condition, minStartingWealthRatio: value })}
-                    className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
-                </label>
-                <label className="min-w-0 flex flex-col gap-1">If conditions are not met
-                  <select value={draft.conditionFailure ?? 'skip'} onChange={e => set('conditionFailure', e.target.value as 'skip' | 'defer')}
-                    className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
-                    <option value="skip">Skip this purchase</option><option value="defer">Wait until eligible</option>
-                  </select>
-                </label>
-                {draft.conditionFailure === 'defer' && <label className="min-w-0 flex flex-col gap-1">Stop waiting after (optional)
-                  <input type="date" value={draft.deadlineDate ?? ''} onChange={e => set('deadlineDate', e.target.value || undefined)}
-                    className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
-                </label>}
-                <details className="rounded border border-cs-border p-2">
-                  <summary className="cursor-pointer">More conditions{draft.condition.requireFullSpending ? ' · full spending required' : ''}{draft.condition.minPortfolioM != null ? ` · ${dollar(draft.condition.minPortfolioM * 1_000_000)} minimum` : ''}</summary>
-                  <div className="mt-3 space-y-3">
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={draft.condition.requireFullSpending ?? false}
-                        onChange={e => set('condition', { ...draft.condition, requireFullSpending: e.target.checked })} />
-                      Only if regular spending is not being cut
-                    </label>
-                    <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear} $; optional)
-                      <input type="number" min="0" max="1000000000" step="10000" value={draft.condition.minPortfolioM == null ? '' : fromM(draft.condition.minPortfolioM)}
-                        onChange={e => set('condition', { ...draft.condition, minPortfolioM: e.target.value === '' ? undefined : Number(e.target.value) / 1_000_000 })}
-                        className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
-                    </label>
-                  </div>
-                </details>
-                <p>Thresholds use purchasing power after inflation. Waiting checks monthly and moves ownership dates with the purchase.</p>
-              </>}
-            </fieldset></details>
+              <label className="min-w-0 flex flex-col gap-1">If conditions are not met
+                <select value={draft.conditionFailure ?? 'skip'} onChange={e => set('conditionFailure', e.target.value as 'skip' | 'defer')}
+                  className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
+                  <option value="skip">Skip this purchase</option><option value="defer">Wait until eligible</option>
+                </select>
+              </label>
+              {draft.conditionFailure === 'defer' && <label className="min-w-0 flex flex-col gap-1">Stop waiting after (optional)
+                <input type="date" value={draft.deadlineDate ?? ''} onChange={e => set('deadlineDate', e.target.value || undefined)}
+                  className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+              </label>}
+              <details className="rounded border border-cs-border p-2">
+                <summary className="cursor-pointer">More conditions{draft.condition.requireFullSpending ? ' · full spending required' : ''}{draft.condition.minPortfolioM != null ? ` · ${dollar(draft.condition.minPortfolioM * 1_000_000)} minimum` : ''}</summary>
+                <div className="mt-3 space-y-3">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={draft.condition.requireFullSpending ?? false}
+                      onChange={e => set('condition', { ...draft.condition, requireFullSpending: e.target.checked })} />
+                    Only if regular spending is not being cut
+                  </label>
+                  <label className="min-w-0 flex flex-col gap-1">Minimum portfolio before purchase ({retirementYear} $; optional)
+                    <input type="number" min="0" max="1000000000" step="10000" value={draft.condition.minPortfolioM == null ? '' : fromM(draft.condition.minPortfolioM)}
+                      onChange={e => set('condition', { ...draft.condition, minPortfolioM: e.target.value === '' ? undefined : Number(e.target.value) / 1_000_000 })}
+                      className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+                  </label>
+                </div>
+              </details>
+              <p>Thresholds use purchasing power after inflation. Waiting checks monthly and moves ownership dates with the purchase.</p>
+            </fieldset></details>}
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
               <summary className="cursor-pointer font-semibold">{asset ? 'Ownership and costs' : 'Recurring costs'} · {draft.lifetimeYears ? `sell after ${draft.lifetimeYears} years` : draft.durationYears ? `${draft.durationYears} years` : 'optional'}{draft.annualCostM ? ` · ${dollar(draft.annualCostM * 1_000_000)}/yr` : ''}</summary>
               <div className="mt-3 grid grid-cols-2 gap-3">
@@ -403,20 +420,6 @@ export default function LifeEventsPlanner({
               </div>
             </details>
           </div>
-          {draft.kind === 'vehicle' && <section aria-label="Car plan summary" className="rounded-lg border border-cs-border bg-cs-surface p-3 text-sm text-cs-text">
-            <p className="font-semibold">Your car plan</p>
-            <p className="mt-1 text-xs leading-relaxed text-cs-text-2">
-              {draft.amountM > 0 ? `Buy for ${dollar(draft.amountM * 1_000_000)}` : 'Enter a purchase price'}
-              {draft.date ? ` on ${fmtFullDate(draft.date)}` : ''}
-              {financed && (draft.downPaymentPct ?? 1) < 1 ? `, with ${Number(((draft.downPaymentPct ?? 1) * 100).toFixed(8))}% down and a ${draft.loanYears}-year loan` : ''}.
-              {draft.annualCostM ? ` Budget ${dollar(draft.annualCostM * 1_000_000)} a year while you own it.` : ''}
-              {draft.lifetimeYears ? ` Sell after ${draft.lifetimeYears} ${draft.lifetimeYears === 1 ? 'year' : 'years'}.` :
-                draft.resaleDate ? ` Sell on ${fmtFullDate(draft.resaleDate)}.` : ''}
-              {draft.replacementEveryYears ? ` Replace ${linkedReplacement ? 'when sold' : `every ${draft.replacementEveryYears} years`}${draft.replacementCostM ? ` for ${dollar(draft.replacementCostM * 1_000_000)}` : ''}.` : ''}
-              {' '}Amounts in {amountYear} dollars.
-            </p>
-            {draft.condition && <p className="mt-1 text-xs leading-relaxed text-cs-text-2">{purchaseRule(draft)}</p>}
-          </section>}
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button type="button" className="min-h-11 flex-1 rounded-lg bg-cs-text px-3 py-2 text-sm font-semibold text-cs-surface"

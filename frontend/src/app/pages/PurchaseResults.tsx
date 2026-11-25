@@ -24,31 +24,46 @@ export default function PurchaseResults({ events, comparison }: {
   const invalid = baseline.preRetirementFundingGapM > 1e-9 || result.preRetirementFundingGapM > 1e-9
   const summary = result.purchaseSummary
   const outcomes = result.eventOutcomes ?? []
-  const countMax = Math.max(.01, ...(summary?.distribution ?? []).map(bin => bin.probability))
+  const countBins = ['None', '1', '2', '3+'].map((label, i) => ({
+    label,
+    probability: (summary?.distribution ?? []).reduce((sum, bin) =>
+      Math.min(bin.purchases, 3) === i ? sum + bin.probability : sum, 0),
+  }))
+  const countMax = Math.max(.01, ...countBins.map(bin => bin.probability))
   const required = events.filter(event => !event.condition)
   return <section aria-label="Planned purchase outcomes" className="space-y-4 rounded-xl border border-cs-border bg-cs-raised p-4 text-cs-text">
     <h2 className="font-serif text-lg font-semibold">Planned purchases</h2>
     {invalid ? <p role="alert" className="text-sm">This plan needs {dollars(Math.max(baseline.preRetirementFundingGapM, result.preRetirementFundingGapM))} more
       pre-retirement cash than the modeled taxable funds can cover. Fund this gap before using purchase or retirement odds.</p> : <>
       {summary && outcomes.length > 0 && <>
-        <div><strong className="text-3xl">{percent(summary.purchaseProbability)}</strong><p className="text-xs text-cs-text-2">Chance of at least one optional purchase</p></div>
+        <dl className="grid grid-cols-2 gap-3">
+          <div><dt className="text-xs text-cs-text-2">Any optional purchase</dt><dd className="text-2xl font-bold tabular-nums">{percent(summary.purchaseProbability)}</dd></div>
+          <div><dt className="text-xs text-cs-text-2">Buy and fully fund retirement</dt><dd className="text-2xl font-bold tabular-nums">{percent(summary.fundedPurchaseProbability)}</dd></div>
+        </dl>
         <div className="rounded-lg border border-cs-border p-3">
           <h3 className="text-sm font-semibold">Optional purchases per simulation</h3>
-          <p className="text-xs text-cs-muted">Includes replacements</p>
-          <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Scrollable purchase counts"><div className="flex min-w-max items-end gap-2" role="img" aria-label="Distribution of conditional purchase counts">
-            {summary.distribution.map(bin => <div key={bin.purchases} className="w-16 shrink-0 text-center text-xs">
+          <p className="text-xs text-cs-text-2">Includes replacements</p>
+          <div className="mt-3 grid grid-cols-4 items-end gap-2" role="img"
+            aria-label={`Distribution of optional purchases. ${countBins.map(bin => `${bin.label}: ${percent(bin.probability)}`).join(', ')}`}>
+            {countBins.map(bin => <div key={bin.label} className="min-w-0 text-center text-xs tabular-nums">
               <span className="block">{percent(bin.probability)}</span>
-              <div className="mt-1 flex h-24 items-end"><div className="w-full rounded-t bg-cs-text-2/70" style={{ height: `${bin.probability / countMax * 100}%`, minHeight: bin.probability ? 2 : 0 }} /></div>
-              <span className="mt-1 block">{bin.purchases === 0 ? 'None' : bin.purchases}</span>
+              <div className="mt-1 flex h-14 items-end" aria-hidden><div className="w-full rounded-t bg-cs-text-2/70" style={{ height: `${bin.probability / countMax * 100}%`, minHeight: bin.probability ? 2 : 0 }} /></div>
+              <span className="mt-1 block">{bin.label}</span>
             </div>)}
-          </div></div>
+          </div>
+          <details className="mt-3 border-t border-cs-border text-xs">
+            <summary className="min-h-8 cursor-pointer py-2 text-cs-text-2">Show exact purchase counts</summary>
+            <dl className="space-y-1">{summary.distribution.map(bin => <div key={bin.purchases} className="flex justify-between gap-3">
+              <dt>{bin.purchases} {bin.purchases === 1 ? 'purchase' : 'purchases'}</dt><dd>{percent(bin.probability)}</dd>
+            </div>)}</dl>
+          </details>
         </div>
       </>}
       <details className="rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
         <summary className="cursor-pointer font-semibold">{summary && outcomes.length ? 'Calculation details' : 'Plan comparison details'}</summary>
         <div className="mt-3 space-y-2">
           {summary && outcomes.length > 0 && <><p>{summary.pathsWithPurchase.toLocaleString()} of {summary.paths.toLocaleString()} simulations include an optional purchase.</p>
-            <p><strong>Buy + fully fund retirement: {percent(summary.fundedPurchaseProbability, 2)}.</strong> This counts purchases only in simulations that also pay every modeled retirement bill. Purchase probability alone includes simulations with a funding shortfall.</p>
+            <p>“Buy and fully fund retirement” counts simulations that make a purchase and pay every modeled retirement bill. Overall purchase odds include simulations with a shortfall.</p>
             <p>Timing percentages use all simulations. Required expenses stay scheduled in every simulation.</p></>}
           <div className="grid grid-cols-2 gap-3">
             {[['Without planned expenses', baseline], ['With planned expenses', result]].map(([label, value]) => {
@@ -69,6 +84,7 @@ export default function PurchaseResults({ events, comparison }: {
             className="h-2 w-full overflow-hidden rounded-full bg-cs-surface">
             <div className="h-full rounded-full bg-cs-text-2/70" style={{ width: `${outcome.purchaseProbability * 100}%` }} />
           </div>
+          {outcomes.length > 1 && <p className="text-cs-text-2">{percent(outcome.fundedPurchaseProbability)} buy and fully fund retirement</p>}
           <p className="text-cs-text-2">{percent(outcome.onTimeProbability)} {waiting ? 'on schedule' : 'at the initial date'} · {percent(outcome.delayedProbability)} {waiting ? 'after waiting' : 'first bought at a replacement date'}</p>
           {!!outcome.firstPurchaseByYear?.length && <div className="space-y-1" role="img" aria-label={`${outcome.title} first purchase timing`}>
             <p className="text-cs-muted">First purchase year · share of all simulations</p>

@@ -4,6 +4,7 @@ import StockFiles from '../components/StockFiles.tsx'
 import { Link, useNavigate } from 'react-router-dom'
 import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
 import { resetMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
+import type { PriceEntry } from '../../api.ts'
 import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
@@ -13,7 +14,7 @@ import { StatCard } from '../components/StatCard.tsx'
 import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
 import { useToday } from '../dateUtils.ts'
-import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
+import { fmt$, fmtFullDate, fmtNum, fmtPrice, sharePriceBasis, stockValueLabel } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../../scaffold/components/UnofficialBadge.tsx'
@@ -77,6 +78,7 @@ const LOCKED = [
 
 interface AsOfValues {
   price: number
+  priceBasis?: PriceEntry
   shares: number
   unvestedShares: number
   income: number
@@ -111,7 +113,10 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
     else break
   }
   const nextEvent = r.timeline.find(e => e.date > asOf) ?? null
-  const price = last?.share_price ?? 0
+  const priceBasis = r.prices.filter(price => price.effective_date <= asOf)
+    .reduce<PriceEntry | undefined>((latest, price) =>
+      !latest || price.effective_date >= latest.effective_date ? price : latest, undefined)
+  const price = priceBasis?.price ?? 0
   const year = parseInt(asOf.slice(0, 4), 10)
 
   let shares = 0
@@ -148,6 +153,7 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
   const value = vestedValue + unvestedValue
   return {
     price,
+    priceBasis,
     shares,
     unvestedShares,
     income: last?.cum_income ?? 0,
@@ -258,43 +264,45 @@ function DashboardTab({ result, asOf, hasLoanStatement }: { result: TrialAnalyze
   // look does not need — an account gets those.
   const range: DateRange = { mode: 'all', start: '', end: '' }
   const v = useMemo(() => valuesAsOf(result, asOf), [result, asOf])
+  const priced = v.price > 0
   const hasFuturePrices = result.prices.some(p => p.effective_date > today)
 
   return (
     <div className="space-y-4">
       <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
-        <Eyebrow className="text-white">{hasLoanStatement ? 'Stock equity' : 'Stock value (loans not included)'} · as of {fmtFullDate(asOf)}</Eyebrow>
+        <Eyebrow className="text-white">{priced ? stockValueLabel : 'Vested shares'} · as of {fmtFullDate(asOf)}</Eyebrow>
         <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
-          {fmt$(hasLoanStatement ? v.netWorth : v.value)}
+          {priced ? fmt$(v.value) : fmtNum(v.shares)}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
           <span><span className="font-semibold">{fmtNum(v.shares)}</span> vested shares</span>
           <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
           <span><span className="font-semibold">{fmtNum(v.unvestedShares)}</span> unvested</span>
           <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
-          <span><span className="font-semibold">{fmtPrice(v.price)}</span> / share</span>
+          <span><span className="font-semibold">{priced ? `${fmtPrice(v.price)} / share` : 'Price unavailable'}</span></span>
         </div>
         <p className="mt-1 text-sm text-white">
-          {fmt$(v.value)} in shares · {hasLoanStatement ? `${fmt$(v.loanBalance)} loans` : 'Loans: not uploaded'}
+          {priced && <>{sharePriceBasis(v.priceBasis?.effective_date, v.priceBasis?.is_estimate)} · </>}
+          {hasLoanStatement ? `${fmt$(v.loanBalance)} listed loan principal` : 'Loans: not uploaded'}
         </p>
         <p className="mt-3 text-xs text-white">This preview cannot subtract shares you have sold. Vested shares and stock value may be overstated.</p>
       </HeroCard>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <StatCard variant="price" label="Share price" value={fmtPrice(v.price)} />
+        <StatCard variant="price" label="Share price" value={priced ? fmtPrice(v.price) : 'Unavailable'} />
         <StatCard variant="shares" label="Vested shares" value={fmtNum(v.shares)}
-          subvalue={fmt$(v.vestedValue)} />
+          subvalue={priced ? fmt$(v.vestedValue) : undefined} />
         <StatCard variant="unvested" label="Unvested shares" value={fmtNum(v.unvestedShares)}
           subvalue={fmt$(v.unvestedValue)} subtitle="At cost basis" />
-        <StatCard variant="value" label="Total value" value={fmt$(v.value)}
-          subtitle="Vested at FMV + unvested at cost basis" />
+        {hasLoanStatement && priced && <StatCard variant="value" label="Stock value less listed loan principal" value={fmt$(v.netWorth)}
+          subtitle="Before unrecorded interest and exit taxes" />}
         <StatCard variant="costbasis" label="Cost basis" value={fmt$(v.costBasis)}
           subtitle="All grants, vested or not" />
-        <StatCard variant="income" label="Income to date" value={fmt$(v.income)} />
-        <StatCard variant="gains" label="Capital gains" value={fmt$(v.capGains)} />
+        <StatCard variant="income" label="Income to date" value={priced ? fmt$(v.income) : 'Unavailable'} />
+        <StatCard variant="gains" label="Capital gains" value={priced ? fmt$(v.capGains) : 'Unavailable'} />
         <StatCard variant="loans" label="Loan balance" value={hasLoanStatement ? fmt$(v.loanBalance) : 'Not uploaded'} />
         <StatCard
-          variant="tax" label="Est. tax so far" value={fmt$(v.estTax)}
+          variant="tax" label="Est. tax so far" value={priced ? fmt$(v.estTax) : 'Unavailable'}
           subtitle="At default rates — an account uses yours"
         />
       </div>
@@ -642,8 +650,7 @@ export default function Try() {
         )}
         {pricedAt != null && (
           <p className="text-xs text-cs-muted">
-            Valued at the {fmtPrice(pricedAt)} you entered for today, not the older
-            price in your files.
+            Added {fmtPrice(pricedAt)} as this year’s announced price, effective January 1.
           </p>
         )}
 

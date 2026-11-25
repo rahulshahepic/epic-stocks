@@ -162,7 +162,7 @@ describe('Try — preview', () => {
 
     // Vested 400 × $10 = $4,000, plus unvested 200 at their $8 cost = $1,600,
     // less $700 of loans.
-    expect(await screen.findByText('Stock equity · as of', { exact: false })).toBeInTheDocument()
+    expect(await screen.findByText('Stock value before loans and taxes · as of', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('$4,900')).toBeInTheDocument()
     expect(screen.getByText('Vested shares')).toBeInTheDocument()
     expect(screen.getByText('Loan balance')).toBeInTheDocument()
@@ -172,11 +172,11 @@ describe('Try — preview', () => {
     mockFetch({ ...CLEAN, loans: [] })
     renderTry()
     await upload(false)
-    const title = await screen.findByText(/Stock value \(loans not included\)/)
+    const title = await screen.findByText(/Stock value before loans and taxes/)
     expect(title.parentElement).toHaveTextContent('Loans: not uploaded')
     expect(title.parentElement).toHaveTextContent('cannot subtract shares you have sold')
     expect(screen.getByText('Not uploaded')).toBeInTheDocument()
-    expect(screen.queryByText(/Stock equity · as of/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Stock value less listed loan principal')).not.toBeInTheDocument()
     expect(screen.queryByText(/\$0 loans/)).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /fictional employee demo/i })).not.toBeInTheDocument()
   })
@@ -185,8 +185,8 @@ describe('Try — preview', () => {
     mockFetch({ ...CLEAN, loans: [] })
     renderTry()
     await upload()
-    const title = await screen.findByText(/Stock equity · as of/)
-    expect(title.parentElement).toHaveTextContent('$0 loans')
+    const title = await screen.findByText(/Stock value before loans and taxes · as of/)
+    expect(title.parentElement).toHaveTextContent('$0 listed loan principal')
     expect(screen.queryByText('Not uploaded')).not.toBeInTheDocument()
   })
 
@@ -203,7 +203,17 @@ describe('Try — preview', () => {
     expect(screen.getAllByText('200').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('$1,600')).toBeInTheDocument()       // 200 × $8 cost
     expect(screen.getByText('$5,600')).toBeInTheDocument()       // 4,000 + 1,600
-    expect(screen.getByText('Vested at FMV + unvested at cost basis')).toBeInTheDocument()
+    expect(screen.getByText('Stock value less listed loan principal')).toBeInTheDocument()
+  })
+
+  it('shows share counts without a valuation before the first applicable price', async () => {
+    mockFetch(CLEAN)
+    renderTry()
+    await upload()
+    fireEvent.change(await screen.findByLabelText('As of'), { target: { value: '2019-12-31' } })
+    const title = await screen.findByText(/Vested shares · as of/)
+    expect(title.parentElement).toHaveTextContent('Price unavailable')
+    expect(screen.queryByText(/Stock value before loans and taxes · as of/)).toBeNull()
   })
 
   it('asks for the current price when the files only carry older ones', async () => {
@@ -220,7 +230,7 @@ describe('Try — preview', () => {
     renderTry()
     await upload()
 
-    await screen.findByText('Stock equity · as of', { exact: false })
+    await screen.findByText('Stock value before loans and taxes · as of', { exact: false })
     expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
   })
 
@@ -236,14 +246,14 @@ describe('Try — preview', () => {
     // timeline from it, so the charts and the cards cannot disagree.
     await waitFor(() => expect(calls.length).toBe(2))
     expect(calls[1].body?.get('current_price')).toBe('12.5')
-    expect(await screen.findByText(/Valued at the .* you entered for today/)).toBeInTheDocument()
+    expect(await screen.findByText(/Added .* as this year’s announced price/)).toBeInTheDocument()
   })
 
   it('offers a way to report a problem with the numbers it just computed', async () => {
     mockFetch(CLEAN)
     renderTry()
     await upload()
-    await screen.findByText('Stock equity · as of', { exact: false })
+    await screen.findByText('Stock value before loans and taxes · as of', { exact: false })
     expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
   })
 

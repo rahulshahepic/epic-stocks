@@ -24,7 +24,7 @@ describe('stock file selection', () => {
   it('classifies a drop and ignores drops while busy', () => {
     const onFiles = vi.fn()
     const { rerender } = render(<StockFiles csv={null} pdf={null} onFiles={onFiles} />)
-    const zone = screen.getByText('Drop your stock files here, or choose files').parentElement!
+    const zone = screen.getByText('Add your stock files').parentElement!
     fireEvent.drop(zone, { dataTransfer: { files: [pdf, csv] } })
     expect(onFiles).toHaveBeenCalledWith({ workbook: csv, statement: pdf })
     rerender(<StockFiles csv={null} pdf={null} onFiles={onFiles} disabled />)

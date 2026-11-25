@@ -266,7 +266,7 @@ describe('Dashboard', () => {
     // Value Today = $20,000 (see previous test); MOCK_LOANS has one outstanding $75,000 loan.
     // Net worth = $20,000 - $75,000 = -$55,000, not the gross $20,000 share value.
     await waitFor(() => {
-      expect(screen.getByText(/Estimated cash from leaving/)).toBeInTheDocument()
+      expect(screen.getByText(/Estimated cash if you left/)).toBeInTheDocument()
     })
     expect(await screen.findByText('Additional cash needed to settle: $55,000')).toBeInTheDocument()
     expect(screen.getByText('$17,000 vested shares + $3,000 unvested at cost − $75,000 loans − $0 est. tax')).toBeInTheDocument()
@@ -306,7 +306,7 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText(/Estimated cash from leaving/)).toBeInTheDocument()
+      expect(screen.getByText(/Estimated cash if you left/)).toBeInTheDocument()
     })
 
     // grantHoldings (and so the hero card) only requires grantsData/events/loans to
@@ -450,7 +450,7 @@ describe('Dashboard stale-price banner', () => {
   it('warns when the newest price predates this year', async () => {
     mockApi()   // newest real price is from 2021
     renderDashboard()
-    expect(await screen.findByText(/Your newest share price is from 2021/)).toBeInTheDocument()
+    expect(await screen.findByText(/Your last recorded share price is from 2021/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Add a price' }))
     expect(screen.getByLabelText('Announced price', {exact: true})).toHaveFocus()
   })
@@ -458,26 +458,26 @@ describe('Dashboard stale-price banner', () => {
   it('stays quiet once this year has a price', async () => {
     mockApi(MOCK_PRICES_CURRENT)
     renderDashboard()
-    await screen.findByText(/Estimated cash from leaving/i)
-    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
+    await screen.findByText(/Estimated cash if you left/i)
+    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
   })
 
   it('does not treat the user\'s own estimate as knowing this year\'s price', async () => {
     mockApi(MOCK_PRICES_ESTIMATE_ONLY)
     renderDashboard()
-    expect(await screen.findByText(/Your newest share price is from 2020/)).toBeInTheDocument()
+    expect(await screen.findByText(/Your last recorded share price is from 2020/)).toBeInTheDocument()
   })
 
   it('stays dismissed for that year once dismissed', async () => {
     mockApi()
     const { unmount } = renderDashboard()
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
-    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
 
     unmount()
     renderDashboard()
-    await screen.findByText(/Estimated cash from leaving/i)
-    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
+    await screen.findByText(/Estimated cash if you left/i)
+    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
   })
 })
 
@@ -591,7 +591,7 @@ it('refreshes the primary exit amount after applying a tax or lot-selection tip'
   renderDashboard()
   await screen.findByText('Additional cash needed to settle: $55,000')
   await userEvent.click(screen.getByRole('button', {name: 'Apply'}))
-  await waitFor(() => expect(screen.getByText('Estimated cash from leaving on this date').parentElement).toHaveTextContent('$4,321'))
+  await waitFor(() => expect(screen.getByText('Estimated cash if you left today').parentElement).toHaveTextContent('$4,321'))
 })
 
 it('opens an inline price editor for unpriced holdings', async () => {

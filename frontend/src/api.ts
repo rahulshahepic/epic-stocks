@@ -239,6 +239,7 @@ export interface DashboardData {
   summary_sentences?: string[]
   starter_questions?: string[]
   price_is_estimate?: boolean
+  price_effective_date?: string | null
   expected_announcement_date?: string | null
   announced_date?: string | null
   current_price: number | null
@@ -1178,6 +1179,8 @@ export interface DeductionPreview {
 
 export interface ExitPreview extends ExitSummary {
   date: string
+  price_effective_date?: string | null
+  price_is_estimate?: boolean
 }
 
 export interface LotSummary {

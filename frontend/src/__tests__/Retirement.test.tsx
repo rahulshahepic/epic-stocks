@@ -28,7 +28,7 @@ beforeEach(() => {
 })
 
 it.each([
-  ['Epic exit value', 'epicExit'],
+  ['Epic cash in retirement plan', 'epicExit'],
   ['Taxable brokerage', 'taxableAdditional'],
   ['What you originally paid (basis)', 'additionalBasis'],
   ['401(k) / Traditional IRA', 'traditional'],
@@ -219,7 +219,7 @@ describe('Retirement page', () => {
     expect(screen.getByLabelText(/Plan until you're/i)).toBeInTheDocument()
   })
 
-  it('pre-fills Epic exit value from the exit preview at the chosen date', async () => {
+  it('pre-fills Epic cash in retirement plan from the exit preview at the chosen date', async () => {
     mockApi({ netCash: 4_500_000 })
     render(
       <MemoryRouter>
@@ -735,7 +735,7 @@ it('keeps a legacy amount initially and automatically projects when its date cha
   expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
   fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
   expect(await screen.findByDisplayValue('6000000')).toBeVisible()
-  expect(screen.getByText(/Epic exit: projected automatically/)).toBeVisible()
+  expect(screen.getByText(/Epic cash is projected for the retirement date/)).toBeVisible()
 })
 
 it('preserves an explicitly manual amount when the retirement date changes', async () => {
@@ -743,9 +743,9 @@ it('preserves an explicitly manual amount when the retirement date changes', asy
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await screen.findByDisplayValue('5000000')
   fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2035-01-01' } })
-  expect(screen.getByText(/Date changes keep this override/)).toBeVisible()
+  expect(screen.getByText(/Changing the date keeps it/)).toBeVisible()
   expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes('/api/preview-exit'))).toBe(false)
-  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5000000)
+  expect(screen.getByLabelText(/^Epic cash in retirement plan/)).toHaveValue(5000000)
 })
 
 it('pauses an automatic plan when projection fails and allows an explicit manual fallback', async () => {
@@ -755,7 +755,7 @@ it('pauses an automatic plan when projection fails and allows an explicit manual
   expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeDisabled()
   await userEvent.click(screen.getByRole('button', { name: 'Enter a manual exit amount' }))
   expect(screen.getByRole('button', { name: /Simulate.*retirements/ })).toBeEnabled()
-  expect(screen.getByLabelText(/^Epic exit value/)).toHaveValue(5000000)
+  expect(screen.getByLabelText(/^Epic cash in retirement plan/)).toHaveValue(5000000)
 })
 
 it('aborts the previous autosave when a newer spending edit supersedes it', async () => {

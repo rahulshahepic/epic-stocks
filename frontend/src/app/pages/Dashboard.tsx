@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
 import { useToday } from '../dateUtils.ts'
-import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
+import { fmt$, fmtFullDate, fmtNum, fmtPrice, exitCashLabel, sharePriceBasis, stockValueLabel } from '../format.ts'
 import { CostCards } from './dashboard/CostCards.tsx'
 import { DashboardCharts } from './dashboard/DashboardCharts.tsx'
 import { EarningsCards } from './dashboard/EarningsCards.tsx'
@@ -55,7 +55,7 @@ function StalePriceBanner({ latest, readOnly, onAddPrice }: { latest: PriceEntry
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
       <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
         <span className="font-semibold">
-          Your newest share price is from {latest.effective_date.slice(0, 4)} ({fmtPrice(latest.price)}).
+          Your last recorded share price is from {latest.effective_date.slice(0, 4)} ({fmtPrice(latest.price)}).
         </span>{' '}
         This year's announced price has not been recorded. Any applicable growth estimate remains tentative.
         {!readOnly && ' Record this year\'s announcement to confirm the price.'}
@@ -93,12 +93,17 @@ export default function Dashboard() {
   const vid = viewing?.invitationId
   const readOnly = !!viewing
   const priceEditor = useRef<HTMLDetailsElement>(null)
-  function openPriceEditor() {
-    if (!priceEditor.current) return
-    priceEditor.current.open = true
-    priceEditor.current.scrollIntoView?.({ block: 'start' })
-    priceEditor.current.querySelector('input')?.focus()
-  }
+  const [priceEditorActive, setPriceEditorActive] = useState(false)
+  const openPriceEditor = useCallback(() => {
+    const editor = priceEditor.current
+    if (!editor) { setPriceEditorActive(true); return }
+    editor.open = true
+    editor.scrollIntoView?.({ block: 'start' })
+    editor.querySelector('input')?.focus()
+  }, [])
+  useEffect(() => {
+    if (priceEditorActive) openPriceEditor()
+  }, [priceEditorActive, openPriceEditor])
   const today = useToday()
   const [importSaved, setImportSaved] = useState(false)
   const [carryover, setCarryover] = useState('')
@@ -380,10 +385,11 @@ export default function Dashboard() {
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
-          {!readOnly && (!config?.epic_mode ? <button type="button" onClick={openPriceEditor} className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>)}
+          {!readOnly && (!config?.epic_mode && cardDate.startsWith(today.slice(0, 4)) ? <button type="button" onClick={openPriceEditor} className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>)}
         </div>
       )}
-      {!readOnly && !config?.epic_mode && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Enter an announced price here</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
+      {cardDate === today && hasPrice && stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
+      {!readOnly && !config?.epic_mode && priceEditorActive && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Update the announced price</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
       {cv && grantHoldings && (
         <HeroCard
           className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
@@ -399,11 +405,13 @@ export default function Dashboard() {
             <div>
               <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (cv.net_equity === null ? '—' : fmt$(cv.net_equity))}
+                {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitPreview ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
               </p>
-              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitPreview ? 'Estimated cash from leaving on this date' : 'Stock equity before exit tax'}</p>
+              <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitPreview ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
               {hasPrice && showExitPreview && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : datedExit ? 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.' : 'Exit estimate unavailable. Stock holdings are shown below.'}</p>}
 
+              {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
+                datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
               {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
             </div>
             <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
@@ -417,9 +425,7 @@ export default function Dashboard() {
                   {(datedExit.projected_payoffs_before_exit ?? 0) > 0 && <> − {fmt$(datedExit.projected_payoffs_before_exit!)} earlier projected payoffs</>}
                   <> − {fmt$(datedExit.liquidation_tax)} est. tax</>
                 </> : <>
-                  {totalValue === null ? 'Stock value needs a share price' : `${fmt$(totalValue)} in shares`}
-                  {cv.total_loan_principal > 0 && <> − {fmt$(cv.total_loan_principal)} loans</>}
-                  {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
+                  {totalValue === null ? 'Stock value needs a share price' : cv.net_equity != null && `${fmt$(cv.net_equity)} stock equity before exit taxes`}
                 </>}
               </p>
               {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
@@ -504,7 +510,7 @@ export default function Dashboard() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}
-        {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
+
       </div>
 
       {!snapshot && <div role={dashError ? 'alert' : 'status'} className="text-sm text-cs-muted">

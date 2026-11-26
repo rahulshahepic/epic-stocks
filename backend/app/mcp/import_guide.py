@@ -14,7 +14,7 @@ wins; a grant's vesting is a list of dated rows and can say anything.
 """
 
 START_HERE = """\
-1. Use only necessary financial fields or redacted documents the person explicitly supplies for this import, and only where the host permits that use. Never retrieve host memory, chat history or conversation summaries, or search user files. Where host policy restricts file extraction (including the Claude directory), use Epic Stocks /import (or /try before sign-in), where the app parses raw files without an LLM. Remove government identifiers, signatures, payment details and credentials before sharing anything with an assistant. Any one document is enough to start; you do
+1. Use only necessary financial fields or redacted documents the person explicitly supplies for this import, and only where the host permits that use. Never retrieve host memory, chat history or conversation summaries, or search user files. Where host policy restricts file extraction (including the Claude directory), use Epic Stocks /import (or /try before sign-in), where the app parses raw files without an LLM. Before pasting or uploading an agreement, statement or screenshot, remove or cover Social Security and taxpayer ID numbers, bank account and routing numbers, passwords, access codes, and signatures. The import does not need these details. If an 83(b) copy shows a taxpayer ID, redact that line before sharing it. Ask the person for a redacted copy if any of these details are still visible. Any one document is enough to start; you do
    not need every file, and nothing is removed because a document leaves it out.
 2. Read the account first (list_grants, list_loans, list_prices, list_sales, or
    account_now below) so you add to it rather than duplicate it.

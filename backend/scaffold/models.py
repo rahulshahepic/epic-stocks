@@ -41,6 +41,8 @@ class User(Base):
     # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
     # carry the value at issue time; mismatch = forced re-login.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Every confirmed account edit advances this even if the values are unchanged.
+    change_confirmation_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Profile / preferences (added for Retirement Simulator).
     # date_of_birth drives "current age" on the simulator and SS/Medicare timing.
     # deferred=True prevents decryption with the wrong key when another user's

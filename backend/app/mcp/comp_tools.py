@@ -18,7 +18,7 @@ Nothing returns the document it just changed. A connection may hold comp:write
 without comp:read, and a write must not become a way to read.
 """
 from datetime import date
-from app.changes import confirmation
+from app.changes import confirmation, consume_confirmation
 from app.financial_literacy import MAX_PORTFOLIO_MILLIONS
 
 from scaffold.oauth.scopes import COMP_READ, COMP_WRITE
@@ -336,8 +336,8 @@ def _remove_compensation(ctx: ToolContext, args: dict):
         ctx.db.rollback()
         raise ValueError("No matching entries remain; preview again")
 
+    consume_confirmation(owner, ctx.db)
     owner.comp_entries = kept
-    owner.change_confirmation_version += 1
     ctx.db.commit()
     return {"applied": True, "removed": len(matched), "entries_now": len(kept), "not_found": missing}
 

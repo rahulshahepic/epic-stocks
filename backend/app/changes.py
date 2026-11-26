@@ -15,6 +15,7 @@ from time import time
 from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import ValidationError
+from sqlalchemy import update
 
 from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, User, LoanInterestCheckpoint
 
@@ -181,6 +182,20 @@ def confirmation(user, db, changes, account_state, confirm: str | None = None) -
     return token
 
 
+def consume_confirmation(user, db) -> None:
+    """Advance once in the same transaction as the confirmed write."""
+    version = user.change_confirmation_version
+    result = db.execute(
+        update(User)
+        .where(User.id == user.id, User.change_confirmation_version == version)
+        .values(change_confirmation_version=version + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        raise ChangeError("This confirmation was already used; preview again")
+    db.expire(user, ["change_confirmation_version"])
+
+
 def _position(user, db) -> dict:
     from app.routers.events import _get_dashboard_data
     data = _get_dashboard_data(user, _Uncommitted(db), as_of=date.today())
@@ -276,6 +291,8 @@ def apply_changes(owner: User, db, changes, *, confirm: str | None = None,
         # request committed a retirement write.
         db.refresh(owner, with_for_update=True)
         token = confirmation(owner, db, canonical, _fingerprint(owner, db), confirm)
+        if confirm is not None:
+            consume_confirmation(owner, db)
         position = {} if retirement_only else {"position_before": _position(owner, db)}
         handlers = {} if retirement_only else _handlers()
         results = [None] * len(ordered)
@@ -301,7 +318,6 @@ def apply_changes(owner: User, db, changes, *, confirm: str | None = None,
     if confirm is None:
         db.rollback()
         return {"applied": False, "changes": results, **position, "confirm": token}
-    owner.change_confirmation_version += 1
     db.commit()
     if not retirement_only:
         event_cache.schedule_recompute(owner.id)

@@ -17,6 +17,13 @@ def build(endpoint: str, output: Path) -> None:
     if output.exists():
         raise ValueError("Choose a new output directory")
     shutil.copytree(source, output)
+    manifest_path = output / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    origin = f"{url.scheme}://{url.netloc}"
+    manifest["homepage"] = origin
+    interface = manifest["extensions"]["com.openai"]["interface"]
+    interface.update(websiteURL=origin, supportURL=f"{origin}/support", privacyPolicyURL=f"{origin}/privacy-policy")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     config = {
         "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
         "mcpServers": {"epic-stocks": {"type": "streamable-http", "url": endpoint}},

@@ -252,7 +252,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
 
 8. **Share your data** — invite a financial advisor or family member by email from **Settings → Sharing**. They see your data read-only; you can revoke access at any time.
 
-9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
+9. **Compare to a salary offer** — choose **More → Compensation Calculator** or **See total compensation** under **Earnings and borrowing costs** on Dashboard to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
 
 10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path simulation of your retirement using your Epic exit value plus other assets. Each path samples real months of 1928–2023 U.S. stock + bond history (block bootstrap) so crash shapes and recoveries are realistic. See [Retirement Simulator](#retirement-simulator) below.
 
@@ -995,7 +995,7 @@ Choose **Send a private report** for account-specific problems or to report with
 
 Content admins edit the grant-program data new grants start from for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
 
-Content admins can open **More → Content**. Site admins can also open **More → Admin**. From `/content` they can edit:
+Content admins can open **More → Content Admin**. Site admins can also open **More → Site Admin**. From `/content` they can edit:
 
 | Section | What it controls |
 |---------|----------------|
@@ -1973,6 +1973,9 @@ Maintenance and Epic-mode middleware run their synchronous database checks in wo
 
 ### Public MCP discovery at Cloudflare
 
+The public `/llms.txt` lists the main website features and the signed-in menus so assistants can guide people using the browser. The feature overview also appears on `/mcp-setup` and in `/mcp/setup.json`. Connected assistants get tool descriptions and a pointer to the website calculator through the MCP server.
+
+
 `robots.txt` points to a sitemap containing the public `/mcp-setup` guide; `/llms.txt` links to the guide and setup JSON. These files advertise public instructions only. They neither disable OAuth nor grant tools access.
 
 `ops/cloudflare_mcp_discovery.json` records the exact edit to the existing **No bots on non mcp** custom challenge rule. The exception is limited to GET/HEAD on eight exact public document/download paths on the production, www and staging hostnames. It does not change existing MCP/OAuth exclusions, managed WAF, rate limits, private API routes, Bot Fight Mode, training preferences or other hosts. Apply only after comparing the recorded previous expression/version with the live rule; preserve concurrent edits. Verify each public URL returns content rather than a challenge, while account APIs and `/mcp` still require authorization. `robots.txt` is crawler guidance, not firewall configuration.
@@ -2140,10 +2143,10 @@ already-matching, review-needed or failed status. Existing rows are preserved;
 corrections require the normal reviewed import. Preview carryover expires after
 30 minutes. Choosing Connect AI, Import, Retirement or Comp before sign-in returns
 to that page. Dashboard, Planning and Settings are the three primary tabs on phones
-and desktop. Open **More** for Stock Records, the Compensation Calculator, and
-account tools such as Connect AI, Content and Admin when available to your account.
+and desktop. **Planning** contains Planned Expenses and Retirement.
+**More** begins with Compensation Calculator, followed by Stock Records and the Admin tools available to your account.
 Stock Records includes Events, Grants, Sales, Loans, Prices and Import / Export. The Dashboard also links directly to the holdings,
-price, loan or upcoming event behind a figure. Settings links to account tools. Successful record
+price, loan or upcoming event behind a figure. Connect an assistant from **Settings → AI Connections** or from the Import page. Successful record
 edits show a result with links to the updated position and retirement.
 
 Release walkthroughs: [More navigation](screenshots/navigation-more-light-mobile.png),

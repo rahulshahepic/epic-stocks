@@ -23,10 +23,11 @@ export default function Layout() {
   const staging = config?.staging_demo || import.meta.env.VITE_APP_ENV === 'staging' || window.location.hostname === 'staging.epic-stocks.com'
   const epicMode = config?.epic_mode ?? false
   const baseItems = epicMode ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }] : [...appNavItems, { to: '/settings', label: 'Settings' }]
-  const viewFilteredItems = viewing ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to)) : baseItems
-  const canContent = !viewing && (me?.is_admin || me?.is_content_admin)
-  const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
-  const navItems = me?.is_admin && !viewing ? [...withContent, { to: '/admin', label: 'Admin' }] : withContent
+  const navItems = viewing ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to)) : baseItems
+  const adminLinks = [
+    ...(!viewing && me?.is_admin ? [{ to: '/admin', label: 'Site Admin' }] : []),
+    ...(!viewing && (me?.is_admin || me?.is_content_admin) ? [{ to: '/content', label: 'Content Admin' }] : []),
+  ]
   const sharedAccounts = me?.shared_accounts ?? []
 
   useEffect(() => {
@@ -44,27 +45,23 @@ export default function Layout() {
   const workshopRoutes = ['/settings', '/connect-ai', '/content', '/admin', '/import-diagnostics']
   const isRecords = recordsRoutes.includes(location.pathname)
   const isWorkshop = workshopRoutes.includes(location.pathname)
-  const isObservatory = ['/planning', '/retirement', '/comp-calculator'].includes(location.pathname)
-  const accountLinks = [
-    ...(config?.ai_connections && !viewing ? [{ to: '/connect-ai', label: 'Connect AI' }] : []),
-    ...navItems.filter(item => ['/content', '/admin'].includes(item.to)),
-  ]
-  const moreGroups = [
+  const isPlanning = ['/planning', '/retirement'].includes(location.pathname)
+  const isObservatory = isPlanning || location.pathname === '/comp-calculator'
+  const moreGroups: NavigationGroup[] = [
+    { links: navItems.filter(item => item.to === '/comp-calculator').map(item => ({ ...item, label: 'Compensation Calculator' })) },
     {
       label: 'Stock records',
       links: navItems.filter(item => recordsRoutes.includes(item.to))
         .map(item => item.to === '/import' ? { ...item, label: 'Import / Export' } : item),
     },
     {
-      label: 'Planning',
-      links: navItems.filter(item => item.to === '/comp-calculator')
-        .map(item => ({ ...item, label: 'Compensation Calculator' })),
+      label: 'Admin',
+      links: adminLinks,
     },
-    { label: 'Account', links: accountLinks },
   ].filter(group => group.links.length > 0)
   const primaryLocation = (to: string) => {
     if (to === location.pathname) return 'page'
-    if ((to === '/' && isRecords) || (to === '/planning' && isObservatory)) return 'location'
+    if ((to === '/' && isRecords) || (to === '/planning' && isPlanning)) return 'location'
   }
   const campusWing = isRecords
     ? { id: 'records', label: 'The records wing', motto: 'Verba volant, scripta manent', translation: 'Spoken words fly; written words remain' }
@@ -143,7 +140,7 @@ export default function Layout() {
   )
 }
 
-type NavigationGroup = { label: string; links: { to: string; label: string }[] }
+type NavigationGroup = { label?: string; links: { to: string; label: string }[] }
 
 function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[]; mobile?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -203,9 +200,9 @@ function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[];
           : 'left-0 top-full mt-2 w-80'}`}
       >
         {groups.map(group => (
-          <div key={group.label} className="border-b border-cs-border p-1 last:border-b-0">
-            <h2 className="px-2 pt-1 text-xs font-semibold text-cs-muted">{group.label}</h2>
-            <div className="grid grid-cols-2 gap-x-1">
+          <div key={group.label ?? group.links[0].to} className="border-b border-cs-border p-1 last:border-b-0">
+            {group.label && <h2 className="px-2 pt-1 text-xs font-semibold text-cs-muted">{group.label}</h2>}
+            <div className={group.label ? 'grid grid-cols-2 gap-x-1' : undefined}>
               {group.links.map(({ to, label }) => (
                 <NavLink key={to} to={to} onClick={() => setOpen(false)}
                   className={({ isActive }) => `flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm ${isActive

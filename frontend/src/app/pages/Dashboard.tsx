@@ -359,7 +359,6 @@ export default function Dashboard() {
 
   const recordLinks = <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
     <Link to="/events" className="inline-flex min-h-11 items-center rounded-lg border border-cs-border-strong px-3">Stock Records</Link>
-    <Link to="/comp-calculator" className="inline-flex min-h-11 items-center rounded-lg border border-cs-border-strong px-3">Compensation Calculator</Link>
   </div>
 
   if (isEmpty && !readOnly) {
@@ -599,18 +598,23 @@ export default function Dashboard() {
             totalValue={totalValue} headingAs="h3" hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
         </div>
 
-        {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <details className="rounded-xl border border-cs-border bg-cs-surface">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Earnings and borrowing costs</summary>
-          <div className="space-y-3 px-4 pb-4">
-            <EarningsCards cv={cv} breakdowns={breakdowns}
-              openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-            <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
-              hasInterestDeduction={hasInterestDeduction}
-              openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+        {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <div className="relative rounded-xl border border-cs-border bg-cs-surface">
+          <details>
+            <summary className="cursor-pointer px-4 pt-3 pb-11 text-sm font-semibold text-cs-text sm:py-3 sm:pr-48">Earnings and borrowing costs</summary>
+            <div className="space-y-3 px-4 pb-4">
+              <EarningsCards cv={cv} breakdowns={breakdowns}
+                openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+              <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
+                hasInterestDeduction={hasInterestDeduction}
+                openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
 
-            {deductionControl}
-          </div>
-        </details>}
+              {deductionControl}
+            </div>
+          </details>
+          <Link to="/comp-calculator" className="absolute top-9 left-4 inline-flex min-h-9 items-center rounded-md text-sm font-semibold text-cs-brand underline dark:text-rose-300 sm:top-0 sm:right-4 sm:left-auto sm:min-h-11">
+            See total compensation <span className="ml-1" aria-hidden="true">→</span>
+          </Link>
+        </div>}
 
         {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-xl border border-cs-border bg-cs-surface">
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">In plain words</summary>

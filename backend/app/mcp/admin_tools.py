@@ -1019,11 +1019,11 @@ for _name, _title, _action in (
     register(Tool(name=_name, title=_title,
         description='Call without confirm to read the effect, then confirm=true to apply. Pausing clears temporary linkage; cleanup removes expired rows only. Aggregate history within retention is preserved. Resume requires admin_request_resume_onboarding and human approval.',
         input_schema=object_schema({'confirm': {'type': 'boolean', 'default': False}}),
-        scope=ADMIN_WRITE, handler=_onboarding_action(_action), destructive=True))
+        scope=ADMIN_WRITE, handler=_onboarding_action(_action), read_only=False, destructive=True))
 register(Tool(name='admin_request_resume_onboarding', title='Request resumption of optional onboarding measurement',
     description='File an approval request to resume optional onboarding collection. No change happens until approved with the admin’s one-time push code or in the browser. Never overrides individual opt-out/DNT.',
     input_schema=object_schema({'reason': {'type': 'string', 'maxLength': 300}}),
-    scope=ADMIN_WRITE, handler=_request(admin_requests.RESUME_ONBOARDING)))
+    scope=ADMIN_WRITE, handler=_request(admin_requests.RESUME_ONBOARDING), read_only=False))
 
 
 def _reviewers(ctx, args):

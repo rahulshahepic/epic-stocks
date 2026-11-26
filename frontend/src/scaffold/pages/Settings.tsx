@@ -29,7 +29,7 @@ export default function Settings() {
   const previousHash = useRef(hash)
   const notificationAvailable = !config?.staging_demo && (!!config?.vapid_public_key || pushSupported || !!config?.email_notifications_available)
   const categories = [
-    { hash: '#ai-connections', label: 'AI Connections', description: 'Connect an assistant and manage access', available: !!config?.ai_connections },
+    { hash: '#ai-connections', label: 'AI Connections', description: 'Connect Epic Stocks to ChatGPT, Claude or another assistant', available: !!config?.ai_connections },
     { hash: '#tax', label: 'Stock, Tax & Loan Assumptions', description: 'Tax rates, interest deductions and loan payoff', available: !!settingsSections },
     { hash: '#notifications', label: 'Notifications', description: 'Email, push and reminder timing', available: notificationAvailable },
     { hash: '#appearance', label: 'Appearance', description: 'Light, dark or system theme', available: true },

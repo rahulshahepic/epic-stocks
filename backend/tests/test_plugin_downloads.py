@@ -30,11 +30,27 @@ def test_default_account_package_is_production_and_requires_sign_in(client, plat
     assert server["url"] == "https://epic-stocks.com/mcp"
     assert "clientSecret" not in str(contents)
     if platform == "chatgpt":
-        assert contents["plugin.json"]["name"] == "epic-stocks"
+        manifest = contents["plugin.json"]
+        interface = manifest["extensions"]["com.openai"]["interface"]
+        assert manifest["name"] == "epic-stocks"
+        assert manifest["author"]["name"]
+        assert interface["websiteURL"] == "https://epic-stocks.com"
+        assert interface["supportURL"].endswith("/support")
+        assert interface["privacyPolicyURL"].endswith("/privacy-policy")
+        assert 0 < len(interface["defaultPrompt"]) <= 3
+        with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+            for asset in ("logo", "logoDark", "composerIcon", "composerIconDark"):
+                assert interface[asset].removeprefix("./") in bundle.namelist()
         assert server["type"] == "streamable-http"
         assert server["extensions"]["com.openai"]["auth"]["client"]["mode"] == "dcr"
     else:
-        assert contents[".claude-plugin/plugin.json"]["name"] == "epic-stocks"
+        manifest = contents[".claude-plugin/plugin.json"]
+        assert manifest["name"] == "epic-stocks"
+        assert manifest["author"]["name"]
+        assert manifest["homepage"] == "https://epic-stocks.com/mcp-setup"
+        assert manifest["supportUrl"].endswith("/support")
+        assert manifest["privacyPolicyUrl"].endswith("/privacy-policy")
+        assert manifest["license"] == "MIT"
         assert server["type"] == "http"
 
 
@@ -68,8 +84,10 @@ def test_admin_package_is_for_this_site_and_admin_only(client, domain, site):
     assert interface["capabilities"] == ["Read"]
     assert "No personal account-data tools" in interface["longDescription"]
     display_site = site.title() if site in {"staging", "production"} else site
-    assert interface["displayName"] == f"Epic Stocks {display_site} Admin"
-    assert contents[".claude-plugin/plugin.json"]["displayName"] == interface["displayName"]
+    display_name = f"Epic Stocks {display_site} Admin"
+    assert interface["displayName"] == (display_name if len(display_name) <= 30 else "Epic Stocks Site Admin")
+    assert contents[".claude-plugin/plugin.json"]["displayName"] == display_name
+    assert interface["websiteURL"] == f"https://{domain}"
 
 
 def test_unknown_account_platform_is_rejected(client):

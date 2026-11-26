@@ -67,7 +67,7 @@ test.describe('Reporting a problem', () => {
     expect(resp.ok(), `POST /api/report → ${resp.status()}`).toBeTruthy()
 
     await loginAs(page, ADMIN_EMAIL, 'Admin')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
 
     const report = page.getByText(marker)
     await expect(report).toBeVisible({ timeout: 15_000 })

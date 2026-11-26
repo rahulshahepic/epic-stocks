@@ -538,7 +538,7 @@ register(Tool(
     name="get_tax_breakdown",
     title="Tax on a sale",
     description=(
-        "The full tax working for one recorded sale: which lots it consumes, "
+        "The estimated tax working for one recorded sale: which lots it consumes, "
         "ordinary income, short- and long-term capital gains, and the tax on "
         "each. Get the sale id from list_sales."
     ),

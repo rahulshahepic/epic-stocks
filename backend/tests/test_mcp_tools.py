@@ -158,10 +158,9 @@ WRITING_TOOLS = {
     "set_investment_interest_method",
 }
 
-# Claude review criteria requires destructiveHint for modifying tools. Use the
-# conservative hint for all persisted financial writes, including additive ones;
-# precise descriptions still distinguish append, overwrite and delete effects.
-DESTRUCTIVE_TOOLS = WRITING_TOOLS
+# The salary/bonus append is additive. Other writers can delete entries or
+# overwrite existing values, including the saved interest-method setting.
+DESTRUCTIVE_TOOLS = WRITING_TOOLS - {"add_compensation"}
 
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):

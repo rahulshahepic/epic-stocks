@@ -292,7 +292,7 @@ register(Tool(
     scope=COMP_WRITE,
     handler=_add_compensation,
     read_only=False,
-    destructive=True,
+    destructive=False,
     idempotent=True,
 ))
 

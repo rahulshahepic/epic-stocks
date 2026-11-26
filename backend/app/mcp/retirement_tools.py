@@ -167,7 +167,7 @@ def _run(ctx: ToolContext, args: dict):
 
 RETIREMENT_CONFIRM_PROPERTY = {
     "type": "string",
-    "description": "Omit to preview. After the user approves, send this token with the same inputs.",
+    "description": "Omit to preview. After the user approves, send this token with the same inputs within 30 minutes.",
 }
 
 
@@ -359,7 +359,7 @@ register(Tool(
         "Optional current-state purchase conditions skip unaffordable-market purchases "
         "without future knowledge; results report purchase probabilities. Compare the "
         "actual Monte Carlo results with/without events using the same seed. "
-        "Can suggest a hypothetical Epic stock sale target, but NEVER creates "
+        "Can calculate a hypothetical Epic stock sale target, but NEVER creates "
         "a sale or changes any saved settings. Use estimate_sale separately "
         "to estimate shares and taxes from a stated future share price. "
         "Ask the user for missing financial assumptions instead of inventing them."

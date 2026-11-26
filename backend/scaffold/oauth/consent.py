@@ -153,7 +153,7 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
             + ("" if admin else '<div class="quick" hidden>'
                f'<button type="button" data-select="all" aria-label="Select all {title.lower()} permissions">Select all</button>'
                f'<button type="button" data-select="none" aria-label="Clear all {title.lower()} permissions">Clear all</button>'
-               '</div>') + ('<p class="help">Preparing imports and editing equity also require equity read access.</p>' if title == 'Equity' else '')
+               '</div>') + ('<p class="help">Editing equity also requires equity read access.</p>' if title == 'Equity' else '')
             + ('<p class="help">Changing settings also requires read access. Anything that would let '
                'more assistants connect is filed as a request you approve in Admin, never done directly.</p>'
                if title == 'Diagnostics' else '')
@@ -194,8 +194,8 @@ if (form) {
     for (const input of choices) input.setCustomValidity('');
     if (!selected.size) choices[0].setCustomValidity('Select at least one permission, or cancel.');
     const equityRead = choices.find(input => input.value === 'equity:read');
-    if ((selected.has('equity:write') || selected.has('import:propose')) && !selected.has('equity:read')) {
-      equityRead.setCustomValidity('To prepare imports or edit equity, also select Read your equity.');
+    if (selected.has('equity:write') && !selected.has('equity:read')) {
+      equityRead.setCustomValidity('To edit equity, also select Read your equity.');
     }
     const adminRead = choices.find(input => input.value === 'admin:read');
     const sensitiveReports = selected.has('admin:reports:sensitive');
@@ -215,12 +215,10 @@ if (form) {
       if (selected.has('comp:write')) records.push('salary, bonus history and retirement balances');
       summary.textContent = 'This selection lets the app edit your ' + records.join('; and ') +
         ' when you ask, without another confirmation here. You can disconnect at any time in Settings.';
-    } else if (selected.has('import:propose')) {
-      summary.textContent = 'This selection lets the app prepare imports. Your records change only after you review and accept them. You can disconnect at any time in Settings.';
     } else if (selected.size && adminRead) {
       summary.textContent = 'This selection is read-only. It cannot change site settings. You can disconnect at any time in Settings.';
     } else if (selected.size) {
-      summary.textContent = 'This selection is read-only. It cannot change your records or prepare imports. You can disconnect at any time in Settings.';
+      summary.textContent = 'This selection is read-only. It cannot change your records. You can disconnect at any time in Settings.';
     } else {
       summary.textContent = 'Select at least one permission, or cancel.';
     }

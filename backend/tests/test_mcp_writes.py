@@ -5,10 +5,8 @@ reads. First, a write has to land where the app looks: the assertions go
 through the app's own endpoints rather than re-reading the column, so a tool
 that quietly stored a differently-shaped row would fail here.
 
-Second, writing is a permission. It is in the default set — the app is not the
-source of truth, and a read-only default left people unable to find how to let
-an assistant edit — but the consent screen says so and lets the user connect
-read-only instead. A connection without it is refused readably, and a
+Second, writing requires an explicit selection on the consent screen.
+A connection without it is refused readably, and a
 connection that holds only comp:write must not be able to read the history back
 out through the answer to a write.
 """
@@ -46,15 +44,12 @@ def params(client):
 
 # ── the permission ──────────────────────────────────────────────────────────
 
-def test_writing_is_granted_by_default():
-    """ChatGPT names no scope; the default is everything grantable."""
-    assert scopes.COMP_WRITE in scopes.DEFAULT_SCOPES
-    assert scopes.EQUITY_WRITE in scopes.DEFAULT_SCOPES
+def test_writing_is_not_granted_by_default():
+    assert set(scopes.DEFAULT_SCOPES) == {scopes.EQUITY_READ, scopes.COMP_READ}
 
 
 def test_granting_it_stops_the_connection_being_read_only():
     assert scopes.writes_anything([scopes.COMP_WRITE])
-    assert scopes.writes_anything(list(scopes.DEFAULT_SCOPES))
     assert not scopes.writes_anything([scopes.EQUITY_READ, scopes.COMP_READ])
 
 
@@ -180,8 +175,15 @@ def test_what_was_written_reads_back_through_the_read_tool(mcp):
 def test_removing_an_entry_by_id(mcp, client):
     mcp.call("add_compensation", entries=[SALARY, RAISE])
     victim = held(client)[0]["id"]
-    answer = mcp.call("remove_compensation", ids=[victim])
-    assert answer["removed"] == 1
+    preview = mcp.call("remove_compensation", ids=[victim])
+    assert preview["applied"] is False
+    assert [entry["id"] for entry in preview["would_remove"]] == [victim]
+    assert len(held(client)) == 2
+    other = held(client)[1]["id"]
+    assert "preview again" in mcp.error("remove_compensation", ids=[other], confirm=preview["confirm"])
+    answer = mcp.call("remove_compensation", ids=[victim], confirm=preview["confirm"])
+    assert answer["applied"] is True and answer["removed"] == 1
+    assert "preview again" in mcp.error("remove_compensation", ids=[victim], confirm=preview["confirm"])
     assert [e["id"] for e in held(client)] != [victim]
     assert len(held(client)) == 1
 
@@ -196,8 +198,60 @@ def test_a_stale_id_is_named_rather_than_silently_ignored(mcp):
 
 def test_removing_everything_leaves_an_empty_history(mcp, client):
     mcp.call("add_compensation", entries=[SALARY, RAISE, BONUS])
-    mcp.call("remove_compensation", ids=[e["id"] for e in held(client)])
+    ids = [e["id"] for e in held(client)]
+    preview = mcp.call("remove_compensation", ids=ids)
+    mcp.call("remove_compensation", ids=ids, confirm=preview["confirm"])
     assert held(client) == []
+
+
+def test_compensation_delete_confirmation_expires(mcp, client, monkeypatch):
+    from app import changes
+
+    mcp.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    issued = 1_800_000_000
+    monkeypatch.setattr(changes, "time", lambda: issued)
+    preview = mcp.call("remove_compensation", ids=ids)
+    monkeypatch.setattr(changes, "time", lambda: issued + changes.CONFIRMATION_TTL_SECONDS)
+    assert "expired" in mcp.error("remove_compensation", ids=ids, confirm=preview["confirm"])
+    assert len(held(client)) == 1
+
+
+def test_compensation_delete_confirmation_is_account_bound(client):
+    register_user(client, "first@example.test")
+    first = Mcp(client)
+    first.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    preview = first.call("remove_compensation", ids=ids)
+    register_user(client, "second@example.test")
+    second = Mcp(client)
+    second.call("add_compensation", entries=[SALARY])
+    assert [held(client)[0]["id"]] == ids
+    assert "preview again" in second.error("remove_compensation", ids=ids, confirm=preview["confirm"])
+    assert len(held(client)) == 1
+
+
+def test_compensation_delete_skips_entries_without_ids(client):
+    register_user(client)
+    writer = Mcp(client, scope="comp:write")
+    entries = [SALARY, {**BONUS, "id": None}]
+    assert client.put("/api/retirement/comp-entries", json={"entries": entries}).status_code == 200
+    preview = writer.call("remove_compensation", ids=["None"])
+    assert preview["would_remove"] == []
+    assert preview["not_found"] == ["None"]
+    assert "confirm" not in preview
+    assert held(client) == entries
+
+
+def test_compensation_delete_preview_respects_read_scope(client):
+    register_user(client)
+    user = Mcp(client)
+    user.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    writer = Mcp(client, scope="comp:write")
+    preview = writer.call("remove_compensation", ids=ids)
+    assert preview["would_remove"] == [{"id": ids[0]}]
+    assert len(held(client)) == 1
 
 
 # ── retirement balances ─────────────────────────────────────────────────────

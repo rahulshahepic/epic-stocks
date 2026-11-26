@@ -43,6 +43,46 @@ def test_retirement_confirmation_expires_after_web_save(mcp, client):
     assert client.get("/api/retirement/params").json()["params"] == intervening
 
 
+@pytest.mark.parametrize(("tool", "arguments"), [
+    ("update_retirement_params", {"changes": {"defaultSpend": 205}}),
+    ("set_retirement_accounts", {"roth": 0.2}),
+    ("apply_changes", {"changes": [{"kind": "price", "action": "create",
+                                   "values": {"effective_date": "2041-01-01", "price": 1000}}]}),
+])
+def test_account_confirmation_has_a_time_limit(mcp, client, monkeypatch, tool, arguments):
+    from app import changes
+
+    issued = 1_800_000_000
+    monkeypatch.setattr(changes, "time", lambda: issued)
+    preview = mcp.call(tool, **arguments)
+    monkeypatch.setattr(changes, "time", lambda: issued + changes.CONFIRMATION_TTL_SECONDS)
+    assert "expired" in mcp.error(tool, confirm=preview["confirm"], **arguments)
+    assert client.get("/api/prices").json() == []
+    assert not client.get("/api/retirement/params").json()["params"]
+    fresh = mcp.call(tool, **arguments)
+    assert mcp.call(tool, confirm=fresh["confirm"], **arguments)["applied"] is True
+
+
+def test_confirming_an_unchanged_retirement_value_is_still_single_use(mcp, client):
+    changes = {"defaultSpend": 205}
+    client.put("/api/retirement/params", json={"params": changes})
+    preview = mcp.call("update_retirement_params", changes=changes)
+    assert mcp.call("update_retirement_params", changes=changes, confirm=preview["confirm"])["applied"]
+    assert "preview again" in mcp.error("update_retirement_params", changes=changes, confirm=preview["confirm"])
+
+
+def test_retirement_token_is_bound_to_account_and_patch(client):
+    register_user(client, "first@example.test")
+    first = Mcp(client)
+    proposed = {"defaultSpend": 205}
+    token = first.call("update_retirement_params", changes=proposed)["confirm"]
+    assert "preview again" in first.error("update_retirement_params", changes={"defaultSpend": 206}, confirm=token)
+    register_user(client, "second@example.test")
+    second = Mcp(client)
+    assert "preview again" in second.error("update_retirement_params", changes=proposed, confirm=token)
+    assert not client.get("/api/retirement/params").json()["params"]
+
+
 def test_writer_cannot_read_existing_params_through_update(client):
     register_user(client)
     client.put("/api/retirement/params", json={"params": {"epicExit": 4.0, "defaultSpend": 173}})

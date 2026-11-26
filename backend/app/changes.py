@@ -8,11 +8,14 @@ transaction and confirmation token that bind the apply to the preview.
 import hashlib
 import hmac
 import json
+import re
 from datetime import date
+from time import time
 
 from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import ValidationError
+from sqlalchemy import update
 
 from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, User, LoanInterestCheckpoint
 
@@ -20,6 +23,8 @@ KINDS = ("grant", "loan", "price", "sale", "loan_payment", "interest_checkpoint"
 RETIREMENT_PARAMS = "retirement_params"
 ACTIONS = ("create", "update", "delete")
 MAX_CHANGES = 200
+CONFIRMATION_TTL_SECONDS = 30 * 60
+_CONFIRMATION = re.compile(r"(?P<issued>[0-9]{1,12})\.[0-9a-f]{32}")
 # Deletes leave children first; creates and edits build parents first.
 _DELETE_ORDER = ("sale", "interest_checkpoint", "loan_payment", "loan", "grant", "price")
 _WRITE_ORDER = ("price", "grant", "loan", "loan_payment", "sale", "interest_checkpoint", RETIREMENT_PARAMS)
@@ -145,9 +150,16 @@ def _fingerprint(user, db) -> str:
     return hashlib.sha256(json.dumps([sorted(rows), retirement_hash]).encode()).hexdigest()
 
 
-def confirmation(user, db, changes) -> str:
+def confirmation(user, db, changes, account_state, confirm: str | None = None) -> str:
+    """Issue or validate a token under the caller's account row lock."""
     from scaffold.auth import JWT_SECRET
 
+    now = int(time())
+    match = _CONFIRMATION.fullmatch(confirm) if isinstance(confirm, str) else None
+    invalid = "The account or the changes differ from the preview; preview again and confirm that"
+    if confirm is not None and match is None:
+        raise ChangeError(invalid)
+    issued = int(match["issued"]) if match else now
     generation = user.session_version
     if user.is_synthetic:
         from scaffold.models import MCPTestAccount, ReviewerAccount
@@ -158,10 +170,30 @@ def confirmation(user, db, changes) -> str:
             raise ChangeError("Synthetic fixture is unavailable; preview again after setup")
         generation = fixture
     body = json.dumps({"changes": changes, "user": user.id, "generation": generation,
-                       "account": _fingerprint(user, db)}, sort_keys=True, default=str)
-    # Write-only connectors can see the token. Key it so they cannot test
-    # guesses about the stored financial inputs offline.
-    return hmac.new(JWT_SECRET.encode(), b"account-changes:" + body.encode(), hashlib.sha256).hexdigest()[:24]
+                       "account": account_state, "issued": issued,
+                       "version": user.change_confirmation_version}, sort_keys=True, default=str)
+    digest = hmac.new(JWT_SECRET.encode(), b"account-changes:" + body.encode(), hashlib.sha256).hexdigest()[:32]
+    token = f"{issued}.{digest}"
+    if confirm is not None:
+        if not hmac.compare_digest(confirm, token) or issued > now:
+            raise ChangeError(invalid)
+        if now - issued >= CONFIRMATION_TTL_SECONDS:
+            raise ChangeError("The confirmation expired; preview again before saving")
+    return token
+
+
+def consume_confirmation(user, db) -> None:
+    """Advance once in the same transaction as the confirmed write."""
+    version = user.change_confirmation_version
+    result = db.execute(
+        update(User)
+        .where(User.id == user.id, User.change_confirmation_version == version)
+        .values(change_confirmation_version=version + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        raise ChangeError("This confirmation was already used; preview again")
+    db.expire(user, ["change_confirmation_version"])
 
 
 def _position(user, db) -> dict:
@@ -258,9 +290,9 @@ def apply_changes(owner: User, db, changes, *, confirm: str | None = None,
         # Reload under the lock: auth may have loaded this User before another
         # request committed a retirement write.
         db.refresh(owner, with_for_update=True)
-        token = confirmation(owner, db, canonical)
-        if confirm is not None and not hmac.compare_digest(confirm.encode(), token.encode()):
-            raise ChangeError("The account or the changes differ from the preview; preview again and confirm that")
+        token = confirmation(owner, db, canonical, _fingerprint(owner, db), confirm)
+        if confirm is not None:
+            consume_confirmation(owner, db)
         position = {} if retirement_only else {"position_before": _position(owner, db)}
         handlers = {} if retirement_only else _handlers()
         results = [None] * len(ordered)

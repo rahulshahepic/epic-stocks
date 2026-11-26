@@ -463,7 +463,8 @@ def authorize_decide(request: Request, decision: str = Form(...),
         return _redirect_error(redirect_uri, state, "access_denied",
                                "The user declined the connection")
 
-    scope = pending["sc"]
+    scope = scope_defs.format_scope(
+        [s for s in pending["sc"].split() if s != scope_defs.IMPORT_PROPOSE])
     if _admin(request):
         if not _is_site_admin(user):
             return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
@@ -475,8 +476,6 @@ def authorize_decide(request: Request, decision: str = Form(...),
             return _error_page("Choose permissions", "Select at least one permission, or cancel.", 400)
         if len(selected_scope) > len(allowed) or any(s not in allowed for s in selected_scope):
             return _error_page("Invalid permissions", "Choose only the permissions offered on this screen.", 400)
-        if scope_defs.IMPORT_PROPOSE in selected_scope and scope_defs.EQUITY_READ not in selected_scope:
-            return _error_page("Invalid permissions", "Preparing imports also requires equity read access.", 400)
         try:
             scope = scope_defs.format_scope(scope_defs.parse_scope(
                 " ".join(s for s in allowed if s in selected_scope), admin=_admin(request),

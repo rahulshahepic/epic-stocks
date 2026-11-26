@@ -32,6 +32,10 @@ def test_public_terms_are_readable_without_sign_in_or_javascript(client):
     assert '<h2>Release and limitation of liability</h2>' in response.text
     assert '<strong>US $1</strong>' in response.text
     assert 'Dane County, Wisconsin' in response.text
+    assert 'Wisconsin law governs these terms' in response.text
+    assert 'at least 18' in response.text
+    assert 'Version date November 25, 2026' in response.text
+    assert 'effective when first published' in response.text
     assert 'https://epic-stocks.com/privacy-policy' in response.text
     assert 'https://epic-stocks.com/support' in response.text
     assert '<script' not in response.text

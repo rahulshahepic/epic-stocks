@@ -108,10 +108,16 @@ def run():
                 if any(t['name'] in ('list_test_scenarios', 'setup_test_account', 'reset_test_account')
                        or t['name'].startswith('admin_') for t in listing):
                     raise RuntimeError('Staging reviewer exposes unavailable tools')
-                if not listing or any(not t.get('title') or
-                        (not t['annotations']['readOnlyHint'] and not t['annotations'].get('destructiveHint'))
-                        for t in listing):
-                    raise RuntimeError('Staging reviewer tool annotations mismatch')
+                if not listing:
+                    raise RuntimeError('Staging reviewer tool list is empty')
+                for entry in listing:
+                    hints = entry['annotations']
+                    expected_destructive = not hints.get('readOnlyHint') and entry['name'] != 'add_compensation'
+                    if (not entry.get('title') or
+                            any(type(hints.get(name)) is not bool
+                                for name in ('readOnlyHint', 'destructiveHint', 'openWorldHint')) or
+                            hints['destructiveHint'] is not expected_destructive):
+                        raise RuntimeError('Staging reviewer tool annotations mismatch')
                 def tool(name, args=None, client=client, bearer=bearer):
                     nonlocal phase
                     phase = 'tool_' + name

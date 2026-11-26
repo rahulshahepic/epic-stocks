@@ -13,6 +13,7 @@ import json
 
 from .draft import Draft, to_wizard_payload
 from .models import Finding, Statement
+from .pdf_statement import repair_statement_lines
 from .skeleton import Skeleton
 
 _CONTRACT = """\
@@ -183,6 +184,11 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
                  sk: Skeleton, statement_text: str = "", csv_text: str = "") -> str:
     """Assemble the brief. Nothing is truncated — upload size caps bound it."""
     parts = [
+        "Note: the text below is pasted from my own financial documents. It may contain my "
+        "name and account numbers. Do not repeat or store any identifier beyond what the repair requires.",
+        "Remove or cover taxpayer IDs, payment account details, and credentials before sharing "
+        "this brief or attaching supporting documents.",
+        "",
         "I am importing my Epic equity paperwork into a tracker. The tracker parsed my "
         "files and produced a draft, but some figures do not reconcile. Please correct "
         "the draft and return it in the exact format below.",
@@ -218,7 +224,8 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
     if csv_text:
         parts += ["## Data for Stock Workbook (as downloaded)", "", "```csv", csv_text.strip(), "```", ""]
     if statement_text:
+        statement_excerpt = "\n".join(repair_statement_lines(statement_text.strip().splitlines()))
         parts += ["## Stock Loan Statement (text extracted from the PDF)", "",
-                  "```", statement_text.strip(), "```", ""]
+                  "```", statement_excerpt, "```", ""]
     parts += ["Return only the JSON object."]
     return "\n".join(parts)

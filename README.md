@@ -745,7 +745,7 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 **Setup is public:** open [`/mcp-setup`](https://epic-stocks.com/mcp-setup) before signing in, or let an assistant fetch `/mcp/setup.json` and `/llms.txt`. The guide includes credential-free ChatGPT/Claude plugin ZIPs for the **current environment**. OAuth resource/authorization-server metadata links to the guide. Installation, sign-in and scope consent still require the user; discovering a server never grants access to private data.
 
-After connecting, ask the assistant to help with your first import. Start with one DocuSign stock purchase agreement, Stock Loan Statement, or Eureka **Data for Stock Workbook** CSV. The assistant calls `get_import_guide` to interpret it. Enable **Equity editing** to let it show a preview, then approve the preview to save the edits. Once the account has data, ask when your shares vest, what you owe, what you might take home if you left Epic, or how different retirement dates compare.
+After connecting, ask the assistant to help with your first import. Start with one DocuSign stock purchase agreement, Stock Loan Statement, or Eureka **Data for Stock Workbook** CSV. The assistant calls `get_import_guide` to interpret it. Enable **Equity editing** to let it show a preview, then approve the preview to save the edits. Confirmation tokens for equity changes, retirement settings, and compensation deletions expire after 30 minutes. Once the account has data, ask when your shares vest, what you owe, what you might take home if you left Epic, or how different retirement dates compare.
 
 **Staging testing:** open `https://staging.epic-stocks.com`, sign in normally, and choose **Early career**, **Established** or **Planning an exit**. This opens an isolated writable browser workspace with invented grants, loans, prices, age and retirement assumptions; existing records, birthday and saved plans in the signed-in account stay untouched. Reopening the same profile keeps edits. Settings offers confirmed resets and profile changes. Each MCP connection uses its own independent fictional fixture. All use the normal calculation services; no authentication bypass is enabled.
 
@@ -812,7 +812,7 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 | Tool | What it changes |
 |------|-----------------|
 | `add_compensation` | Adds salary-change and bonus entries to the compensation history. Adds rather than replaces, and skips an entry identical to one already stored |
-| `remove_compensation` | Deletes compensation entries by id, for correcting a mistake |
+| `remove_compensation` | Previews deleting compensation entries by ID. Repeat with the preview token to delete the entries after approval. |
 | `set_retirement_accounts` | Previews the named 401(k)/traditional IRA, Roth, taxable brokerage and cost basis updates. Repeat with the confirmation token after approval to save the balances |
 | `apply_changes` | Under `equity:write`, adds, corrects or removes any number of grants, loans, prices, sales and loan payments in one all-or-nothing step, through the same checks as the app's own forms. Without a confirm token it only previews; saving needs the token from the preview you agreed to. Corrections and removals need each row's current version |
 
@@ -840,7 +840,7 @@ If your workspace allows custom MCP servers, open [Plugins](https://chatgpt.com/
 1. Tap **+ → Upload plugin** and select the downloaded ZIP.
 2. Review the package's MCP connection, sign in to Epic Stocks, choose the permissions you want and install it. The address is embedded, but no credential is; you do not copy or paste either.
 
-**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked; the others start unchecked. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
+**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked. If the connector requests no permissions, only the two read permissions start checked. Other permissions are available as individual choices. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
 
 | Account permissions (mobile) | Account permissions (dark, desktop) |
 | --- | --- |
@@ -2206,7 +2206,7 @@ same repository `PRIVACY.md` without requiring JavaScript or sign-in;
 the public policy source. The ordinary website privacy screen remains available.
 
 The ChatGPT connector listing uses [Terms of Use](https://epic-stocks.com/terms).
-The public setup guide links to the page, which renders `TERMS.md` through the
+The sign-in page, site footer, and public setup guide link to the page, which renders `TERMS.md` through the
 same router without requiring JavaScript or sign-in.
 
 Terms screenshots: [light mobile](screenshots/public-terms-light-mobile.png), [dark mobile](screenshots/public-terms-dark-mobile.png).

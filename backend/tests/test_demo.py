@@ -74,7 +74,7 @@ def test_demo_sheds_concurrent_load(client):
 @pytest.mark.parametrize('profile', PROFILES)
 def test_equivalent_account_rows_have_identical_accounting(client, db_session, profile):
     """Prove parity with persisted, encrypted rows, rather than a second formula."""
-    from scaffold.models import User, Grant, Price, Loan, TaxSettings
+    from scaffold.models import User, Grant, Price, Loan, LoanInterestCheckpoint, TaxSettings
     from tests.conftest import register_user, user_key
     from services.vesting import set_schedule, schedule_of
     from app.calculation_inputs import load_calculation_inputs
@@ -90,7 +90,12 @@ def test_equivalent_account_rows_have_identical_accounting(client, db_session, p
         for p in inputs.prices:
             db_session.add(Price(user_id=user.id, **vars(p)))
         for ln in inputs.loans:
-            db_session.add(Loan(user_id=user.id, **{k: v for k, v in vars(ln).items() if k != 'interest_checkpoints'}))
+            loan = Loan(user_id=user.id, **{k: v for k, v in vars(ln).items() if k != 'interest_checkpoints'})
+            loan.interest_checkpoints = [
+                LoanInterestCheckpoint(user_id=user.id, **vars(checkpoint))
+                for checkpoint in ln.interest_checkpoints
+            ]
+            db_session.add(loan)
         db_session.add(TaxSettings(user_id=user.id, **vars(inputs.tax)))
         db_session.commit()
         account = load_calculation_inputs(user, db_session)

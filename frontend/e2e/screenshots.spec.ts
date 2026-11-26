@@ -856,7 +856,7 @@ test.describe('Screenshots', () => {
         const { client_id } = await registration.json()
         const query = new URLSearchParams({
           response_type: 'code', client_id, redirect_uri: redirect,
-          scope: 'equity:read comp:read', code_challenge: challenge, code_challenge_method: 'S256',
+          code_challenge: challenge, code_challenge_method: 'S256',
         })
         await page.route(`${REVIEW_TEST_BACKEND}/oauth/authorize?**`, async route => {
           const response = await route.fetch()

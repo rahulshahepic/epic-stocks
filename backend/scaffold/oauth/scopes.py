@@ -4,10 +4,9 @@ Reads, plus separate permissions for writing data. `comp:write` changes salary,
 bonus and retirement inputs. `equity:write` is apply_changes: a change set the
 assistant previews, shows the person, and applies with the preview's token.
 
-`import:propose` staged a draft for a review wizard that no longer exists. It is
-still accepted from a client that asks for it, so older connectors keep
-working, but it is no longer offered or granted by default and no tool needs it. The consent screen offers each account
-permission separately, with the requested permissions initially selected.
+`import:propose` staged a draft for a retired review wizard. Older clients
+that request it alongside current permissions may still connect. It is omitted
+from discovery, consent, and new grants. Existing grants continue to work.
 
 The remaining write scopes are named here and advertised in the metadata
 document, but are not grantable until the tools behind them exist — a connector
@@ -24,7 +23,7 @@ ADMIN_WRITE = "admin:write"
 ADMIN_REPORT_SENSITIVE = "admin:reports:sensitive"
 
 # Grantable today.
-SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
+SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, EQUITY_WRITE)
 ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ, ADMIN_WRITE, ADMIN_REPORT_SENSITIVE)
 # What an admin connection gets when it names nothing: diagnostics only.
 # Writing is a separate tick on the admin consent page.
@@ -32,7 +31,7 @@ ADMIN_DEFAULT_SCOPES: tuple[str, ...] = (ADMIN_READ,)
 
 # Scopes that let a connector leave something behind. The consent screen must
 # stop calling the connection read-only once one is granted.
-WRITING_SCOPES: frozenset[str] = frozenset({COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE, ADMIN_WRITE})
+WRITING_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE, ADMIN_WRITE})
 
 # Of those, the ones that change stored data.
 IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
@@ -42,19 +41,13 @@ IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
 # "not yet" rather than a bare invalid_scope.
 RESERVED_SCOPES: tuple[str, ...] = ("shared:read",)
 
-# What a client that names no scope gets: ordinary account permissions. ChatGPT
-# names none, and a read-only default left people unable to find how to edit.
-# Site diagnostics require a separate action on the consent page.
-# The app is not the source of truth for anyone's equity — a wrong row is fixed
-# by editing it or re-importing — so the consent screen lists what is granted
-# and that is the check.
-DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, EQUITY_WRITE)
+# When a client names no scope, editing remains available as a consent choice.
+DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ)
 
 SCOPE_LABELS: dict[str, str] = {
     EQUITY_READ: "Read your equity — grants, vesting, prices, loans, sales and tax estimates",
     COMP_READ: "Read your salary and retirement settings",
     COMP_WRITE: "Update your salary and bonus history and your retirement account balances",
-    IMPORT_PROPOSE: "Prepare an import (no longer used)",
     EQUITY_WRITE: "Add, correct or remove your grants, prices, loans and sales — shown to you first, saved when you agree",
     ADMIN_READ: "Read site deployment status, system metrics and redacted application error records",
     ADMIN_REPORT_SENSITIVE: "Read support reports with separately consented identity, financial diagnostics and original documents",
@@ -98,7 +91,7 @@ def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
 
     seen: list[str] = []
     for scope in raw.split():
-        if scope in seen:
+        if scope in seen or (not admin and scope == IMPORT_PROPOSE):
             continue
         if scope in RESERVED_SCOPES:
             raise ScopeError(

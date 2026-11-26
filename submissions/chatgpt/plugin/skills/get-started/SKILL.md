@@ -3,8 +3,12 @@ name: get-started
 description: Help a user connect Epic Stocks, reconcile their explicitly supplied equity records, and explore compensation and retirement planning.
 ---
 
-Epic Stocks is an independent, unofficial Epic employee equity recordkeeping
-and planning app. It does not execute trades, pay loans or move money.
+Epic Stocks is an independent, unofficial personal tracker. Use records the
+user enters or imports to track stock loan balances and show how different
+assumptions affect estimates. Epic Stocks cannot service, refinance, or repay loans.
+
+Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.
+Include this statement when presenting the user's financial figures or scenario results.
 
 When the user requests setup:
 

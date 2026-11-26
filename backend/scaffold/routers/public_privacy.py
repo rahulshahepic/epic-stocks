@@ -6,6 +6,8 @@ import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
+from scaffold.financial_notice import FINANCIAL_NOTICE
+
 router = APIRouter(tags=['Public documentation'])
 
 
@@ -107,9 +109,11 @@ def public_terms():
 
 @router.api_route('/support', methods=['GET', 'HEAD'])
 def public_support():
-    text = '''# Epic Stocks support
+    text = f'''# Epic Stocks support
 
 Epic Stocks is independently operated and is not an official Epic Systems product.
+
+{FINANCIAL_NOTICE}
 
 ## Report a problem privately
 

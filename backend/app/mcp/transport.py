@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from database import get_db
+from scaffold.financial_notice import FINANCIAL_NOTICE
 from scaffold.oauth import audit
 from scaffold.oauth.scopes import ADMIN_SCOPES
 from scaffold.auth import get_admin_emails
@@ -201,8 +202,11 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
             "instructions": (
                 ("STAGING: Call get_account_context first, then list_test_scenarios and setup_test_account if uninitialized. Financial calls fail closed until an isolated synthetic account exists. All reads, writes and widget callbacks use only that fixture. Never sync fictional figures into personal finances or production. Reset requires explicit confirmation. Existing OAuth connections work without reconnecting.\n\n"
                  if requires_synthetic() else "") +
+                FINANCIAL_NOTICE + "\n"
+                "Include this statement when presenting financial figures or scenarios. "
+                "Epic Stocks tracks records and estimates impacts. It cannot service, refinance, or repay loans.\n\n" +
                 "Use show_retirement for an interactive retirement planner, run_retirement_simulation "
-                "for numeric analysis, and compare_retirement_scenarios for retirement-date decisions. "
+                "for numeric analysis, and compare_retirement_scenarios to show the modeled impact of different retirement dates. "
                 "Exploratory overrides never save. Preview retirement changes, then pass the preview token after the user approves.\n\n"
                 "Use show_equity when someone asks to see or browse their "
                 "portfolio; it opens an interactive view. Use the other read "
@@ -351,6 +355,8 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool =
                         payload[key] = {**payload[key], "account_context": status}
             result = as_result(payload)
             result["content"].extend(ctx.extra_content)
+            if tool.financial_output:
+                result["content"].append({"type": "text", "text": FINANCIAL_NOTICE})
             if tool.output_schema is not None:
                 result["structuredContent"] = json.loads(result["content"][0]["text"])
             if is_staging() and not admin:

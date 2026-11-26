@@ -2,9 +2,12 @@ import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { pluginHost, snapshots } from './plugin-host'
 
+const financialNotice = 'Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.'
+
 test('portfolio reads, filters, expansion and conversation context', async ({page}) => {
   const widget = await pluginHost(page)
   await expect(widget.getByText('$225,000')).toBeVisible()
+  await expect(widget.getByText(financialNotice, { exact: true })).toBeVisible()
   await widget.getByRole('button', {name:'Grants',exact:true}).click()
   await expect(widget.getByText('2023 · Purchase',{exact:true})).toBeVisible()
   await widget.getByRole('button', {name:'Loans',exact:true}).click()
@@ -69,6 +72,7 @@ for (const theme of ['light','dark'] as const) {
 test('retirement card sends causal purchase rules and car lifetime', async ({ page }) => {
   const { retirementHost } = await import('./plugin-host')
   const card = await retirementHost(page)
+  await expect(card.getByText(financialNotice, { exact: true })).toBeVisible()
   await card.getByRole('button', { name: 'Edit plan assumptions', exact: true }).click()
   await card.locator('summary').filter({ hasText: 'Life events' }).click()
   await card.locator('#eventKind').selectOption('vehicle')

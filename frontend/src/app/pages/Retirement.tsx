@@ -2077,7 +2077,7 @@ function RetirementAccount() {
 
       </div>
       {!showExpenses && <footer className="pt-4 text-center text-[10px] text-cs-muted">
-        Simulation calculations run in your browser; your inputs are saved to your account. All amounts use purchasing power in the retirement year. Cash is held constant after inflation. This is a planning tool, not financial advice.
+        Simulation calculations run in your browser; your inputs are saved to your account. All amounts use purchasing power in the retirement year. Cash is held constant after inflation.
       </footer>}
     </div>
   )

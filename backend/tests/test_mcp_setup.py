@@ -104,6 +104,8 @@ def test_staging_public_packages_target_staging_only(client, platform):
         if platform == 'chatgpt':
             assert manifest['extensions']['com.openai']['interface']['termsOfServiceURL'] == 'https://staging.epic-stocks.com/terms'
         assert 'fictional' in manifest['description']
+        assert 'cannot service, refinance, or repay loans' in manifest['description']
+        assert 'Its output is not professional financial, investment, legal, or tax advice.' in manifest['description']
         assert 'secret' not in json.dumps(config).lower()
 
 

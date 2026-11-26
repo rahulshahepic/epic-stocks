@@ -2,14 +2,14 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "epic-stocks",
   "version": "1.3.1",
-  "description": "Browse Epic Stocks, run retirement Monte Carlo simulations and compare scenarios, and enter equity documents with confirmation.",
+  "description": "A secondary personal tracker for Epic employee equity and stock loans. Enter or import your records and explore how different assumptions affect estimated outcomes. Epic Stocks cannot service, refinance, or repay loans. Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Epic Stocks (Unofficial)",
         "shortDescription": "Equity and retirement planning",
-        "longDescription": "Browse current Epic equity, grants, loans and vesting events. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Read saved salary and bonus history. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product.",
+        "longDescription": "A secondary personal tracker for Epic employee equity and stock loans. Enter or import your own records to track grants, vesting events and loan balances. Epic Stocks cannot service, refinance, or repay loans. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Read saved salary and bonus history. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product. Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.",
         "developerName": "rahulshahepic",
         "category": "Productivity",
         "capabilities": [
@@ -90,7 +90,7 @@
         "commerce_description": "Recordkeeping and hypothetical planning only; no purchases, trades or money movement."
       },
       "publication": {
-        "release_notes": "Clarifies website navigation, compensation history, and the steps for connecting Epic Stocks to an assistant."
+        "release_notes": "Clarifies that Epic Stocks tracks user-entered or imported records, shows scenario estimates, and does not service, refinance, or repay loans."
       }
     }
   },

@@ -4,9 +4,9 @@ import json
 import pytest
 
 from tests.conftest import register_user, user_key
-from tests.test_mcp_tools import Mcp
+from tests.test_mcp_tools import FINANCIAL_NOTICE, Mcp
 from app.retirement_simulation import validate_changes, prepare
-from app.mcp.retirement_tools import RETIREMENT_RESOURCE_URI
+from app.mcp.retirement_tools import RETIREMENT_COMPARE_RESOURCE_URI, RETIREMENT_RESOURCE_URI
 
 
 @pytest.fixture
@@ -195,7 +195,7 @@ def test_compare_returns_card_data_and_unchanged_text_without_saving(mcp, client
     tools = {tool["name"]: tool for tool in mcp.list_tools()}
     compare = tools["compare_retirement_scenarios"]
     assert compare["_meta"]["ui"] == {
-        "resourceUri": "ui://epic-stocks/retirement-compare-v1.html", "visibility": ["model", "app"],
+        "resourceUri": RETIREMENT_COMPARE_RESOURCE_URI, "visibility": ["model", "app"],
     }
     assert compare["_meta"]["openai/ui"] == tools["show_retirement"]["_meta"]["openai/ui"]
     assert compare["_meta"]["openai/toolInvocation/invoking"]
@@ -213,7 +213,10 @@ def test_compare_returns_card_data_and_unchanged_text_without_saving(mcp, client
         "saved": False,
         "note": "All scenarios use the same random seed by default. Epic exit projections use the date-specific price assumptions and are not guarantees.",
     }
-    assert result["content"] == [{"type": "text", "text": json.dumps(expected, ensure_ascii=False)}]
+    assert result["content"] == [
+        {"type": "text", "text": json.dumps(expected, ensure_ascii=False)},
+        {"type": "text", "text": FINANCIAL_NOTICE},
+    ]
     assert result["structuredContent"] == expected
     _assert_comparison_schema(compare["outputSchema"], result["structuredContent"])
     assert client.get("/api/retirement/params").json()["params"] == before
@@ -242,7 +245,7 @@ def test_card_resource_scoped_and_static(mcp, client):
 
 def test_comparison_resource_uses_comp_read_scope(client):
     register_user(client)
-    uri = "ui://epic-stocks/retirement-compare-v1.html"
+    uri = RETIREMENT_COMPARE_RESOURCE_URI
     reader = Mcp(client, scope="comp:read")
     assert uri in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
     resource = reader.rpc("resources/read", {"uri": uri})["result"]["contents"][0]
@@ -250,6 +253,11 @@ def test_comparison_resource_uses_comp_read_scope(client):
     assert resource["mimeType"] == "text/html;profile=mcp-app"
     assert resource["_meta"]["ui"]["csp"] == {"connectDomains": [], "resourceDomains": []}
     assert "Retirement comparison" in resource["text"]
+    legacy_uri = "ui://epic-stocks/retirement-compare-v1.html"
+    assert legacy_uri not in {r["uri"] for r in reader.rpc("resources/list")["result"]["resources"]}
+    legacy = reader.rpc("resources/read", {"uri": legacy_uri})["result"]["contents"][0]
+    assert legacy["uri"] == legacy_uri
+    assert legacy["text"] == resource["text"]
     assert "access_token" not in resource["text"]
     equity_only = Mcp(client, scope="equity:read")
     assert uri not in {r["uri"] for r in equity_only.rpc("resources/list")["result"]["resources"]}

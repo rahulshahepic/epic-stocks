@@ -9,7 +9,7 @@ from .read_tools import _opt_date
 from .accounts import ACCOUNT_PROPERTY
 from .tools import REGISTRY, Tool, ToolContext, object_schema, register
 
-RESOURCE_VERSION = 5
+RESOURCE_VERSION = 6
 RESOURCE_URI = f"ui://epic-stocks/portfolio-v{RESOURCE_VERSION}.html"
 # Published resource URIs can outlive a deployment in cached tool descriptors.
 RESOURCE_URIS = frozenset(f"ui://epic-stocks/portfolio-v{v}.html" for v in range(1, RESOURCE_VERSION + 1))
@@ -81,6 +81,7 @@ _OUTPUT = object_schema({
 
 register(Tool(
     name="show_equity",
+    financial_output=True,
     title="Show Epic Stocks",
     description="Open the interactive Epic Stocks portfolio in chat. Choose summary, grants, loans or events. Reads the signed-in account directly; never pass calculated balances or prices. Use this when the user wants to see or browse their stocks. Events default to the coming year, with at most 100 rows and an explicit truncation flag. Other tools remain available for analysis and separately authorized edits.",
     input_schema=_INPUT, output_schema=_OUTPUT, scope=EQUITY_READ,
@@ -94,6 +95,7 @@ register(Tool(
 ))
 register(Tool(
     name="refresh_equity_view", title="Refresh portfolio view",
+    financial_output=True,
     description="Read a portfolio view for the component without opening another card.",
     input_schema=_INPUT, output_schema=_OUTPUT, scope=EQUITY_READ,
     handler=_read_view, metadata={"ui": {"visibility": ["app"]}},

@@ -1,12 +1,13 @@
 """Public, credential-free MCP setup documents and environment-specific packages."""
 from html import escape
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from scaffold.routers.plugin_downloads import Platform, PRODUCTION, STAGING, archive, site_origin
 
 router = APIRouter(tags=['MCP setup'])
+OPENAI_APPS_CHALLENGE = 'GOzJEtCCqTV4tDqMXtscez6p9eEE2m1HgfgLgFiUIuA'
 PUBLIC_PATHS = ('/mcp-setup', '/mcp-setup.css', '/mcp/setup.json', '/robots.txt', '/llms.txt', '/mcp-sitemap.xml',
                 '/mcp-setup/plugin/chatgpt', '/mcp-setup/plugin/claude')
 STAGING_START = 'Call get_account_context first. If uninitialized, call list_test_scenarios and setup_test_account.'
@@ -121,6 +122,13 @@ def setup_plugin(platform: Platform):
     name = 'epic-stocks-staging-test' if staging else 'epic-stocks'
     description = ('Epic Stocks Staging Test — fictional data only; never sync to personal finances' if staging else 'Epic Stocks — account data')
     return archive(platform.value, name, description, doc['server_url'])
+
+
+@router.api_route('/.well-known/openai-apps-challenge', methods=['GET', 'HEAD'], include_in_schema=False)
+def openai_apps_challenge():
+    if site_origin() not in (PRODUCTION, STAGING):
+        raise HTTPException(status_code=404)
+    return PlainTextResponse(OPENAI_APPS_CHALLENGE, headers={'Cache-Control': 'no-store'})
 
 
 @router.api_route('/robots.txt', methods=['GET', 'HEAD'])

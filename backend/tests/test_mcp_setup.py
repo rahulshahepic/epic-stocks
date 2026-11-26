@@ -23,6 +23,27 @@ def test_public_setup_has_no_auth_or_host_spoofing(client, domain, environment, 
         assert client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}).status_code == 401
 
 
+@pytest.mark.parametrize('domain', ['epic-stocks.com', 'staging.epic-stocks.com'])
+def test_openai_domain_challenge_is_exact_and_public(client, domain):
+    path = '/.well-known/openai-apps-challenge'
+    with patch.dict('os.environ', {'DOMAIN': domain}):
+        response = client.get(path)
+        head = client.head(path)
+
+    assert response.status_code == head.status_code == 200
+    assert response.content == b'GOzJEtCCqTV4tDqMXtscez6p9eEE2m1HgfgLgFiUIuA'
+    assert response.headers['content-type'] == 'text/plain; charset=utf-8'
+    assert response.headers['cache-control'] == 'no-store'
+    assert 'set-cookie' not in response.headers
+    assert head.content == b''
+
+
+def test_openai_domain_challenge_is_unavailable_on_forks(client):
+    with patch.dict('os.environ', {'DOMAIN': 'custom.example.org'}):
+        response = client.get('/.well-known/openai-apps-challenge', headers={'Host': 'epic-stocks.com'})
+    assert response.status_code == 404
+
+
 def test_public_setup_explains_chatgpt_eligibility_before_connection_steps(client):
     requirements = client.get('/mcp/setup.json').json()['chatgpt_requirements']
     notice = requirements['notice']

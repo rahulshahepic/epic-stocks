@@ -1982,6 +1982,8 @@ The public `/llms.txt` lists the main website features and the signed-in menus s
 
 Browser Integrity Check is a separate Cloudflare setting. A 403 with error 1010 on a discovery URL can occur even when the managed challenge excludes that URL. The same plan records the **Browser Integrity Check exception for public MCP discovery** rule. It skips only Browser Integrity Check and uses the same exact host, method and path filter. Verify discovery on staging and production with ordinary curl and Python's default `urllib.request` client. A successful `robots.txt` request alone does not exercise the other discovery routes.
 
+OpenAI verifies domain ownership by fetching `/.well-known/openai-apps-challenge` without signing in. See [OpenAI plugin domain verification](OPERATIONS.md#openai-plugin-domain-verification) for the Cloudflare exception and token rotation.
+
 ### Testing the staging MCP safely
 
 The staging `/mcp` endpoint refuses every financial operation until that OAuth

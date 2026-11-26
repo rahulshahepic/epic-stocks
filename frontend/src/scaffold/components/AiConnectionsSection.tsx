@@ -50,12 +50,13 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
   const [activity, setActivity] = useState<AiActivityEntry[]>([])
   const [showActivity, setShowActivity] = useState(false)
   const [error, setError] = useState('')
+  const [loadFailed, setLoadFailed] = useState(false)
   const [confirmId, setConfirmId] = useState<number | null>(null)
 
   const load = useCallback(() => {
     api.getAiConnections()
       .then(setConnections)
-      .catch(() => setError('Could not load your AI connections'))
+      .catch(() => setLoadFailed(true))
     // Best-effort: the activity list is useful context, not a reason to fail
     // the whole section if it cannot be fetched.
     api.getAiActivity().then(setActivity).catch(() => setActivity([]))
@@ -63,15 +64,9 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
 
   useEffect(load, [load])
 
-  // The Import page links here to connect an assistant before chatting.
-  useEffect(() => {
-    if (window.location.hash === '#ai-connections') {
-      document.getElementById('ai-connections')?.scrollIntoView({ block: 'start' })
-    }
-  }, [])
-
   async function disconnect(id: number) {
     setConfirmId(null)
+    setError('')
     try {
       await api.disconnectAi(id)
       setConnections((current) => (current ?? []).filter((c) => c.id !== id))
@@ -91,12 +86,12 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
         re-import. You can disconnect at any time.
       </p>
 
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
 
       {showGuideLink && (
         <Link
           to="/connect-ai"
-          className="mt-3 inline-block rounded-md bg-rose-700 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-800"
+          className="mt-3 inline-flex min-h-11 items-center rounded-md bg-rose-700 px-3 text-sm font-semibold text-white hover:bg-rose-800"
         >
           Connect an assistant
         </Link>
@@ -105,7 +100,12 @@ export function AiConnectionsSection({ showGuideLink = true }: { showGuideLink?:
       {/* What is connected */}
       <div className="mt-4 border-t border-cs-border pt-3">
         <p className="text-xs font-medium text-cs-text">Connected assistants</p>
-        {connections === null ? (
+        {loadFailed ? (
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-cs-text-2">
+            <span>Could not load your AI connections.</span>
+            <button type="button" onClick={() => { setLoadFailed(false); load() }} className="min-h-11 text-cs-brand dark:text-rose-300 underline">Try again</button>
+          </div>
+        ) : connections === null ? (
           <p className="mt-1 text-xs text-cs-muted">Loading…</p>
         ) : connections.length === 0 ? (
           <p className="mt-1 text-xs text-cs-muted">Nothing connected yet.</p>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api.ts'
 import StarterQuestions from '../../app/components/StarterQuestions.tsx'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useConfig } from '../hooks/useConfig.ts'
 import { Card } from '../components/ui/Card.tsx'
 import { AiConnectionsSection } from '../components/AiConnectionsSection.tsx'
@@ -122,6 +122,9 @@ export default function ConnectAi() {
 
         <div className="mt-3" aria-live="polite">
           {guide.note && <p className="mb-2 text-xs text-cs-text-2">{guide.note}</p>}
+          {guide.directImport && <Link to="/import" className="mb-2 inline-flex min-h-11 items-center text-sm font-medium text-cs-brand dark:text-rose-300 underline">
+            Import your documents directly
+          </Link>}
           <ol className="space-y-1.5 text-xs text-cs-text-2">
             {guide.steps.map((step, i) => (
               <li key={i} className="flex gap-2.5">

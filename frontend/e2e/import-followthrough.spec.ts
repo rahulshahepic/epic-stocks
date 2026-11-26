@@ -57,6 +57,6 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await expect(page.getByText(/Planned by the app for loan repayment/).first()).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.getByRole('link', {name: 'Repayment settings'}).first().click()
-    await expect(page.getByRole('heading', {name: 'Tax Rates'})).toBeVisible()
+    await expect(page.getByRole('heading', {name: 'Loan assumptions', exact: true})).toBeVisible()
   })
 }

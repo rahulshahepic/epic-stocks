@@ -35,6 +35,18 @@ def test_public_setup_explains_chatgpt_eligibility_before_connection_steps(clien
     assert notice in client.get('/llms.txt').text
 
 
+def test_public_setup_explains_claude_eligibility_before_connection_steps(client):
+    requirements = client.get('/mcp/setup.json').json()['claude_requirements']
+    notice = requirements['notice']
+    assert 'Epic’s Claude Enterprise workspace currently blocks custom connectors.' in notice
+    assert 'Personal Claude Free accounts can add one custom connector.' in notice
+    page = client.get('/mcp-setup').text
+    assert page.index(notice) < page.index('Customize → Connectors')
+    assert '<a href="/import">Import your Eureka CSV or Stock Loan Statement directly</a>' in page
+    assert requirements['docs_url'] in page
+    assert notice in client.get('/llms.txt').text
+
+
 @pytest.mark.parametrize('domain,staging', [('epic-stocks.com', False), ('staging.epic-stocks.com', True)])
 def test_public_discovery_explains_value_and_first_import(client, domain, staging):
     with patch.dict('os.environ', {'DOMAIN': domain}):

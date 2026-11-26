@@ -693,7 +693,7 @@ function RetirementAccount() {
 
   // Pull state tax rates from the user's TaxSettings — federal is bracket-based
   // in the simulator (no user input needed), state is a flat rate from settings.
-  // Always synced; the user adjusts state rates in Settings → Tax Rates.
+  // Always synced; the user adjusts state rates in the Taxes section of Settings.
   useEffect(() => {
     const fetcher = vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings()
     fetcher
@@ -1081,7 +1081,7 @@ function RetirementAccount() {
                 Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
               </p>
               <p>
-                Automatic Epic cash includes the estimated exit cash, cash from earlier sales, and modeled tax savings from investment interest. State tax rates come from <em>Settings → Tax Rates</em>.
+                Automatic Epic cash includes the estimated exit cash, cash from earlier sales, and modeled tax savings from investment interest. State tax rates come from <Link to="/settings#tax" className="text-cs-brand dark:text-rose-300 underline">tax settings</Link>.
               </p>
             </div>
           )}
@@ -1598,7 +1598,7 @@ function RetirementAccount() {
             <p className="mt-3 text-[10px] leading-snug text-cs-muted">
               Your spending number is what you actually keep and spend — taxes are handled automatically on top.
               Each year the simulator calculates federal income tax, capital gains tax on investment growth, and any Medicare surcharges (for higher incomes after 65), then pulls that from your accounts separately.
-              Your capital gains rate is {fmtPct(params.stateLTCGRate, 2)} (from <em>Settings → Tax Rates</em>).
+              Your capital gains rate is {fmtPct(params.stateLTCGRate, 2)} (from <Link to="/settings#tax" className="text-cs-brand dark:text-rose-300 underline">tax settings</Link>).
               <br /><span className="text-cs-muted">Wisconsin-specific: Social Security isn't taxed at the state level. 401(k) withdrawals use WI's progressive income brackets.</span>
             </p>
           </Card>

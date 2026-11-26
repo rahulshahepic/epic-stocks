@@ -77,7 +77,13 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-cs-base">
-      <a href="#main-content" className="skip-nav">Skip to main content</a>
+      <a href="#main-content" className="skip-nav" onClick={event => {
+        const main = mainRef.current
+        if (!main) return
+        event.preventDefault()
+        main.focus({ preventScroll: true })
+        main.scrollIntoView({ block: 'start' })
+      }}>Skip to main content</a>
       <div className="sticky top-0 z-40 bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
         {staging && <div role="status" className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100">Staging environment — fictional test data</div>}
         {maintenance && <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />Maintenance in progress — financial data is temporarily unavailable</div>}
@@ -101,7 +107,7 @@ export default function Layout() {
         </header>
       </div>
       {config && !viewing && !staging && !me?.reviewer_account && <PushNudge />}
-      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className="campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 overflow-hidden px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8">
+      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className={`campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 scroll-mt-28 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8 ${location.pathname === '/settings' ? 'overflow-clip' : 'overflow-hidden'}`}>
         <CampusCorner variant={motif} className="pointer-events-none absolute -right-5 top-2 h-36 w-52 text-cs-text opacity-70 sm:right-3 lg:h-44 lg:w-64" />
         <div className="relative z-[1]">
           {me?.reviewer_account && <p role="status" className="mb-4 rounded-xl border border-cs-border bg-cs-surface p-3 text-sm font-semibold">FICTIONAL REVIEW DATA · {me.reviewer_account.platform} · {me.reviewer_account.scenario}. These are invented financial records, not actual Epic prices or personal accounts.</p>}
@@ -119,7 +125,7 @@ export default function Layout() {
               </nav>}
               <Outlet />
             </>}
-          {location.pathname === '/settings' && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
+          {location.pathname === '/settings' && !location.hash && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
             {accountLinks.map(({ to, label }) => <Link key={to} to={to} className="inline-flex min-h-11 items-center rounded-lg border border-cs-border px-3">{label}</Link>)}
           </nav>}
         </div>

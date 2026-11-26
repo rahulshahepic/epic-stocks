@@ -267,7 +267,7 @@ export interface AnnualTaxResult {
 //      The retirement sim knows every income component each year, so each
 //      dollar can land in its actual bracket — same reason we use federal
 //      brackets here.
-//   3. LTCG state rate stays a flat user input from Settings → Tax Rates,
+//   3. LTCG state rate stays a flat user input from the Taxes section of Settings,
 //      because WI's 30% LTCG exclusion doesn't translate cleanly into a
 //      bracket schedule. Set state_lt_cg_rate to your effective rate
 //      (top WI bracket × 0.70 ≈ 5.36%).

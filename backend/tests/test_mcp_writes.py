@@ -223,6 +223,18 @@ def test_compensation_delete_confirmation_is_account_bound(client):
     assert len(held(client)) == 1
 
 
+def test_compensation_delete_skips_entries_without_ids(client):
+    register_user(client)
+    writer = Mcp(client, scope="comp:write")
+    entries = [SALARY, {**BONUS, "id": None}]
+    assert client.put("/api/retirement/comp-entries", json={"entries": entries}).status_code == 200
+    preview = writer.call("remove_compensation", ids=["None"])
+    assert preview["would_remove"] == []
+    assert preview["not_found"] == ["None"]
+    assert "confirm" not in preview
+    assert held(client) == entries
+
+
 def test_compensation_delete_preview_respects_read_scope(client):
     register_user(client)
     user = Mcp(client)

@@ -314,7 +314,7 @@ def _remove_compensation(ctx: ToolContext, args: dict):
     held = _held(owner)
     matched, kept = [], []
     for entry in held:
-        if isinstance(entry, dict) and str(entry.get("id")) in wanted:
+        if isinstance(entry, dict) and entry.get("id") is not None and str(entry["id"]) in wanted:
             matched.append(entry)
         else:
             kept.append(entry)

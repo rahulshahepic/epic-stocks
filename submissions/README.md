@@ -47,7 +47,8 @@ do not approve or trigger another deploy for this release.
   Use a Global data-residency project for MCP app review.
 - [ ] Adopt/publish [service terms](shared/terms-draft.md) at a stable HTTPS URL;
   then add its URL to the ChatGPT manifest or submission portal.
-- [ ] Record/publish an actual ChatGPT walkthrough video and supply its URL.
+- [x] Record the [live ChatGPT reviewer walkthrough](chatgpt/epic-stocks-chatgpt-walkthrough.mp4) (2:47, fictional account only).
+- [ ] Supply an accessible video URL or upload the MP4 in the submission portal.
 - [ ] Build/upload `chatgpt-plugin.zip`; complete domain challenge and scans.
 - [ ] Enter credentials privately in Review details, review the prepared 5 positive
   and 3 negative cases, personally submit/attest, and publish after acceptance.

@@ -630,6 +630,30 @@ Daily maintenance deletes expired ciphertext and wrapped keys. Account
 deletion or an approved admin purge removes it sooner. See
 [problem reporting architecture](docs/problem-reporting.md).
 
+## Bot access for public pages
+
+1. Identify the intended automated readers for each new page. Connector
+   reviewers, assistants fetching a page on request, search crawlers, and
+   training crawlers have different purposes. Keep account data and private
+   pages behind their existing access controls.
+2. For pages intended for automated readers, check the deployed `robots.txt`
+   and fetch the exact HTTPS URL without cookies or JavaScript. Check that
+   GET returns the expected content, since an app shell or an edge challenge
+   can mask a routing or access problem. Check HEAD when the page supports it.
+   A probe with a bot user-agent checks that request pattern. Use Cloudflare
+   events or real crawler traffic to confirm verified-bot behavior when available.
+3. If Cloudflare blocks an intended reader, inspect the live rules and the
+   blocking product, then attempt the narrowest applicable change through
+   authorized Cloudflare access. Prefer an exact public path and GET/HEAD
+   on the affected hostname. Verify on staging first and follow the production
+   release gate for production changes. Preserve the site's training crawler
+   policy and protections for authentication and private routes. The
+   [directory review rules](ops/cloudflare_directory_review.json) show
+   existing scoped exceptions.
+4. Re-test after the change and record the outcome in the PR. If you lack
+   access, or the Cloudflare product cannot make a scoped exception, report
+   the specific blocker and the required change.
+
 ## Directory reviewer staging acceptance
 
 The tracked Deploy workflow invokes `python -m directory_reviewer_smoke` inside

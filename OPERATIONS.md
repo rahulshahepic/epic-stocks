@@ -645,11 +645,12 @@ deletion or an approved admin purge removes it sooner. See
 3. If Cloudflare blocks an intended reader, inspect the live rules and the
    blocking product, then attempt the narrowest applicable change through
    authorized Cloudflare access. Prefer an exact public path and GET/HEAD
-   on the affected hostname. Verify on staging first and follow the production
-   release gate for production changes. Preserve the site's training crawler
-   policy and protections for authentication and private routes. The
-   [directory review rules](ops/cloudflare_directory_review.json) show
-   existing scoped exceptions.
+   on the affected hostname. Verify on staging first, record the exact proposed
+   production rule change in the PR, and obtain Rahul's explicit approval before
+   applying it to production. Preserve the site's training crawler policy and
+   protections for authentication and private routes. The
+   [historical directory review rules](ops/cloudflare_directory_review.json)
+   illustrate scoped exceptions. Re-read the live rules before making a change.
 4. Re-test after the change and record the outcome in the PR. If you lack
    access, or the Cloudflare product cannot make a scoped exception, report
    the specific blocker and the required change.

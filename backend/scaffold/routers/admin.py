@@ -1816,7 +1816,7 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
                         f"Key rotation failed with error:\n\n{error_msg}\n\n"
                         "The database was rolled back automatically. If the app is still in "
                         "maintenance mode, log in to the admin panel and restore from the "
-                        f"snapshot or disable maintenance manually.\n\n{app_url()}/admin"
+                        f"snapshot or disable maintenance manually.\n\n{app_url()}/admin#maintenance"
                     )
                     for email in get_admin_emails():
                         send_email(email, subject, body)

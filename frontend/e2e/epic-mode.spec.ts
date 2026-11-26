@@ -57,6 +57,7 @@ test.describe('Epic Mode', () => {
   test('admin can enable and disable Epic Mode from the Danger Zone', async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Site Admin')
+    await page.getByRole('link', { name: /^Maintenance & Backups/ }).click()
     await page.getByText('Danger Zone').scrollIntoViewIfNeeded()
 
     // Initially disabled

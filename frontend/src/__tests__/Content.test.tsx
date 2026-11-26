@@ -54,27 +54,28 @@ beforeEach(() => {
   document.cookie = 'auth_hint=1'
 })
 
-function renderContent() {
+function renderContent(hash = '#templates') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[`/content${hash}`]}>
       <Content />
     </MemoryRouter>,
   )
 }
 
 describe('Content page', () => {
-  it('renders tabs and data for an admin', async () => {
+  it('opens a grant template from the category index', async () => {
     mockApi(ADMIN_ME)
-    renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
-    // Grant template row from CONTENT
-    expect(screen.getByText('2026-09-30')).toBeDefined()
+    renderContent('')
+    const templates = await screen.findByRole('link', { name: /^Grant Templates/ })
+    expect(screen.queryByRole('button', { name: /Add template/ })).toBeNull()
+    await userEvent.click(templates)
+    expect(await screen.findByText('2026-09-30')).toBeInTheDocument()
   })
 
   it('allows a content admin (non-admin) to use the page', async () => {
     mockApi(EDITOR_ME)
     renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Content Admin' })).toBeDefined())
   })
 
   it('redirects a non-privileged user', async () => {
@@ -82,14 +83,14 @@ describe('Content page', () => {
     renderContent()
     // Navigate renders nothing — wait for the admin-only heading to be absent
     await waitFor(() => {
-      expect(screen.queryByText(/Grant-program content/)).toBeNull()
+      expect(screen.queryByRole('heading', { name: 'Content Admin' })).toBeNull()
     })
   })
 
   it('POSTs a new grant template on Add', async () => {
     const calls = mockApi(ADMIN_ME)
     renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Content Admin' })).toBeDefined())
 
     // Open the Add Template modal
     await userEvent.click(screen.getByRole('button', { name: /Add template/ }))
@@ -116,7 +117,7 @@ describe('Content page', () => {
   it('renders the modal at the body, above the fixed mobile nav', async () => {
     mockApi(ADMIN_ME)
     const { container } = renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Content Admin' })).toBeDefined())
     await userEvent.click(screen.getByRole('button', { name: /Add template/ }))
     const dialog = await screen.findByRole('dialog')
     // Inside the page's z-[1] stacking context the nav (z-50) would cover Save.
@@ -128,7 +129,7 @@ describe('Content page', () => {
   it('opens an edit modal when a row is clicked and PUTs changes', async () => {
     const calls = mockApi(ADMIN_ME)
     renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Content Admin' })).toBeDefined())
 
     // Click the existing row (year 2025)
     await userEvent.click(screen.getByText('2025'))
@@ -149,7 +150,7 @@ describe('Content page', () => {
   it('deletes a row from the edit modal', async () => {
     const calls = mockApi(ADMIN_ME)
     renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Content Admin' })).toBeDefined())
 
     await userEvent.click(screen.getByText('2025'))
     await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
@@ -163,11 +164,8 @@ describe('Content page', () => {
 
   it('PUTs grant-program-settings when toggling flexible payoff', async () => {
     const calls = mockApi(ADMIN_ME)
-    renderContent()
-    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
-
-    await userEvent.click(screen.getByRole('button', { name: /Program Settings/ }))
-    await userEvent.click(screen.getByLabelText(/Flexible loan-payoff methods/i))
+    renderContent('#settings')
+    await userEvent.click(await screen.findByLabelText(/Flexible loan-payoff methods/i))
     await userEvent.click(screen.getByRole('button', { name: /Save settings/ }))
 
     await waitFor(() => {

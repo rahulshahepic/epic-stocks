@@ -32,7 +32,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.setViewportSize({width: 375, height: 812})
     await loginAs(page, 'admin@e2e.test')
     await page.setViewportSize(device === 'mobile' ? {width: 375, height: 812} : {width: 1280, height: 900})
-    await page.goto('/admin')
+    await page.goto('/admin#usage')
     const panel = page.getByRole('heading', {name: 'Onboarding attempts', exact: true}).locator('..')
     await expect(panel.getByText('Import attempts', {exact: true})).toBeVisible()
     await panel.evaluate(el => el.setAttribute('data-onboarding-panel', 'true'))

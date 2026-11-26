@@ -831,7 +831,7 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 
 Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
 
-**In Claude.** Epic’s Claude Enterprise workspace currently blocks custom connectors. Personal Claude Free accounts can add one custom connector. Use **Customize → Connectors → Add → Custom → Web** to add the server address, or [import your documents directly](https://epic-stocks.com/import). See [Claude plan and workspace requirements](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+**In Claude.** Epic’s Claude Enterprise workspace currently blocks custom connectors. Personal Claude Free accounts can add one custom connector. Under **Customize → Connectors**, use **Add custom connector** (or **Add → Custom → Web**, depending on the menu). You can also [import your documents directly](https://epic-stocks.com/import). See [Claude plan and workspace requirements](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
 **In ChatGPT.** Epic’s ChatGPT Enterprise workspace currently blocks custom connectors. ChatGPT Free cannot add custom connectors. You can still import your Eureka CSV or Stock Loan Statement directly in Epic Stocks. OpenAI lists [plan and workspace requirements](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
 

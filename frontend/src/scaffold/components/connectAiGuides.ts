@@ -28,7 +28,7 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
     name: 'Claude',
     company: 'Anthropic',
     steps: [
-      'In Claude, open Customize → Connectors, choose Add, then Custom → Web.',
+      'In Claude, open Customize → Connectors and choose Add custom connector, or Add → Custom → Web if you see that menu.',
       'Name it Epic Stocks, paste the server address and choose Add.',
       'Choose Connect, sign in to Epic Stocks and approve the permissions.',
     ],

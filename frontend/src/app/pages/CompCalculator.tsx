@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import EquityTerms from '../components/EquityTerms.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1354,7 +1355,7 @@ function CompCalculatorAccount() {
           <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
             <p>
               <strong>Equivalent pretax salary</strong> is what you'd need in pretax salary (taxed at your ordinary income rate of{' '}
-              <strong>{fmtPct(m, 1)}</strong>) to net the same after-tax dollars as this comp (taxed at your blended long-term capital gains rate of <strong>{fmtPct(c, 1)}</strong>). Tweak rates in <em>Settings → Tax Rates</em>.
+              <strong>{fmtPct(m, 1)}</strong>) to net the same after-tax dollars as this comp (taxed at your blended long-term capital gains rate of <strong>{fmtPct(c, 1)}</strong>). Tweak rates in <Link to="/settings#tax" className="text-cs-brand dark:text-rose-300 underline">tax settings</Link>.
             </p>
             <p className="mt-2 text-cs-muted">
               Estimates only — actual outcomes depend on AMT, state rules, and how your investment-interest deduction interacts with the rest of your return.

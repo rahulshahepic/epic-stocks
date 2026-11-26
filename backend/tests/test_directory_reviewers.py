@@ -1,12 +1,12 @@
 """Production-shaped reviewer OAuth, persistence and identity isolation."""
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import select
 
 from scaffold import reviewers
-from scaffold.models import ReviewerAccount, User, Grant
+from scaffold.models import ReviewerAccount, User, Grant, Loan, Price
 from scaffold.oauth.admin_actions import Actor
 from scaffold.routers.reviewers import manage
 from scaffold.synthetic_accounts import prune_test_accounts
@@ -33,6 +33,36 @@ def rpc(client, token, name, arguments=None):
     response = client.post('/mcp', headers={'Authorization': 'Bearer ' + token}, json={
         'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': name, 'arguments': arguments or {}}})
     return response
+
+
+@pytest.mark.parametrize('scenario', ['early', 'established', 'exit', 'empty'])
+def test_fictional_statement_matches_rate_origination_and_due_dates(db_session, scenario):
+    from app.demo import AS_OF, VERSION
+
+    info, _ = provision(db_session, scenario=scenario)
+    owner_id = db_session.get(ReviewerAccount, info['id']).user_id
+    assert info['fixture_version'] == VERSION
+    with user_key(db_session.get(User, owner_id)):
+        loans = db_session.scalars(select(Loan).where(Loan.user_id == owner_id).order_by(Loan.loan_year)).all()
+        if scenario == 'empty':
+            assert not loans
+            return
+        assert len(loans) == 3
+        for loan in loans:
+            assert loan.disbursed_on == date(loan.loan_year, 1, 1)
+            assert loan.due_date == date(loan.loan_year + 8, 1, 1)
+            assert loan.interest_rate == pytest.approx(0.03)
+        latest = loans[-1]
+        checkpoint, = latest.interest_checkpoints
+        assert checkpoint.accrued_through == AS_OF
+        assert checkpoint.accrued_interest == pytest.approx(
+            latest.amount * latest.interest_rate * (AS_OF - latest.disbursed_on).days / 365, abs=0.005)
+        assert all(not loan.interest_checkpoints for loan in loans[:-1])
+        if scenario == 'established':
+            assert sum(loan.amount for loan in loans) == 180_000
+            price = db_session.scalar(select(Price).where(Price.user_id == owner_id,
+                                                        Price.effective_date == date(AS_OF.year, 1, 1)))
+            assert price.price == 325
 
 
 def test_production_oauth_persistent_writes_and_platform_isolation(client, db_session, monkeypatch):

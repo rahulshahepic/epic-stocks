@@ -2206,7 +2206,7 @@ same repository `PRIVACY.md` without requiring JavaScript or sign-in;
 the public policy source. The ordinary website privacy screen remains available.
 
 The ChatGPT connector listing uses [Terms of Use](https://epic-stocks.com/terms).
-The public setup guide links to the page, which renders `TERMS.md` through the
+The sign-in page, site footer, and public setup guide link to the page, which renders `TERMS.md` through the
 same router without requiring JavaScript or sign-in.
 
 Terms screenshots: [light mobile](screenshots/public-terms-light-mobile.png), [dark mobile](screenshots/public-terms-dark-mobile.png).

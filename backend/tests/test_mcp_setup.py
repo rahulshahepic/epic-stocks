@@ -100,6 +100,11 @@ def test_staging_mcp_is_explicitly_test_data(client):
         result = init.json()['result']
         assert result['serverInfo']['name'] == 'epic-stocks-staging-test'
         assert 'Never sync' in result['instructions']
+        assert 'More → Compensation Calculator' in result['instructions']
+        assert '/llms.txt' in result['instructions']
+        compensation = next(tool for tool in mcp.list_tools() if tool['name'] == 'get_compensation')
+        assert compensation['title'] == 'Salary and bonus history'
+        assert 'More → Compensation Calculator' in compensation['description']
 
         assert 'setup_test_account' in mcp.error('get_dashboard')
         mcp.call('setup_test_account', scenario='early')
@@ -155,6 +160,26 @@ def test_unknown_staging_client_has_recovery_without_accepting_registration(clie
     assert 'Add Epic Stocks Staging Test as a new app' in response.text
     assert 'href="/mcp-setup"' in response.text
     assert 'location' not in response.headers
+
+
+def test_public_website_guide_describes_compensation_and_navigation(client):
+    with patch.dict('os.environ', {'DOMAIN': 'staging.epic-stocks.com'}):
+        setup = client.get('/mcp/setup.json').json()
+        guide = client.get('/llms.txt').text
+        page = client.get('/mcp-setup').text
+
+    assert setup['website']['navigation_guide_url'] == 'https://staging.epic-stocks.com/llms.txt'
+    for feature in setup['website']['overview']:
+        assert feature in guide
+        assert feature in page
+    for path in (
+        '- **Dashboard**', '  - Under **Earnings and borrowing costs**, select **See total compensation**',
+        '- **Planning**', '  - **Planned Expenses**', '  - **Retirement**',
+        '- **Settings**', '  - **AI Connections**', '- **More**',
+        '  - **Compensation Calculator** is the standalone shortcut at the top.',
+        '  - **Admin** includes **Site Admin** and **Content Admin** as permitted by your role.',
+    ):
+        assert path in guide
 
 
 def test_public_setup_leads_with_people_steps_and_collapses_protocol_details(client):

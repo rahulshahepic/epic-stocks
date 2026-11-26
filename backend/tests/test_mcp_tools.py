@@ -169,17 +169,16 @@ def test_every_tool_is_listed_and_annotated_honestly(mcp):
     assert set(listed) == {name for name, tool in REGISTRY.items() if tool.scope not in ADMIN_SCOPES and not tool.staging_only}
     assert listed, "no tools registered"
     for name, tool in listed.items():
+        assert len(name) <= 64
+        assert tool["title"].strip(), name
         assert tool["description"].strip(), name
         expected_read_only = name not in WRITING_TOOLS
         assert tool["annotations"]["readOnlyHint"] is expected_read_only, (
             f"{name} claims readOnlyHint={tool['annotations']['readOnlyHint']}"
         )
-        if not expected_read_only:
-            # A writing tool has to say whether it destroys anything, because a
-            # client decides how loudly to confirm from exactly this.
-            assert tool["annotations"]["destructiveHint"] is (
-                name in DESTRUCTIVE_TOOLS
-            ), name
+        assert tool["annotations"]["destructiveHint"] is (name in DESTRUCTIVE_TOOLS), name
+        assert tool["annotations"]["openWorldHint"] is False, name
+        assert isinstance(tool["annotations"]["idempotentHint"], bool), name
 
 
 def test_the_writing_tools_are_only_the_ones_we_meant_to_add(mcp):

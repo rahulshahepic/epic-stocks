@@ -51,7 +51,17 @@ def validate():
     m = json.loads((package / 'plugin.json').read_text())
     ext = m['extensions']['com.openai']
     ui = ext['interface']
-    assert len(ui['displayName']) <= 50
+    assert 0 < len(ui['displayName']) <= 30
+    assert 0 < len(ui['developerName']) <= 80
+    assert ui['category']
+    assert m['author']['name'] and m['version'] and m['homepage'] and m['license']
+    for key in ('websiteURL', 'supportURL', 'privacyPolicyURL'):
+        assert ui[key].startswith('https://')
+    for key in ('logo', 'composerIcon', 'logoDark', 'composerIconDark'):
+        icon = package / ui[key]
+        width, height = image_info(icon.read_bytes(), icon.name)
+        assert width == height and width >= 48 and icon.stat().st_size <= 5 * 1024 * 1024
+    assert ext['publication']['release_notes']
     assert len(ui['shortDescription']) <= 30
     assert len(ui['longDescription']) <= 4000
     assert len(ui['defaultPrompt']) <= 3
@@ -64,7 +74,13 @@ def validate():
     assert server['url'] == 'https://epic-stocks.com/mcp'
     assert not server.get('headers')
     claude = ROOT / 'submissions/claude/plugin'
-    assert json.loads((claude / '.claude-plugin/plugin.json').read_text())['name'] == 'epic-stocks'
+    claude_manifest = json.loads((claude / '.claude-plugin/plugin.json').read_text())
+    assert claude_manifest['name'] == 'epic-stocks'
+    for key in ('displayName', 'version', 'description', 'homepage', 'supportUrl', 'privacyPolicyUrl',
+                'repository', 'license', 'keywords'):
+        assert claude_manifest[key]
+    assert claude_manifest['author']['name']
+    assert (claude / 'README.md').is_file()
     assert json.loads((claude / '.mcp.json').read_text())['mcpServers']['epic-stocks']['url'] == server['url']
     assert (claude / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
     assert (claude / 'skills/get-started/SKILL.md').read_bytes() == (package / 'skills/get-started/SKILL.md').read_bytes()

@@ -334,6 +334,11 @@ def test_admin_write_is_opt_in_and_listed_only_when_granted(client):
         assert set(tools) == ADMIN_TOOLS | ADMIN_WRITE_TOOLS
         assert tools["admin_pause_ai_connections"]["annotations"]["destructiveHint"] is True
         assert tools["admin_set_report_status"]["annotations"]["readOnlyHint"] is False
+        for name in ("admin_pause_onboarding", "admin_cleanup_onboarding", "admin_request_resume_onboarding"):
+            assert tools[name]["annotations"]["readOnlyHint"] is False
+        for name in ("admin_cleanup_onboarding", "admin_request_resume_onboarding",
+                     "admin_request_redirect_rule", "admin_send_approval_code", "admin_send_test_notification"):
+            assert tools[name]["annotations"]["destructiveHint"] is True
 
 
 def test_admin_write_needs_admin_read_and_stays_off_the_account_server(client):

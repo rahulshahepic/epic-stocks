@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "epic-stocks",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Browse Epic Stocks, run retirement Monte Carlo simulations and compare scenarios, and enter equity documents with confirmation.",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "extensions": {
@@ -9,7 +9,7 @@
       "interface": {
         "displayName": "Epic Stocks (Unofficial)",
         "shortDescription": "Equity and retirement planning",
-        "longDescription": "Browse current Epic equity, grants, loans and vesting events. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product.",
+        "longDescription": "Browse current Epic equity, grants, loans and vesting events. Run the same retirement Monte Carlo model as the website, compare retirement dates and spending assumptions in interactive ChatGPT cards, and explicitly save retirement settings when permitted. Read saved salary and bonus history. Import equity documents and confirm edits before saving. Connect securely with OAuth. Independent app, not an official Epic product.",
         "developerName": "Epic Stocks contributors",
         "category": "Productivity",
         "capabilities": [
@@ -20,13 +20,29 @@
         "logo": "./assets/icon.svg",
         "defaultPrompt": [
           "Show my Epic Stocks portfolio",
-          "Show my upcoming vesting events",
-          "Explain my outstanding stock loans",
-          "Import my Epic Stocks documents",
-          "Run my retirement simulation",
-          "Compare retiring in three months versus next year"
-        ]
+          "Show my saved salary and bonus history",
+          "Compare my retirement dates"
+        ],
+        "websiteURL": "https://epic-stocks.com",
+        "supportURL": "https://epic-stocks.com/support",
+        "privacyPolicyURL": "https://epic-stocks.com/privacy-policy",
+        "composerIcon": "./assets/icon.svg",
+        "composerIconDark": "./assets/icon.svg",
+        "logoDark": "./assets/icon.svg",
+        "brandColorDark": "#FB7185"
       }
     }
-  }
+  },
+  "author": {
+    "name": "Epic Stocks contributors",
+    "url": "https://github.com/rahulshahepic/epic-stocks"
+  },
+  "homepage": "https://epic-stocks.com",
+  "license": "MIT",
+  "keywords": [
+    "equity",
+    "compensation",
+    "retirement",
+    "financial-planning"
+  ]
 }

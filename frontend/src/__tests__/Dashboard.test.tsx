@@ -224,6 +224,7 @@ describe('Dashboard', () => {
     mockApi(MOCK_PRICES, [], 321)
     renderDashboard()
 
+    expect(await screen.findByRole('link', { name: 'See total compensation' })).toHaveAttribute('href', '/comp-calculator')
     await userEvent.click(await screen.findByText('Earnings and borrowing costs', {exact: true}))
     expect(await screen.findByText('Estimated tax savings through exit')).toBeVisible()
     expect(await screen.findByText('$321')).toBeInTheDocument()

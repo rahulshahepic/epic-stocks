@@ -29,16 +29,20 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
     if platform == "admin":
         return {**package_files("chatgpt", name, description, url),
                 **package_files("claude", name, description, url)}
+    backend_root = Path(__file__).resolve().parents[2]
+    source = backend_root.parent / "plugins" / "epic-stocks"
+    if not source.exists():
+        source = backend_root / "plugins" / "epic-stocks"
+    manifest = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
+    origin = url.rsplit("/", 1)[0]
+    manifest["homepage"] = origin
     if platform == "chatgpt":
-        backend_root = Path(__file__).resolve().parents[2]
-        source = backend_root.parent / "plugins" / "epic-stocks"
-        if not source.exists():
-            source = backend_root / "plugins" / "epic-stocks"
-        manifest = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
         manifest["name"] = name
         manifest["description"] = description
         interface = manifest["extensions"]["com.openai"]["interface"]
-        interface["displayName"] = description.split(" — ")[0]
+        display_name = description.split(" — ")[0]
+        interface["displayName"] = display_name if len(display_name) <= 30 else "Epic Stocks Site Admin"
+        interface.update(websiteURL=origin, supportURL=f"{origin}/support", privacyPolicyURL=f"{origin}/privacy-policy")
         if url.endswith("/admin-mcp"):
             interface["shortDescription"] = "Read-only site diagnostics"
             interface["longDescription"] = (
@@ -73,7 +77,14 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
         ".claude-plugin/plugin.json": {
             "name": name,
             "displayName": description.split(" — ")[0],
-            "version": "1.0.0",
+            "version": "1.0.1",
+            "author": manifest["author"],
+            "homepage": f"{origin}/mcp-setup",
+            "supportUrl": f"{origin}/support",
+            "privacyPolicyUrl": f"{origin}/privacy-policy",
+            "repository": manifest["repository"],
+            "license": manifest["license"],
+            "keywords": manifest["keywords"],
             "description": description,
         },
         ".mcp.json": {"mcpServers": {name: {"type": "http", "url": url}}},

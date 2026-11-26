@@ -675,7 +675,8 @@ register(Tool(
     description=(
         "The salary and bonus entries the user keeps for the total-compensation "
         "calculator. Use with get_dashboard to talk about equity as a share of "
-        "total pay."
+        "total pay. The website’s equivalent pretax salary and offer comparison are in "
+        "More → Compensation Calculator."
     ),
     input_schema=_ACCOUNT_ONLY,
     scope=COMP_READ,

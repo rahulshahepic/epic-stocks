@@ -305,13 +305,16 @@ test.describe('Screenshots', () => {
       const more = navigation.getByRole('button', { name: 'More', exact: true })
       await more.click()
       await expect(more).toHaveAttribute('aria-expanded', 'true')
-      const admin = navigation.getByRole('link', { name: 'Admin', exact: true })
+      const admin = navigation.getByRole('link', { name: 'Site Admin', exact: true })
       await expect(admin).toBeVisible()
+      const content = navigation.getByRole('link', { name: 'Content Admin', exact: true })
+      await expect(content).toBeVisible()
+      await expect(navigation.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
       await expect(navigation.getByRole('heading', { name: 'Stock records' })).toBeVisible()
       await expect(navigation.getByRole('link', { name: 'Loans', exact: true })).toBeVisible()
       expect((await new AxeBuilder({ page }).include(`[aria-label="${navigationLabel}"]`).analyze()).violations).toEqual([])
       await shoot(page, `navigation-more-light-${device}`)
-      await admin.focus()
+      await content.focus()
       await page.keyboard.press('Tab')
       await expect(more).toHaveAttribute('aria-expanded', 'false')
       await more.click()
@@ -389,7 +392,7 @@ test.describe('Screenshots', () => {
 
   test('admin - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
     await shoot(page, 'admin-light-mobile')
@@ -397,7 +400,7 @@ test.describe('Screenshots', () => {
 
   test('admin - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
     await shoot(page, 'admin-dark-mobile')
@@ -407,7 +410,7 @@ test.describe('Screenshots', () => {
     test(`admin backups - ${theme} - mobile`, async ({ page }) => {
       await page.route('**/api/admin/backups', route => route.fulfill({ json: backupStatus }))
       await authedPage(page, MOBILE, theme)
-      await navigateTo(page, 'Admin')
+      await navigateTo(page, 'Site Admin')
       const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Backups', exact: true }) })
       await panel.getByRole('button', { name: 'Configure backups' }).click()
       await panel.scrollIntoViewIfNeeded()
@@ -425,7 +428,7 @@ test.describe('Screenshots', () => {
         record_limit_reached: false, cache_age_seconds: 0,
       } }))
       await authedPage(page, MOBILE, theme)
-      await navigateTo(page, 'Admin')
+      await navigateTo(page, 'Site Admin')
       const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare edge', exact: true }) })
       await panel.getByText('Blocked').waitFor()
       await panel.scrollIntoViewIfNeeded()
@@ -436,7 +439,7 @@ test.describe('Screenshots', () => {
 
   test('admin AI plugin downloads - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     const heading = page.getByText('Admin MCP', { exact: true })
     await heading.scrollIntoViewIfNeeded()
@@ -477,6 +480,8 @@ test.describe('Screenshots', () => {
       const position = page.getByRole('region', {name: 'Your position'})
       const exit = page.getByRole('region', {name: 'If you leave'})
       await expect(position.getByText('Earnings and borrowing costs', {exact: true})).toBeVisible()
+      await expect(position.getByRole('link', {name: 'See total compensation'})).toHaveAttribute('href', '/comp-calculator')
+      await expect(page.getByRole('link', {name: 'Ask your assistant'})).toHaveCount(0)
       await expect(position.locator('[data-equity-term="vesting"]')).toHaveCount(1)
       await expect(page.getByText(/Your \d{4} stock summary/)).toHaveCount(0)
       await expect(page.getByText('Explore with your assistant', {exact: true})).toHaveCount(0)
@@ -957,7 +962,7 @@ test.describe('Screenshots', () => {
 
   test('admin AI requests awaiting approval - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     const heading = page.getByRole('heading', { name: /Requests from AI assistants/ })
     await heading.evaluate(el => el.scrollIntoView({ block: 'start' }))
@@ -973,7 +978,7 @@ test.describe('Screenshots', () => {
     await page.request.post(`${REVIEW_TEST_BACKEND}/oauth/register`, {
       data: { client_name: 'Copilot', redirect_uris: ['https://copilot.microsoft.com/oauth/callback'] },
     })
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     const refused = page.getByText('Refused redirect addresses', { exact: true })
     await refused.scrollIntoViewIfNeeded()
@@ -993,7 +998,7 @@ test.describe('Screenshots', () => {
 
   test('content - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Content')
+    await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-light-mobile', { fullPage: true })
@@ -1001,7 +1006,7 @@ test.describe('Screenshots', () => {
 
   test('content - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await navigateTo(page, 'Content')
+    await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-dark-mobile', { fullPage: true })
@@ -1009,7 +1014,7 @@ test.describe('Screenshots', () => {
 
   test('content - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
-    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-light-desktop', { fullPage: true })
@@ -1017,7 +1022,7 @@ test.describe('Screenshots', () => {
 
   test('content - dark - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'dark')
-    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-dark-desktop', { fullPage: true })

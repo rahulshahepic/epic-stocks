@@ -27,6 +27,23 @@ CLAUDE_REQUIREMENTS_URL = ('https://support.claude.com/en/articles/'
                            '11175166-get-started-with-custom-connectors-using-remote-mcp')
 
 
+WEBSITE_FEATURES = (
+    'Track grants, vesting, share prices, sales, and stock loans. See holdings, upcoming events, '
+    'borrowing costs, and estimated cash after loan payoff and taxes if you leave Epic.',
+    'Compare the value of Epic compensation with a salary offer using the Compensation Calculator. '
+    'It combines salary and bonuses with the modeled effect of stock appreciation, loan interest, '
+    'and taxes, and estimates an equivalent pretax salary.',
+    'Plan purchases and other expenses while working. Simulate retirement income, spending, '
+    'and portfolio outcomes, and compare retirement dates using your assumptions.',
+    'Import a Eureka stock workbook or Stock Loan Statement, review proposed changes, '
+    'enter records manually where available, and export an Excel workbook.',
+    'Set tax and loan assumptions, choose reminders, and share read-only access when available. '
+    'Report problems privately or use the public issue tracker for general feedback.',
+    'Connect Epic Stocks to an AI assistant for authorized analysis and edits. '
+    'Site Admin and Content Admin tools require the corresponding permissions.',
+)
+
+
 def setup_document():
     origin = site_origin() or PRODUCTION
     staging = origin == STAGING
@@ -48,6 +65,7 @@ def setup_document():
         'chatgpt_requirements': {'notice': CHATGPT_REQUIREMENTS, 'docs_url': CHATGPT_REQUIREMENTS_URL},
         'claude_requirements': {'notice': CLAUDE_REQUIREMENTS, 'docs_url': CLAUDE_REQUIREMENTS_URL},
         'purpose': APP_PURPOSE,
+        'website': {'overview': WEBSITE_FEATURES, 'navigation_guide_url': origin + '/llms.txt'},
         'first_run': {
             **({'staging_setup': STAGING_START} if staging else {}),
             'account_overview': 'Call get_dashboard for an overview. If the account is empty, offer to help with a first import.',
@@ -79,11 +97,15 @@ def setup_page():
     steps = ''.join('<li>' + escape(s) + '</li>' for s in doc['setup'])
     first_run = doc['first_run']
     import_steps = first_run['import']
+    website = doc['website']
+    overview = ''.join('<li>' + escape(item) + '</li>' for item in website['overview'])
+    website_help = (f'<h2>What you can do on the website</h2><ul>{overview}</ul>'
+                    f'<p><a href="{escape(website["navigation_guide_url"])}">Website navigation guide</a></p>')
     seed = f'<p>{escape(first_run["staging_setup"])}</p>' if 'staging_setup' in first_run else ''
     onboarding = (f'<h2>After connecting</h2>{seed}<p>{escape(import_steps["documents"])}</p>'
                   '<p>Ask your assistant for help with the import. It will use <code>get_import_guide</code> '
                   f'and show what would change before saving. {escape(import_steps["permission"])}</p>')
-    body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect an AI assistant · {heading}</title><link rel="stylesheet" href="/mcp-setup.css"><link rel="alternate" type="application/json" href="/mcp/setup.json"></head><body><main><a href="/login?intent=%2Fconnect-ai">Epic Stocks Unofficial</a><h1>Connect an AI assistant</h1><p>{escape(doc["purpose"])}</p><p>{escape(doc['data_notice'])}</p><h2>Your connection address</h2><p>Select and copy this address into your assistant’s connection settings:</p><p><code>{escape(doc['server_url'])}</code></p><h2>ChatGPT</h2><p>{escape(doc["chatgpt_requirements"]["notice"])}</p><p><a href="{escape(doc["chatgpt_requirements"]["docs_url"])}">ChatGPT plan and workspace requirements</a></p><ol><li>In ChatGPT on the web, open Plugins → + → Add custom MCP server. In the older Apps view, look for Create.</li><li>Paste the connection address above. If asked for authentication, choose OAuth; you do not need an API key.</li><li>Connect, sign in to Epic Stocks and review the permissions before approving.</li><li>In a chat, select Epic Stocks and ask: “Help me get started with my stock account.”</li></ol><h2>Claude</h2><p>{escape(doc["claude_requirements"]["notice"])}</p><p><a href="/import">Import your Eureka CSV or Stock Loan Statement directly</a> · <a href="{escape(doc["claude_requirements"]["docs_url"])}">Claude plan and workspace requirements</a></p><ol><li>Open Customize → Connectors and choose Add custom connector, or Add → Custom → Web if you see that menu.</li><li>Paste the connection address above, then connect and sign in to Epic Stocks.</li><li>Review the permissions, then select Epic Stocks in your conversation and ask about your account.</li></ol><p>Start with read permissions for questions and analysis. Allow editing only if you want your assistant to save changes. You can disconnect it in Epic Stocks Settings → AI connections.</p>{onboarding}<details><summary>Technical setup and assistant discovery</summary><p>Streamable HTTP · OAuth with PKCE · no API key</p><ol>{steps}</ol><h2>Download a connector</h2><p><a href="/mcp-setup/plugin/chatgpt">Download ChatGPT plugin ZIP</a> · <a href="/mcp-setup/plugin/claude">Download Claude plugin ZIP</a></p><p>Packages contain public configuration only, never credentials.</p><ul><li><a href="/mcp/setup.json">Machine-readable setup JSON</a></li><li><a href="/.well-known/oauth-protected-resource/mcp">OAuth protected resource metadata</a></li><li><a href="/.well-known/oauth-authorization-server">OAuth authorization server metadata</a></li></ul><p>{escape(doc['automatic_setup_limit'])}</p></details><p><a href="/demo">Explore fictional profiles</a> · <a href="/privacy-policy">Privacy</a> · <a href="/support">Support</a></p></main></body></html>'''
+    body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect an AI assistant · {heading}</title><link rel="stylesheet" href="/mcp-setup.css"><link rel="alternate" type="application/json" href="/mcp/setup.json"></head><body><main><a href="/login?intent=%2Fconnect-ai">Epic Stocks Unofficial</a><h1>Connect an AI assistant</h1><p>{escape(doc["purpose"])}</p><p>{escape(doc['data_notice'])}</p><h2>Your connection address</h2><p>Select and copy this address into your assistant’s connection settings:</p><p><code>{escape(doc['server_url'])}</code></p><h2>ChatGPT</h2><p>{escape(doc["chatgpt_requirements"]["notice"])}</p><p><a href="{escape(doc["chatgpt_requirements"]["docs_url"])}">ChatGPT plan and workspace requirements</a></p><ol><li>In ChatGPT on the web, open Plugins → + → Add custom MCP server. In the older Apps view, look for Create.</li><li>Paste the connection address above. If asked for authentication, choose OAuth; you do not need an API key.</li><li>Connect, sign in to Epic Stocks and review the permissions before approving.</li><li>In a chat, select Epic Stocks and ask: “Help me get started with my stock account.”</li></ol><h2>Claude</h2><p>{escape(doc["claude_requirements"]["notice"])}</p><p><a href="/import">Import your Eureka CSV or Stock Loan Statement directly</a> · <a href="{escape(doc["claude_requirements"]["docs_url"])}">Claude plan and workspace requirements</a></p><ol><li>Open Customize → Connectors and choose Add custom connector, or Add → Custom → Web if you see that menu.</li><li>Paste the connection address above, then connect and sign in to Epic Stocks.</li><li>Review the permissions, then select Epic Stocks in your conversation and ask about your account.</li></ol><p>Start with read permissions for questions and analysis. Allow editing only if you want your assistant to save changes. You can disconnect it in Epic Stocks Settings → AI connections.</p>{onboarding}{website_help}<details><summary>Technical setup and assistant discovery</summary><p>Streamable HTTP · OAuth with PKCE · no API key</p><ol>{steps}</ol><h2>Download a connector</h2><p><a href="/mcp-setup/plugin/chatgpt">Download ChatGPT plugin ZIP</a> · <a href="/mcp-setup/plugin/claude">Download Claude plugin ZIP</a></p><p>Packages contain public configuration only, never credentials.</p><ul><li><a href="/mcp/setup.json">Machine-readable setup JSON</a></li><li><a href="/.well-known/oauth-protected-resource/mcp">OAuth protected resource metadata</a></li><li><a href="/.well-known/oauth-authorization-server">OAuth authorization server metadata</a></li></ul><p>{escape(doc['automatic_setup_limit'])}</p></details><p><a href="/demo">Explore fictional profiles</a> · <a href="/privacy-policy">Privacy</a> · <a href="/support">Support</a></p></main></body></html>'''
     return HTMLResponse(body, headers={'Cache-Control': 'public, max-age=300'})
 
 
@@ -124,6 +146,30 @@ def llms():
         doc['claude_requirements']['notice'],
         f'- [Claude plan and workspace requirements]({doc["claude_requirements"]["docs_url"]})',
         f'- [Import your Eureka CSV or Stock Loan Statement directly]({doc["server_url"].removesuffix("/mcp")}/import)',
+        '', '## What the website can do', '',
+        *(f'- {item}' for item in doc['website']['overview']),
+        '', '## Website navigation', '',
+        'The signed-in website uses the same four main destinations on phones and desktops. '
+        'Guide the user with the menu labels below when their assistant has no connector or browser access. '
+        'With browser access, use these same controls. Sign-in and approval of permissions are user actions.',
+        '',
+        '- **Dashboard**',
+        '  - See your position, estimated exit cash, upcoming events, and stock over time.',
+        '  - Under **Earnings and borrowing costs**, select **See total compensation** to open the calculator.',
+        '- **Planning**',
+        '  - **Planned Expenses** for purchases and other costs while working.',
+        '  - **Retirement** for retirement assumptions, simulations, and date comparisons.',
+        '- **Settings**',
+        '  - **AI Connections** to connect Epic Stocks to ChatGPT, Claude or another assistant and manage access.',
+        '  - **Stock, Tax & Loan Assumptions** for tax, loan and stock down payment settings.',
+        '  - **Notifications**, **Appearance**, **Sharing**, and **Account**.',
+        '- **More**',
+        '  - **Compensation Calculator** is the standalone shortcut at the top.',
+        '  - **Stock records** includes **Events**, **Grants**, **Sales**, **Loans**, **Prices**, and **Import / Export**.',
+        '  - **Admin** includes **Site Admin** and **Content Admin** as permitted by your role.',
+        '',
+        'The Import page also links to AI setup when available. Some controls depend on site configuration, '
+        'whether you are viewing a shared account, and your permissions.',
         '', '## After connecting', '',
     ]
     if 'staging_setup' in first_run:

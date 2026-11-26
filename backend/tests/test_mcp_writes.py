@@ -209,6 +209,19 @@ def test_removing_everything_leaves_an_empty_history(mcp, client):
     assert held(client) == []
 
 
+def test_compensation_delete_confirmation_expires(mcp, client, monkeypatch):
+    from app import changes
+
+    mcp.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    issued = 1_800_000_000
+    monkeypatch.setattr(changes, "time", lambda: issued)
+    preview = mcp.call("remove_compensation", ids=ids)
+    monkeypatch.setattr(changes, "time", lambda: issued + changes.CONFIRMATION_TTL_SECONDS)
+    assert "expired" in mcp.error("remove_compensation", ids=ids, confirm=preview["confirm"])
+    assert len(held(client)) == 1
+
+
 def test_compensation_delete_confirmation_is_account_bound(client):
     register_user(client, "first@example.test")
     first = Mcp(client)

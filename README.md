@@ -812,7 +812,7 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 | Tool | What it changes |
 |------|-----------------|
 | `add_compensation` | Adds salary-change and bonus entries to the compensation history. Adds rather than replaces, and skips an entry identical to one already stored |
-| `remove_compensation` | Deletes compensation entries by id, for correcting a mistake |
+| `remove_compensation` | Previews deleting compensation entries by ID. Repeat with the preview token to delete the entries after approval. |
 | `set_retirement_accounts` | Previews the named 401(k)/traditional IRA, Roth, taxable brokerage and cost basis updates. Repeat with the confirmation token after approval to save the balances |
 | `apply_changes` | Under `equity:write`, adds, corrects or removes any number of grants, loans, prices, sales and loan payments in one all-or-nothing step, through the same checks as the app's own forms. Without a confirm token it only previews; saving needs the token from the preview you agreed to. Corrections and removals need each row's current version |
 

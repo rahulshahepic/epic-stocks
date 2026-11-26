@@ -243,11 +243,12 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                 "own paperwork wins, and a grant's vesting is a list of dated "
                 "rows. Never delete a row only because a document leaves it "
                 "out.\n\n"
-                "Salary, bonuses and retirement balances can be written "
-                "directly, and those writes are immediate. Read the matching "
-                "get_ tool first so you add to the history rather than "
-                "duplicating it, and note the units differ: compensation is in "
-                "dollars, retirement balances in millions of dollars."
+                "Adding salary or bonus entries saves immediately. Read the history first "
+                "to avoid duplicates. Deleting entries or changing retirement settings "
+                "requires a preview and the person's approval before repeating the call "
+                "with the same inputs and the confirmation token. Tokens for these "
+                "changes and equity edits expire after 30 minutes. Compensation is in "
+                "dollars and retirement balances are in millions of dollars."
             ),
         })
 

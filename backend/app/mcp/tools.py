@@ -64,9 +64,7 @@ class Tool:
                 "readOnlyHint": self.read_only,
                 "idempotentHint": self.idempotent,
                 "openWorldHint": False,
-                # Only meaningful for a tool that writes; a client shows it to
-                # decide how loudly to confirm.
-                **({} if self.read_only else {"destructiveHint": self.destructive}),
+                "destructiveHint": not self.read_only and self.destructive,
             },
         }
 

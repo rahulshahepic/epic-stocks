@@ -596,10 +596,10 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
         raise ApprovalError(f"This request is already {row.status}")
     if (row.approval_codes_sent or 0) >= MAX_CODES_PER_REQUEST:
         raise ApprovalError(f"{MAX_CODES_PER_REQUEST} codes were already sent for this request; "
-                            "approve or reject it in Admin → AI Connections")
+                            "approve or reject it in More → Site Admin → AI Connections")
     if _recent(db, "send_approval_code", admin.email) >= MAX_CODES_PER_HOUR:
         raise ApprovalError(f"{MAX_CODES_PER_HOUR} approval codes were sent in the last hour; "
-                            "approve this one in Admin → AI Connections, or try again later")
+                            "approve this one in More → Site Admin → AI Connections, or try again later")
     journal_id = admin_journal.begin(
         db, via="mcp", action="send_approval_code", actor_email=admin.email, grant_id=grant_id,
         client_name=client_name, target_type="request", target_id=row.id, request_id=row.id,

@@ -17,7 +17,7 @@ test('Admin can configure backups on a phone and sees cleanup and restore status
     await route.fulfill({ json: { ...backupStatus, settings, state: saved ? 'pending' : 'succeeded' } })
   })
   await loginAs(page, process.env.SCREENSHOT_EMAIL || 'admin@e2e.test')
-  await navigateTo(page, 'Admin')
+  await navigateTo(page, 'Site Admin')
   const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Backups', exact: true }) })
   await expect(panel.getByText('Last backup uploaded successfully')).toBeVisible()
   await expect(panel.getByRole('alert')).toContainText('Retention cleanup failed')

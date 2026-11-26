@@ -16,8 +16,8 @@ uses a plugin ZIP; older Apps SDK submission links redirect there.
 5. Run `python scripts/package_submissions.py`. From the generated artifacts,
    upload **chatgpt-plugin.zip**, not the documentation-only materials ZIP.
    [Candidate source](plugin/plugin.json) includes listing fields, 5 positive/3
-   negative review cases and an onboarding skill. Its `/terms` URL is a proposed
-   destination, not evidence of published terms. Replace developerName if your
+   negative review cases and an onboarding skill. Supply the adopted terms URL
+   and the actual-host demo recording URL before submission. Replace developerName if your
    verified identity differs from the GitHub handle.
 6. In the draft, complete the domain challenge, connect MCP using DCR/OAuth,
    resolve required scans, and use [form answers](form-answers.md).

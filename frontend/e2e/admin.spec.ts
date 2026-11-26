@@ -19,7 +19,7 @@ test.describe('Admin workflows', () => {
   test('admin sees user list and can search', async ({ page }) => {
     await createUser('admin-search-target@e2e.test', 'Search Target')
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
 
     // Target user should appear in the list
     await expect(page.getByText('admin-search-target@e2e.test').first()).toBeVisible()
@@ -36,7 +36,7 @@ test.describe('Admin workflows', () => {
   test('admin can delete a non-admin user (two-click confirm)', async ({ page }) => {
     await createUser('admin-delete-target@e2e.test', 'Delete Target')
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
 
     // Search to isolate the target user
     await page.getByPlaceholder('Search by email or name...').fill('admin-delete-target@e2e.test')
@@ -58,7 +58,7 @@ test.describe('Admin workflows', () => {
 
   test('admin can block and unblock an email address', async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
 
     // Block an email — fill the form and click the submit button inside it
     await page.getByPlaceholder('email@example.com').fill('e2e-blocked@example.com')
@@ -77,7 +77,7 @@ test.describe('Admin workflows', () => {
     await loginAs(page, 'non-admin@e2e.test', 'Regular User')
 
     // Admin nav link should not be visible
-    await expect(page.getByRole('link', { name: 'Admin', exact: true })).not.toBeVisible()
+    await expect(page.getByRole('link', { name: 'Site Admin', exact: true })).not.toBeVisible()
 
     // Direct navigation to /admin should not show admin content
     await page.goto('/admin')

@@ -45,16 +45,17 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-function renderLayout() {
+function renderLayout(path = '/') {
   return render(
     <AppProvider>
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/']}>
+        <MemoryRouter initialEntries={[path]}>
           <MaintenanceProvider>
             <ViewingProvider>
               <Routes>
                 <Route element={<Layout />}>
                   <Route index element={<p>content</p>} />
+                  <Route path="settings" element={<h1>Settings</h1>} />
                 </Route>
               </Routes>
             </ViewingProvider>
@@ -133,25 +134,31 @@ describe('Layout responsive navigation', () => {
     }
   })
 
-  it.each(['Mobile navigation', 'Main navigation'])('opens secondary destinations from %s', async name => {
+  it.each(['Mobile navigation', 'Main navigation'])('opens secondary destinations from More on Settings in %s', async name => {
     isAdmin = true
     const user = userEvent.setup()
-    renderLayout()
+    renderLayout('/settings')
     await screen.findByText('A', { exact: true })
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    for (const linkName of ['Site Admin', 'Content Admin', 'Connect AI']) {
+      expect(screen.queryByRole('link', { name: linkName })).not.toBeInTheDocument()
+    }
     const navigation = within(screen.getByRole('navigation', { name }))
     const more = navigation.getByRole('button', { name: 'More' })
     await user.click(more)
     expect(more).toHaveAttribute('aria-expanded', 'true')
-    expect(navigation.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
-    expect(navigation.getByRole('link', { name: 'Content' })).toHaveAttribute('href', '/content')
-    expect(navigation.getByRole('link', { name: 'Connect AI' })).toHaveAttribute('href', '/connect-ai')
+    expect(navigation.getByRole('link', { name: 'Site Admin' })).toHaveAttribute('href', '/admin')
+    expect(navigation.getByRole('link', { name: 'Content Admin' })).toHaveAttribute('href', '/content')
+    expect(navigation.getByRole('heading', { name: 'Admin' })).toBeInTheDocument()
+    expect(navigation.queryByRole('heading', { name: 'Planning' })).not.toBeInTheDocument()
+    expect(navigation.queryByRole('link', { name: 'Connect AI' })).not.toBeInTheDocument()
     expect(navigation.getByRole('link', { name: 'Compensation Calculator' })).toHaveAttribute('href', '/comp-calculator')
     expect(navigation.getByRole('link', { name: 'Import / Export' })).toHaveAttribute('href', '/import')
     await user.tab()
-    expect(navigation.getByRole('link', { name: 'Events' })).toHaveFocus()
+    expect(navigation.getByRole('link', { name: 'Compensation Calculator' })).toHaveFocus()
     await user.keyboard('{Escape}')
     expect(more).toHaveFocus()
-    expect(navigation.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    expect(navigation.queryByRole('link', { name: 'Site Admin' })).not.toBeInTheDocument()
     await user.click(more)
     await user.tab({ shift: true })
     expect(navigation.getByRole('link', { name: 'Settings' })).toHaveFocus()
@@ -165,8 +172,8 @@ describe('Layout responsive navigation', () => {
     await screen.findByText('A', { exact: true })
     const navigation = within(screen.getByRole('navigation', { name: 'Mobile navigation' }))
     await userEvent.click(navigation.getByRole('button', { name: 'More' }))
-    expect(navigation.getByRole('link', { name: 'Content' })).toBeInTheDocument()
-    expect(navigation.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    expect(navigation.getByRole('link', { name: 'Content Admin' })).toBeInTheDocument()
+    expect(navigation.queryByRole('link', { name: 'Site Admin' })).not.toBeInTheDocument()
     expect(navigation.queryByRole('link', { name: 'Import / Export' })).not.toBeInTheDocument()
   })
 
@@ -179,7 +186,7 @@ describe('Layout responsive navigation', () => {
       const navigation = within(screen.getByRole('navigation', { name: 'Mobile navigation' }))
       await userEvent.click(navigation.getByRole('button', { name: 'More' }))
       expect(navigation.getByRole('link', { name: 'Loans' })).toBeInTheDocument()
-      for (const name of ['Admin', 'Content', 'Connect AI', 'Import / Export']) {
+      for (const name of ['Site Admin', 'Content Admin', 'Connect AI', 'Import / Export']) {
         expect(navigation.queryByRole('link', { name })).not.toBeInTheDocument()
       }
     } finally {

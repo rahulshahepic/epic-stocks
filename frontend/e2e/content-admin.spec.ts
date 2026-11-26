@@ -17,7 +17,7 @@ async function createUser(email: string, name: string) {
 test.describe('Content admin role', () => {
   test('non-admin does not see the Content nav link', async ({ page }) => {
     await loginAs(page, 'content-regular@e2e.test', 'Regular User')
-    await expect(page.getByRole('link', { name: 'Content', exact: true })).not.toBeVisible()
+    await expect(page.getByRole('link', { name: 'Content Admin', exact: true })).not.toBeVisible()
   })
 
   test('admin promotes a user to content admin and they can edit', async ({ page, browser }) => {
@@ -26,7 +26,7 @@ test.describe('Content admin role', () => {
 
     // Admin logs in, opens user detail, promotes editor
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
-    await navigateTo(page, 'Admin')
+    await navigateTo(page, 'Site Admin')
     await page.getByPlaceholder('Search by email or name...').fill(editorEmail)
     await expect(page.getByText(editorEmail).first()).toBeVisible()
     await page.getByText(editorEmail).first().click()
@@ -44,7 +44,7 @@ test.describe('Content admin role', () => {
     const editorPage = await editorCtx.newPage()
     await loginAs(editorPage, editorEmail, 'Editor')
     // Content lives in the responsive More menu at mobile widths.
-    await navigateTo(editorPage, 'Content')
+    await navigateTo(editorPage, 'Content Admin')
     await expect(editorPage.getByText('Grant-program content')).toBeVisible()
 
     // Change flexible-payoff toggle and save

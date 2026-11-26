@@ -3,6 +3,7 @@ from datetime import date
 from types import SimpleNamespace as Row
 
 from app.calculation_inputs import CalculationInputs
+from app.loan_projection import DAYS
 from scaffold.models import TaxSettings
 from services.vesting import default_split
 
@@ -11,7 +12,7 @@ PROFILES = {
     'established': {'label': 'Established', 'tenure': 10, 'age': 38, 'other_assets_m': 0.4, 'spend_k': 65},
     'exit': {'label': 'Planning an exit', 'tenure': 20, 'age': 50, 'other_assets_m': 1.2, 'spend_k': 90},
 }
-VERSION = 2
+VERSION = 3
 AS_OF = date(2026, 11, 24)
 
 
@@ -36,11 +37,19 @@ def profile_inputs(profile: str) -> CalculationInputs:
                               vesting=[Row(date=d, shares=n) for d, n in schedule]))
             tax_due[(year, kind)] = date(year + 8, 1, 1)
             if kind == 'Purchase' and year >= AS_OF.year - 2:
+                principal, rate = shares * cost, 0.03
+                disbursed_on = date(year, 1, 1)
+                checkpoints = []
+                if year == AS_OF.year:
+                    elapsed = (AS_OF - disbursed_on).days
+                    checkpoints.append(Row(statement_date=AS_OF, accrued_through=AS_OF,
+                                           accrued_interest=round(principal * rate * elapsed / DAYS, 2),
+                                           source='Fictional test statement'))
                 loans.append(Row(id=year, grant_year=year, grant_type=kind, loan_type='Purchase',
-                                 loan_year=year, amount=shares * cost, interest_rate=0.03,
-                                 due_date=date(year+8, 1, 1), disbursed_on=date(year, 1, 1),
+                                 loan_year=year, amount=principal, interest_rate=rate,
+                                 due_date=date(year + 8, 1, 1), disbursed_on=disbursed_on,
                                  loan_number=f'fictional-{year}', refinances_loan_id=None,
-                                 interest_checkpoints=[]))
+                                 interest_checkpoints=checkpoints))
     tax = Row(**{c.name: c.default.arg if c.default is not None else None
                  for c in TaxSettings.__table__.columns if c.name not in {'id', 'user_id'}})
     return CalculationInputs(grants, prices, loans, [], [], tax, tax_due, today=AS_OF)

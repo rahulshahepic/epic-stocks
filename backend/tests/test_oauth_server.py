@@ -789,8 +789,18 @@ def _consent(client, scope, **extra):
 def test_no_scope_request_checks_the_default_permissions(client):
     register_user(client)
     page, tokens = _consent(client, "")
-    assert page.count(' checked>') == 4
-    assert "equity:write" in tokens["scope"].split()
+    assert page.count(' checked>') == 2
+    assert tokens["scope"].split() == ["equity:read", "comp:read"]
+
+
+def test_explicit_write_scopes_remain_available_without_advertising_legacy_import_scope(client):
+    register_user(client)
+    for resource in ('/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server'):
+        assert "import:propose" not in client.get(resource).json()["scopes_supported"]
+    page, tokens = _consent(client, "equity:read equity:write comp:write import:propose")
+    assert page.count(' checked>') == 3
+    assert "import:propose" not in page
+    assert set(tokens["scope"].split()) == {"equity:read", "equity:write", "comp:write"}
 
 
 def test_legacy_read_only_form_still_drops_every_write(client):

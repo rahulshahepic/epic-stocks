@@ -70,11 +70,10 @@ def test_consent_does_not_make_a_fixed_promise_before_user_chooses_permissions(c
         assert expected in page
 
 
-def test_a_client_that_names_no_scope_gets_every_tool(client):
-    """ChatGPT names none. A read-only default left people unable to find how
-    to let it edit, so the default is everything grantable."""
+def test_a_client_that_names_no_scope_gets_read_tools(client):
     register_user(client)
     seed(client)
     default = Mcp(client, scope="")
     names = {t["name"] for t in default.list_tools()}
-    assert {"apply_changes", "get_import_guide", "add_compensation"} <= names
+    assert {"apply_changes", "add_compensation"}.isdisjoint(names)
+    assert {"get_dashboard", "get_compensation", "get_import_guide"} <= names

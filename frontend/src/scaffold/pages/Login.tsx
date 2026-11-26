@@ -110,7 +110,7 @@ export default function Login() {
             <a href="/mcp-setup" className="inline-flex min-h-11 items-center text-sm font-semibold text-cs-brand dark:text-rose-300 underline">Open the setup guide</a>
           </Card>
           <Card className="mt-4 text-left"><Eyebrow className="mb-2">A note pinned by the door</Eyebrow><ul className="space-y-1.5 text-xs leading-relaxed text-cs-text-2"><li><span className="font-medium text-cs-text">Secure sign-in.</span> We never handle your password.</li><li><span className="font-medium text-cs-text">Per-user encryption.</span> Financial data is encrypted using AES-256-GCM with a key unique to your account.</li><li><span className="font-medium text-cs-text">We will never sell your data.</span></li></ul></Card>
-          <p className="mt-4 text-center text-xs text-cs-text-2">By using this site, you agree to our <Link to="/privacy" className="font-medium text-cs-brand dark:text-rose-300 underline">Privacy Policy</Link>. <span className="mx-1">·</span><ReportProblemLink className="font-medium text-cs-brand dark:text-rose-300" /></p>
+          <p className="mt-4 text-center text-xs text-cs-text-2">By using this site, you agree to our <Link to="/privacy" className="font-medium text-cs-brand dark:text-rose-300 underline">Privacy Policy</Link> and <a href="/terms" className="font-medium text-cs-brand dark:text-rose-300 underline">Terms of Use</a>. <span className="mx-1">·</span><ReportProblemLink className="font-medium text-cs-brand dark:text-rose-300" /></p>
         </aside>
       </div>
     </div>

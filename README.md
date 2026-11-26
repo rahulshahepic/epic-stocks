@@ -840,7 +840,7 @@ If your workspace allows custom MCP servers, open [Plugins](https://chatgpt.com/
 1. Tap **+ → Upload plugin** and select the downloaded ZIP.
 2. Review the package's MCP connection, sign in to Epic Stocks, choose the permissions you want and install it. The address is embedded, but no credential is; you do not copy or paste either.
 
-**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked; the others start unchecked. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
+**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked. If the connector requests no permissions, only the two read permissions start checked. Other permissions are available as individual choices. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
 
 | Account permissions (mobile) | Account permissions (dark, desktop) |
 | --- | --- |
@@ -2206,7 +2206,7 @@ same repository `PRIVACY.md` without requiring JavaScript or sign-in;
 the public policy source. The ordinary website privacy screen remains available.
 
 The ChatGPT connector listing uses [Terms of Use](https://epic-stocks.com/terms).
-The public setup guide links to the page, which renders `TERMS.md` through the
+The sign-in page, site footer, and public setup guide link to the page, which renders `TERMS.md` through the
 same router without requiring JavaScript or sign-in.
 
 Terms screenshots: [light mobile](screenshots/public-terms-light-mobile.png), [dark mobile](screenshots/public-terms-dark-mobile.png).

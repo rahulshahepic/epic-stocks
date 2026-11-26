@@ -9,6 +9,7 @@ import Settings from '../scaffold/pages/Settings.tsx'
 beforeEach(() => {
   vi.restoreAllMocks()
   resetConfigCache()
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 
 function mockFetch(responses: Record<string, unknown>) {
@@ -53,24 +54,37 @@ function mockPushUnsupported({ installed = false } = {}) {
 const STATUS = (over: Partial<{ registered_here: boolean; total_devices: number; intent: boolean }> = {}) =>
   ({ registered_here: false, total_devices: 0, intent: false, ...over })
 
-function renderPage() {
+function renderPage(hash = '#notifications') {
   return render(
     <ThemeProvider>
-      <MemoryRouter><Settings /></MemoryRouter>
+      <MemoryRouter initialEntries={[`/settings${hash}`]}><Settings /></MemoryRouter>
     </ThemeProvider>
   )
 }
 
 describe('Settings', () => {
-  it('renders display, account, and tax sections', () => {
-    mockFetch({
-      '/api/config': { vapid_public_key: '', email_notifications_available: false },
-      '/api/push/status': { subscribed: false, subscription_count: 0 },
-    })
-    renderPage()
-    expect(screen.getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByText('Display')).toBeInTheDocument()
-    expect(screen.getByText('Account')).toBeInTheDocument()
+  it('opens one category at a time and returns to the list', async () => {
+    mockFetch({ '/api/config': { ai_connections: true } })
+    renderPage('')
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible()
+    expect(await screen.findByRole('link', { name: /AI Connections/ })).toHaveAttribute('href', '/settings#ai-connections')
+    expect(screen.queryByRole('button', { name: 'Dark theme' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('link', { name: /Appearance/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Dark theme' }))
+    expect(screen.getByRole('button', { name: 'Dark theme' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('heading', { name: 'Account' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'Back to Settings' }))
+    expect(screen.getByRole('heading', { name: 'Settings' })).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Dark theme' })).not.toBeInTheDocument()
+  })
+
+  it('returns to the list for a section unavailable on this deployment', async () => {
+    mockFetch({ '/api/config': { ai_connections: false } })
+    renderPage('#ai-connections')
+    expect(await screen.findByRole('link', { name: /Appearance/ })).toBeVisible()
+    expect(screen.queryByRole('link', { name: /AI Connections/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'AI Connections' })).not.toBeInTheDocument()
   })
 
   it('tells an uninstalled iOS device to add the app to the home screen', async () => {
@@ -191,7 +205,7 @@ describe('Settings', () => {
     })
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Account')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument()
     })
     expect(screen.queryByText('Email notifications')).not.toBeInTheDocument()
   })
@@ -235,7 +249,7 @@ describe('Settings', () => {
       }
       return new Response('{}', { status: 200 })
     })
-    renderPage()
+    renderPage('#account')
     await userEvent.click(screen.getByText('Sign Out'))
     expect(spy).toHaveBeenCalledWith(
       expect.stringContaining('/api/auth/logout'),

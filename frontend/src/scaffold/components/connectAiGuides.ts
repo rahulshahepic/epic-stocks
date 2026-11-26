@@ -14,6 +14,7 @@ export interface AssistantGuide {
   steps: string[]
   /** Plan or workspace limits worth knowing before starting. */
   note?: string
+  directImport?: boolean
   /** A downloadable plugin that needs no server address. */
   plugin?: { href: string; filename: string }
   /** Send a setup request to the assistant instead of clicking through menus. */
@@ -27,11 +28,13 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
     name: 'Claude',
     company: 'Anthropic',
     steps: [
-      'In Claude, open Settings → Connectors and choose Add custom connector.',
+      'In Claude, open Customize → Connectors, choose Add, then Custom → Web.',
       'Name it Epic Stocks, paste the server address and choose Add.',
       'Choose Connect, sign in to Epic Stocks and approve the permissions.',
     ],
-    note: 'Custom connectors need a paid plan. On Team and Enterprise, an owner may have to add it first.',
+    note: 'Epic’s Claude Enterprise workspace currently blocks custom connectors. Personal Claude Free accounts can add one custom connector.',
+    directImport: true,
+    docs: 'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
     plugin: { href: '/api/ai/plugin/claude', filename: 'epic-stocks-claude.zip' },
   },
   {
@@ -45,6 +48,7 @@ export const ASSISTANT_GUIDES: AssistantGuide[] = [
       'Sign in to Epic Stocks and approve the permissions.',
     ],
     note: 'Epic’s ChatGPT Enterprise workspace currently blocks custom connectors. ChatGPT Free cannot add custom connectors. You can still import your Eureka CSV or Stock Loan Statement directly in Epic Stocks.',
+    directImport: true,
     docs: 'https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt',
     plugin: { href: '/api/ai/plugin/chatgpt', filename: 'epic-stocks-chatgpt.zip' },
   },

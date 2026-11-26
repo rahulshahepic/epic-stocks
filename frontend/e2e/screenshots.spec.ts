@@ -584,6 +584,14 @@ test.describe('Screenshots', () => {
     await shoot(page, 'settings-dark-mobile')
   })
 
+  test('settings loan assumptions - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.goto(`${BASE}/settings#loans`)
+    await expect(page.getByRole('heading', { name: 'Loan assumptions', exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
+    await shoot(page, 'settings-loans-light-desktop')
+  })
+
   test('login page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)
@@ -796,6 +804,7 @@ test.describe('Screenshots', () => {
   test('settings sharing section - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Settings')
+    await page.getByRole('link', { name: /^Sharing/ }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
@@ -807,6 +816,7 @@ test.describe('Screenshots', () => {
   test('settings sharing section - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
     await navigateTo(page, 'Settings')
+    await page.getByRole('link', { name: /^Sharing/ }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
@@ -818,12 +828,12 @@ test.describe('Screenshots', () => {
   test('settings ai connections - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Settings')
+    await page.getByRole('link', { name: /^AI Connections/ }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const link = page.getByRole('link', { name: 'Connect an assistant' })
     await link.scrollIntoViewIfNeeded()
     await expect(link).toBeInViewport()
-    await page.evaluate(() => window.scrollBy(0, 120))
     await shoot(page, 'settings-ai-connections-light-mobile')
   })
 
@@ -926,6 +936,8 @@ test.describe('Screenshots', () => {
       await expect(page.getByLabel('Server address')).toHaveValue(/\/mcp$/)
       if (assistant === 'chatgpt') {
         await expect(page.getByText(/ChatGPT Free cannot add custom connectors/)).toBeVisible()
+      } else {
+        await expect(page.getByText(/Personal Claude Free accounts can add one custom connector/)).toBeVisible()
       }
       await shoot(page, `connect-ai-${assistant}-${theme}-mobile`, { fullPage: assistant === 'chatgpt' })
     })

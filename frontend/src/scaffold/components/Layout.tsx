@@ -119,7 +119,7 @@ export default function Layout() {
               </nav>}
               <Outlet />
             </>}
-          {location.pathname === '/settings' && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
+          {location.pathname === '/settings' && !location.hash && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
             {accountLinks.map(({ to, label }) => <Link key={to} to={to} className="inline-flex min-h-11 items-center rounded-lg border border-cs-border px-3">{label}</Link>)}
           </nav>}
         </div>

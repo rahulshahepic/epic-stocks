@@ -27,7 +27,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
       const response = await route.fetch()
       await route.fulfill({response, json: {...await response.json(), email_notifications_available: true, vapid_public_key: ''}})
     })
-    await page.goto('/settings')
+    await page.goto('/settings#notifications')
     await page.reload()
     await expect(page.getByText(/Turn on email or push notifications to receive/)).toBeVisible()
     await expect(page.getByRole('checkbox', {name: /Include an annual stock summary/})).toBeDisabled()

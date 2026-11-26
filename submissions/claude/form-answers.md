@@ -10,7 +10,7 @@ fields require owner completion; no personal/company facts are invented.
 | Connection | One URL: https://epic-stocks.com/mcp |
 | Tools | Sync from live server; resolve warnings before submission |
 | Server name (<=100) | Epic Stocks (Unofficial) |
-| One-liner (<=200) | Understand Epic employee equity and loans, reconcile your records, and compare retirement scenarios. |
+| One-liner (<=200) | Track your own Epic equity and stock loan records, estimate payoff amounts, and compare retirement scenarios. |
 | Slug | epic-stocks-unofficial — check availability; permanent once published |
 | Categories (1–5) | Choose the live categories matching personal finance, productivity and planning; do not invent unavailable labels |
 | Documentation | https://epic-stocks.com/mcp-setup |
@@ -32,17 +32,17 @@ fields require owner completion; no personal/company facts are invented.
 
 Description (under 2,000 characters):
 
-> Epic Stocks helps Epic employees understand their equity and stock loans from
-> records they enter or import. Review grants, vesting, loan balances and
-> estimated departure proceeds; reconcile records; and explore compensation,
-> retirement dates and planned expenses. Equity and retirement tools use the
-> website's calculations and provide structured/text results when interactive
-> views are unavailable. Proposed equity edits are previewed for confirmation.
-> Recording a completed sale or loan payoff changes tracking records only. The
-> app never executes securities trades or moves money. Projections depend on
-> assumptions, are uncertain and are not guarantees or professional tax or
-> investment advice. Independent project, not made, endorsed or supported by
-> Epic Systems Corporation.
+> A secondary personal tracker for Epic employee equity and stock loans. Enter
+> or import your records to track grants, vesting and loan balances. Compare
+> how different assumptions affect estimated payoff amounts, departure
+> proceeds, compensation, and retirement outcomes. The plugin uses the same
+> calculations as the website and returns text when interactive views are
+> unavailable. Confirm proposed edits before saving them to your tracker.
+> Epic Stocks cannot service, refinance, or repay loans, execute trades, or
+> move money. It is an independent project unaffiliated with Epic Systems
+> Corporation.
+>
+> Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.
 
 Primary use cases/prompts:
 

@@ -1,9 +1,12 @@
 # Epic Stocks (Unofficial)
 
-Understand Epic employee grants, vesting and stock loans, reconcile records and
-explore compensation and retirement scenarios. This is an independent project,
-not made, endorsed or supported by Epic Systems Corporation. It does not execute
-trades or move money. Projections are uncertain, assumption-dependent estimates.
+A secondary personal tracker for Epic employee equity and stock loans. Enter or
+import your records, track balances and see how changes to your assumptions
+affect estimated payoff amounts, compensation and retirement outcomes.
+Epic Stocks cannot service, refinance, or repay loans. It cannot execute trades or move money.
+This is an independent project, unaffiliated with Epic Systems Corporation.
+
+Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.
 
 Install the plugin, connect its Epic Stocks connector, sign in and approve only
 the permissions you need. Ask “Help me get started with Epic Stocks.” The bundled

@@ -34,6 +34,7 @@ def test_public_terms_are_readable_without_sign_in_or_javascript(client):
     assert 'Dane County, Wisconsin' in response.text
     assert 'Wisconsin law governs these terms' in response.text
     assert 'at least 18' in response.text
+    assert 'do not guarantee outcomes or provide personalized investment, tax, or legal advice' in response.text
     assert 'Version date November 25, 2026' in response.text
     assert 'effective when first published' in response.text
     assert 'https://epic-stocks.com/privacy-policy' in response.text
@@ -43,6 +44,15 @@ def test_public_terms_are_readable_without_sign_in_or_javascript(client):
     metadata = client.get('/.well-known/oauth-protected-resource/mcp').json()
     assert metadata['resource_tos_uri'] == metadata['resource_documentation'].removesuffix('/mcp-setup') + '/terms'
     assert '<a href="/terms">Terms of Use</a>' in client.get('/mcp-setup').text
+
+
+def test_setup_and_support_show_financial_advice_notice(client):
+    notice = "Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice."
+    for path in ("/support", "/mcp-setup", "/llms.txt"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert notice in response.text
+    assert notice in client.get("/mcp/setup.json").json()["financial_notice"]
 
 
 def test_public_support_is_readable_without_sign_in(client):

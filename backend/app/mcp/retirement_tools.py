@@ -6,12 +6,15 @@ from .tools import Tool, ToolContext, object_schema, register
 from app.changes import RETIREMENT_PARAMS, apply_changes
 from app.retirement_simulation import run, MAX_SCENARIOS, MAX_PATHS
 
-RETIREMENT_RESOURCE_VERSION = 8
+RETIREMENT_RESOURCE_VERSION = 9
 RETIREMENT_RESOURCE_URI = f"ui://epic-stocks/retirement-v{RETIREMENT_RESOURCE_VERSION}.html"
-RETIREMENT_COMPARE_RESOURCE_URI = "ui://epic-stocks/retirement-compare-v1.html"
+RETIREMENT_COMPARE_RESOURCE_URI = "ui://epic-stocks/retirement-compare-v2.html"
+RETIREMENT_COMPARE_RESOURCE_URIS = frozenset({
+    "ui://epic-stocks/retirement-compare-v1.html", RETIREMENT_COMPARE_RESOURCE_URI,
+})
 RETIREMENT_RESOURCE_URIS = frozenset(
     f"ui://epic-stocks/retirement-v{v}.html" for v in range(1, RETIREMENT_RESOURCE_VERSION + 1)
-) | {RETIREMENT_COMPARE_RESOURCE_URI}
+) | RETIREMENT_COMPARE_RESOURCE_URIS
 
 _EVENT_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -233,11 +236,13 @@ def _compare(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="run_retirement_simulation", title="Run retirement Monte Carlo",
+    financial_output=True,
     description="Run the actual Epic Stocks retirement calculator (100,000 historical block-bootstrap paths by default). Read saved inputs and optionally override fields without saving. Returns funding-shortfall and portfolio-exhaustion probabilities separately, percentile wealth by age, and the assumptions used. Use recalculate_exit for date-specific Epic liquidation net cash; otherwise the saved Epic exit input is used. Results are simulations, not guarantees.",
     input_schema=_RUN_INPUT, scope=COMP_READ, handler=_run, blocking_io=True,
 ))
 register(Tool(
     name="compare_retirement_scenarios", title="Compare retirement scenarios",
+    financial_output=True,
     description="Run 2 or 3 retirement scenarios with the exact same calculator and random seed. Each scenario can override retirementDate, spending, Epic exit, asset allocation or other saved assumptions. By default recalculates after-tax, after-debt Epic exit for each date; no settings are saved.",
     input_schema=object_schema({
         "account": ACCOUNT_PROPERTY,
@@ -268,6 +273,7 @@ register(Tool(
 ))
 register(Tool(
     name="show_retirement", title="Open retirement planner",
+    financial_output=True,
     description="Open the interactive ChatGPT retirement simulation card with success metrics, wealth percentiles and editable what-if controls. Uses the saved Epic Stocks calculator assumptions and does not save exploratory changes.",
     input_schema=_RUN_INPUT, output_schema=_RESULT, scope=COMP_READ, handler=_run,
     blocking_io=True,
@@ -280,6 +286,7 @@ register(Tool(
 ))
 register(Tool(
     name="refresh_retirement_view", title="Recalculate retirement card",
+    financial_output=True,
     description="App-only interactive what-if recalculation without saving assumptions.",
     input_schema=_RUN_INPUT, output_schema=_RESULT, scope=COMP_READ, handler=_run,
     blocking_io=True, metadata={"ui": {"visibility": ["app"]}},
@@ -351,6 +358,7 @@ def _plan_life_events(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="plan_life_events", title="Plan major purchases and life expenses",
+    financial_output=True,
     description=(
         "Read-only retirement what-if for a house, vehicle, wedding, college, vacation, "
         "childcare, eldercare, renovation, gifts or any other expense. Supports "

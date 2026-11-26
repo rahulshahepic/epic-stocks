@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from scaffold.auth import get_admin_user, get_current_user
+from scaffold.financial_notice import FINANCIAL_NOTICE
 from scaffold.models import User
 
 router = APIRouter(tags=["AI connections"])
@@ -36,11 +37,15 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
     manifest = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
     origin = url.rsplit("/", 1)[0]
     manifest["homepage"] = origin
+    display_name = description.split(" — ")[0]
+    account_plugin = url.endswith("/mcp")
+    account_notice = "Epic Stocks cannot service, refinance, or repay loans. " + FINANCIAL_NOTICE
+    if account_plugin:
+        description += ". Track entered or imported equity and stock loan records and model scenario impacts. " + account_notice
     if platform == "chatgpt":
         manifest["name"] = name
         manifest["description"] = description
         interface = manifest["extensions"]["com.openai"]["interface"]
-        display_name = description.split(" — ")[0]
         interface["displayName"] = display_name if len(display_name) <= 30 else "Epic Stocks Site Admin"
         interface.update(
             websiteURL=origin,
@@ -58,8 +63,10 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
             interface["capabilities"] = ["Read"]
             interface["defaultPrompt"] = ["Check Epic Stocks deployment and errors"]
         if "staging-test" in name:
-            interface["longDescription"] = description + ". Never treat this environment as a source for personal finances or production data."
+            interface["longDescription"] = description + " Never treat this environment as a source for personal finances or production data."
             interface["defaultPrompt"] = ["Test the fictional staging account workflows"]
+        elif account_plugin:
+            interface["longDescription"] += " " + account_notice
         return {
             "plugin.json": manifest,
             "assets/icon.svg": (source / "assets" / "icon.svg").read_text(encoding="utf-8"),
@@ -81,7 +88,7 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
     return {
         ".claude-plugin/plugin.json": {
             "name": name,
-            "displayName": description.split(" — ")[0],
+            "displayName": display_name,
             "version": "1.0.1",
             "author": manifest["author"],
             "homepage": f"{origin}/mcp-setup",

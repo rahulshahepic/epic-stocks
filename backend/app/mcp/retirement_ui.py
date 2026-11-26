@@ -1,14 +1,14 @@
 """MCP Apps resources for retirement planning and comparison."""
 from pathlib import Path
 
-from .retirement_tools import RETIREMENT_COMPARE_RESOURCE_URI, RETIREMENT_RESOURCE_URI, RETIREMENT_RESOURCE_URIS
+from .retirement_tools import RETIREMENT_COMPARE_RESOURCE_URIS, RETIREMENT_RESOURCE_URI, RETIREMENT_RESOURCE_URIS
 from .ui_tools import MIME_TYPE, resource_contents
 
 
 def retirement_resource_descriptor(uri: str = RETIREMENT_RESOURCE_URI):
     if uri not in RETIREMENT_RESOURCE_URIS:
         raise ValueError("Unknown retirement resource")
-    comparison = uri == RETIREMENT_COMPARE_RESOURCE_URI
+    comparison = uri in RETIREMENT_COMPARE_RESOURCE_URIS
     return {
         "uri": uri,
         "name": "epic-stocks-retirement-comparison" if comparison else "epic-stocks-retirement",
@@ -20,7 +20,7 @@ def retirement_resource_descriptor(uri: str = RETIREMENT_RESOURCE_URI):
 def retirement_resource_contents(uri: str = RETIREMENT_RESOURCE_URI):
     # Share the validated HTTPS origin, no-network CSP and display modes.
     base = resource_contents()
-    comparison = uri == RETIREMENT_COMPARE_RESOURCE_URI
+    comparison = uri in RETIREMENT_COMPARE_RESOURCE_URIS
     filename = "retirement_compare.html" if comparison else "retirement.html"
     return {
         **retirement_resource_descriptor(uri),

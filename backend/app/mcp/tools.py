@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
+from scaffold.financial_notice import FINANCIAL_NOTICE
 from scaffold.oauth.resource import Connector
 from scaffold.auth import get_admin_emails
 from scaffold.oauth.scopes import ADMIN_SCOPES
@@ -51,12 +52,13 @@ class Tool:
     output_schema: dict[str, Any] | None = None
     blocking_io: bool = False
     staging_only: bool = False
+    financial_output: bool = False
 
     def describe(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "title": self.title,
-            "description": self.description,
+            "description": f"{self.description} {FINANCIAL_NOTICE}" if self.financial_output else self.description,
             "inputSchema": self.input_schema,
             **({"_meta": self.metadata} if self.metadata else {}),
             **({"outputSchema": self.output_schema} if self.output_schema else {}),

@@ -22,15 +22,17 @@ required fields. Do not submit until the checklist is clear.
 
 Long description (under 4,000 characters):
 
-> Understand your Epic employee equity and stock loans using records you enter
-> or import. Review grants and vesting, reconcile outstanding loans, estimate
-> departure proceeds after loans and taxes, and compare compensation and
-> retirement scenarios. Interactive equity and retirement views use the same
-> calculations as the website. Proposed equity edits are previewed before you
-> confirm them. Estimates depend on your inputs and assumptions; future returns
-> and tax outcomes are uncertain. Recording a sale or payoff updates tracking
-> records only: Epic Stocks does not execute trades or move money. Independent
-> project, not made, endorsed or supported by Epic Systems Corporation.
+> A secondary personal tracker for Epic employee equity and stock loans. Enter
+> or import your records to track grants, vesting and loan balances. Compare
+> how different assumptions affect estimated payoff amounts, departure
+> proceeds, compensation, and retirement outcomes. The plugin uses the same
+> calculations as the website and returns text when interactive views are
+> unavailable. Confirm proposed edits before saving them to your tracker.
+> Epic Stocks cannot service, refinance, or repay loans, execute trades, or
+> move money. It is an independent project unaffiliated with Epic Systems
+> Corporation.
+>
+> Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.
 
 Starter prompts (each <128 characters; maximum three):
 

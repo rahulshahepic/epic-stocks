@@ -132,8 +132,10 @@ const NAME_BADGE = 'Unofficial'
 
 const DISCLAIMER_TITLE = 'Unofficial — this is not an Epic site'
 
+const FINANCIAL_NOTICE = 'Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.'
+
 const DISCLAIMER_SHORT =
-  'An independent project — not affiliated with or endorsed by Epic Systems Corporation.'
+  'An independent project — not affiliated with or endorsed by Epic Systems Corporation. ' + FINANCIAL_NOTICE
 
 const DisclaimerBody = (
   <>
@@ -147,6 +149,7 @@ const DisclaimerBody = (
       Your official grant, loan, and share-price records are the ones Epic gives you — not
       these.
     </p>
+    <p>{FINANCIAL_NOTICE}</p>
   </>
 )
 

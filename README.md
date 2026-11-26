@@ -743,6 +743,8 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
+Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice. Epic Stocks tracks the loan records you enter or import and estimates payoff amounts. It cannot service, refinance, or repay loans.
+
 **Setup is public:** open [`/mcp-setup`](https://epic-stocks.com/mcp-setup) before signing in, or let an assistant fetch `/mcp/setup.json` and `/llms.txt`. The guide includes credential-free ChatGPT/Claude plugin ZIPs for the **current environment**. OAuth resource/authorization-server metadata links to the guide. Installation, sign-in and scope consent still require the user; discovering a server never grants access to private data.
 
 After connecting, ask the assistant to help with your first import. Start with one DocuSign stock purchase agreement, Stock Loan Statement, or Eureka **Data for Stock Workbook** CSV. The assistant calls `get_import_guide` to interpret it. Enable **Equity editing** to let it show a preview, then approve the preview to save the edits. Confirmation tokens for equity changes, retirement settings, and compensation deletions expire after 30 minutes. Once the account has data, ask when your shares vest, what you owe, what you might take home if you left Epic, or how different retirement dates compare.

@@ -124,6 +124,7 @@ def _get_dashboard(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="get_dashboard",
+    financial_output=True,
     title="Equity summary",
     description=(
         "Today's direct stock position: `total_stock_value` includes held vested "
@@ -222,6 +223,7 @@ def _list_events(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_events",
+    financial_output=True,
     title="Vesting and cash-flow timeline",
     description=(
         "The computed timeline: vesting tranches, share price changes, loan "
@@ -266,6 +268,7 @@ def _list_grants(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_grants",
+    financial_output=True,
     title="Equity grants",
     description=(
         "Every grant on the account: id and version (for apply_changes), year, "
@@ -349,6 +352,7 @@ def _list_loans(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_loans",
+    financial_output=True,
     title="Loans against equity",
     description=(
         "Loans tied to grants — the ones that funded a purchase, plus interest "
@@ -416,6 +420,7 @@ def _list_prices(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_prices",
+    financial_output=True,
     title="Share price history",
     description=(
         "The share price history the account's figures are computed from: an "
@@ -436,6 +441,7 @@ def _list_sales(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_sales",
+    financial_output=True,
     title="Share sales",
     description=(
         "Sales recorded on the account, past and planned: date, shares, price "
@@ -491,6 +497,7 @@ def _estimate_sale(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="estimate_sale",
+    financial_output=True,
     title="Estimate a sale",
     description=(
         "Model a sale without recording it: gross proceeds, estimated tax and "
@@ -536,6 +543,7 @@ def _get_tax_breakdown(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="get_tax_breakdown",
+    financial_output=True,
     title="Tax on a sale",
     description=(
         "The estimated tax working for one recorded sale: which lots it consumes, "
@@ -640,6 +648,7 @@ def _explain(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="explain",
+    financial_output=True,
     title="How this equity scheme works",
     description=(
         "How this particular scheme works — vesting, grant types, how tax is "
@@ -671,6 +680,7 @@ def _get_compensation(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="get_compensation",
+    financial_output=True,
     title="Salary and bonus history",
     description=(
         "The salary and bonus entries the user keeps for the total-compensation "
@@ -692,6 +702,7 @@ def _get_retirement_params(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="get_retirement_params",
+    financial_output=True,
     title="Retirement plan settings",
     description=(
         "The saved inputs to the retirement simulator — target retirement age, "
@@ -715,6 +726,7 @@ def _list_interest_checkpoints(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="list_interest_checkpoints", title="Statement interest checkpoints", scope=EQUITY_READ,
+    financial_output=True,
     description=("Statement-reconciled interest by loan: id, version, statement_date, accrued_through "
                  "and accrued_interest. Read before saving a monthly statement; update an existing "
                  "loan/cutoff instead of duplicating it. Other loans remain calculated estimates."),

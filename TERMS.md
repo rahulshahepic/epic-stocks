@@ -1,6 +1,6 @@
 # Epic Stocks Terms of Use
 
-**Effective when this version is first published at epic-stocks.com/terms.**
+**Version date November 25, 2026.** This version is effective when first published at epic-stocks.com/terms.
 
 These terms cover the hosted service at epic-stocks.com and any AI assistant you connect to it. Rahul Shah operates Epic Stocks as an independent project. Epic Systems Corporation does not make, endorse, or support the service.
 

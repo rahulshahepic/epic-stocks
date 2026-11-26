@@ -135,7 +135,7 @@ export default function Layout() {
           <MoreNavigation key={location.key} groups={moreGroups} mobile />
         </div>
       </nav>
-      <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
+      <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><a href="/terms" className="underline hover:text-cs-text">Terms of Use</a><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
     </div>
   )
 }

@@ -991,11 +991,11 @@ Choose **Send a private report** for account-specific problems or to report with
 
 | Light | Dark |
 |-------|------|
-| ![Content Editor](screenshots/content-light-mobile.png) | ![Content Editor Dark](screenshots/content-dark-mobile.png) |
+| ![Content Admin categories](screenshots/content-light-mobile.png) | ![Content Admin categories in dark mode](screenshots/content-dark-mobile.png) |
 
 Content admins edit the grant-program data new grants start from for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
 
-Content admins can open **More → Content Admin**. Site admins can also open **More → Site Admin**. From `/content` they can edit:
+Open **More → Content Admin**, then choose a category. On a phone, **Back to Content Admin** returns to the list. On desktop, the categories stay beside the editor. Each category URL can be bookmarked.
 
 | Section | What it controls |
 |---------|----------------|
@@ -1007,7 +1007,7 @@ Content admins can open **More → Content Admin**. Site admins can also open **
 
 Edits take effect immediately. They change where new grants start, never a grant already saved.
 
-> **Grant types** (Purchase, Catch-Up, Bonus, Free, Developer Bonus Shares) are hard-coded and cannot be changed from the content editor — the core computation engine branches on those specific strings. Year ranges shown on the settings tab (price and rate bounds) are derived from the rates and templates tables and are read-only.
+> **Grant types** (Purchase, Catch-Up, Bonus, Free, Developer Bonus Shares) are hard-coded and cannot be changed from the content editor — the core computation engine branches on those specific strings. Year ranges shown in Program Settings (price and rate bounds) are derived from the rates and templates tables and are read-only.
 
 ---
 
@@ -1015,9 +1015,18 @@ Edits take effect immediately. They change where new grants start, never a grant
 
 | Light | Dark |
 |-------|------|
-| ![Admin Dashboard](screenshots/admin-light-mobile.png) | ![Admin Dashboard Dark](screenshots/admin-dark-mobile.png) |
+| ![Site Admin categories](screenshots/admin-light-mobile.png) | ![Site Admin categories in dark mode](screenshots/admin-dark-mobile.png) |
 
-Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon-delimited for multiple). Access is granted dynamically on each login — adding or removing an email from `ADMIN_EMAIL` takes effect on the user's next sign-in. Navigate to `/admin` after signing in with a matching account.
+Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon-delimited for multiple). Access is granted dynamically on each login — adding or removing an email from `ADMIN_EMAIL` takes effect on the user's next sign-in. Open **More → Site Admin** after signing in with a matching account. Choose a category to open its tools. On a phone, use **Back to Site Admin** to return to the list. On desktop, switch categories from the sidebar.
+
+| Category | Where to go for |
+| --- | --- |
+| **System Health** | Deployment status, scheduled jobs, CPU and RAM, Cloudflare edge traffic and database tables |
+| **Reports & Errors** | Problem reports, error logs and import diagnostics |
+| **Users & Access** | Account lookup, user actions, content admin roles and email blocks |
+| **AI Connections** | Connector settings, approval requests and directory reviewer accounts |
+| **Usage** | Account totals, onboarding metrics and Smart Tips |
+| **Maintenance & Backups** | Off-site backups, maintenance mode, key rotation and site-wide switches |
 
 ### What admins can see
 
@@ -1030,7 +1039,7 @@ Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon
 - **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
 - Per-user metadata: email, name, join date, last login, record counts, admin badge
 - Searchable and paginated user list, sorted by last active
-- **Problem Reports** — triage, resolve, reopen or delete incoming reports. Choose **Open private details** on a report with consented material to see its workflow information, preview extracted text or download original documents. **Delete sensitive material** erases the diagnostics and attachments together. Retrieval is audited. Email notices contain the report number and a link to Admin. The daily digest counts open reports.
+- **Problem Reports** — triage, resolve, reopen or delete incoming reports. Choose **Open private details** on a report with consented material to see its workflow information, preview extracted text or download original documents. **Delete sensitive material** erases the diagnostics and attachments together. Retrieval is audited. Email notices contain the report number and a link to **Reports & Errors**. The daily digest counts open reports.
 
 ![Investigating a private import report in Admin](screenshots/admin-private-report-light-mobile.png)
 
@@ -1481,6 +1490,8 @@ Spins up a temporary backend + frontend with seeded sample data, runs all Playwr
 ---
 
 ### Project Structure
+
+`frontend/src/scaffold/components/SectionNavigation.tsx` provides the category list, desktop sidebar and hash navigation used by Settings, Site Admin and Content Admin.
 
 Problem reporting uses `frontend/src/scaffold/components/ReportProblem.tsx`, `backend/scaffold/routers/reports.py` and `backend/scaffold/sensitive_reports.py`. Browser Admin and the admin MCP share the support service. The [architecture notes](docs/problem-reporting.md) cover encryption, permissions, audit and lifecycle.
 

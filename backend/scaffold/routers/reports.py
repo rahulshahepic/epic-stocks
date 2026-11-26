@@ -239,9 +239,9 @@ def _notify_admins(report: UserReport) -> None:
         if not email_configured():
             return
         base = app_url()
-        text = f"Problem report #{report.id} is available in Admin → Reports."
+        text = f"Problem report #{report.id} is available in Site Admin → Reports & Errors."
         if base:
-            text += f"\n\n{base}/admin"
+            text += f"\n\n{base}/admin#support"
         for email in get_admin_emails():
             send_email(email, "Epic Stocks: new problem report", text)
     except Exception:

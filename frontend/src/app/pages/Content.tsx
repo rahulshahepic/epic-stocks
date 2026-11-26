@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type {
   ContentBlob,
@@ -16,8 +16,15 @@ import { GRANT_TYPE_NAMES, type GrantTypeName } from '../grantTypes.ts'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { resetContentCache } from '../hooks/useContent.ts'
 import ModalPortal from '../../scaffold/components/ModalPortal.tsx'
+import { SectionNavigation } from '../../scaffold/components/SectionNavigation.tsx'
 
-type Tab = 'templates' | 'variants' | 'rates' | 'refinances' | 'settings'
+const categories = [
+  { hash: '#templates', label: 'Grant Templates', description: 'Default vesting, exercise and loan due dates by grant year and type' },
+  { hash: '#variants', label: 'Bonus Vesting Variants', description: 'The A, B and C vesting schedules for the 2020 Bonus grant' },
+  { hash: '#rates', label: 'Loan Rates', description: 'Annual interest rates for purchase, tax and interest loans' },
+  { hash: '#refinances', label: 'Loan Refinance Chains', description: 'Refinance dates, rates and due dates for purchase and tax loans' },
+  { hash: '#settings', label: 'Program Settings', description: 'Fallback tax rates, the down-payment minimum and flexible loan payoff' },
+]
 type WrapFn = (fn: () => Promise<unknown>, successMsg: string) => Promise<void>
 type Mode = 'add' | 'edit'
 
@@ -132,7 +139,8 @@ function RowCount({ n, noun }: { n: number; noun: string }) {
 
 export default function Content() {
   const me = useMe()
-  const [tab, setTab] = useState<Tab>('templates')
+  const { hash } = useLocation()
+  const active = categories.find(category => category.hash === hash)
   const [blob, setBlob] = useState<ContentBlob | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -156,7 +164,9 @@ export default function Content() {
     return <Navigate to="/" replace />
   }
   if (!blob) {
-    return <p className="text-xs text-cs-text-2">Loading content…</p>
+    return error
+      ? <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>
+      : <p role="status" className="text-xs text-cs-text-2">Loading content…</p>
   }
 
   async function wrap(fn: () => Promise<unknown>, successMsg: string) {
@@ -175,31 +185,22 @@ export default function Content() {
   }
 
   return (
-    <div className="space-y-4 text-cs-text">
-      <div>
-        <h2 className="text-sm font-semibold text-cs-text">Grant-program content</h2>
-        <p className="text-xs text-cs-text-2">
-          Edits here take effect immediately: they are the starting schedule for new grants.
-        </p>
-      </div>
+    <SectionNavigation
+      title="Content Admin"
+      categories={categories}
+      active={active}
+    >
+      <h2 className="text-base font-semibold text-cs-text">{active?.label}</h2>
+      <p className="text-xs text-cs-text-2">Saved changes take effect immediately.</p>
+      {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {notice && <p role="status" className="text-xs text-green-700 dark:text-green-400">{notice}</p>}
 
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-      {notice && <p className="text-xs text-green-700 dark:text-green-400">{notice}</p>}
-
-      <nav className="flex flex-wrap gap-1 border-b border-cs-border pb-2 ">
-        <TabButton active={tab === 'templates'} label="Grant Templates" onClick={() => setTab('templates')} />
-        <TabButton active={tab === 'variants'} label="Bonus Variants" onClick={() => setTab('variants')} />
-        <TabButton active={tab === 'rates'} label="Loan Rates" onClick={() => setTab('rates')} />
-        <TabButton active={tab === 'refinances'} label="Refinance Chains" onClick={() => setTab('refinances')} />
-        <TabButton active={tab === 'settings'} label="Program Settings" onClick={() => setTab('settings')} />
-      </nav>
-
-      {tab === 'templates' && <TemplatesTab blob={blob} wrap={wrap} busy={busy} />}
-      {tab === 'variants' && <VariantsTab blob={blob} wrap={wrap} busy={busy} />}
-      {tab === 'rates' && <RatesTab blob={blob} wrap={wrap} busy={busy} />}
-      {tab === 'refinances' && <RefinancesTab blob={blob} wrap={wrap} busy={busy} />}
-      {tab === 'settings' && <SettingsTab blob={blob} wrap={wrap} busy={busy} />}
-    </div>
+      {active?.hash === '#templates' && <TemplatesTab blob={blob} wrap={wrap} busy={busy} />}
+      {active?.hash === '#variants' && <VariantsTab blob={blob} wrap={wrap} busy={busy} />}
+      {active?.hash === '#rates' && <RatesTab blob={blob} wrap={wrap} busy={busy} />}
+      {active?.hash === '#refinances' && <RefinancesTab blob={blob} wrap={wrap} busy={busy} />}
+      {active?.hash === '#settings' && <SettingsTab blob={blob} wrap={wrap} busy={busy} />}
+    </SectionNavigation>
   )
 }
 
@@ -717,7 +718,7 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
       <div className="col-span-full rounded-md border border-cs-border p-3 text-[11px] text-cs-text-2 ">
         <span className="font-medium text-cs-text-2 ">Derived price years: </span>
         <span className="font-mono">{form.price_years_start}</span>–<span className="font-mono">{form.price_years_end}</span>
-        {' '}(from the Grant Templates and Loan Rates tabs; updates automatically).
+        {' '}(from Grant Templates and Loan Rates; updates automatically).
       </div>
 
       <div className="col-span-full rounded-md border border-cs-border p-3 text-xs ">

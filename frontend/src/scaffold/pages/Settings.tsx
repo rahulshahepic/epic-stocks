@@ -1,6 +1,6 @@
 import { measurementEvent } from '../onboarding.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
@@ -13,6 +13,7 @@ import { Card } from '../components/ui/Card.tsx'
 import StagingSeedPanel from '../../app/components/StagingSeedPanel.tsx'
 import { useMe } from '../hooks/useMe.ts'
 import { AiConnectionsSection } from '../components/AiConnectionsSection.tsx'
+import { SectionNavigation } from '../components/SectionNavigation.tsx'
 
 export default function Settings() {
   const config = useConfig()
@@ -24,9 +25,6 @@ export default function Settings() {
   const { theme, setTheme } = useTheme()
   const { settingsSections } = useAppContext()
   const { hash } = useLocation()
-  const headingRef = useRef<HTMLHeadingElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const previousHash = useRef(hash)
   const notificationAvailable = !config?.staging_demo && (!!config?.vapid_public_key || pushSupported || !!config?.email_notifications_available)
   const categories = [
     { hash: '#ai-connections', label: 'AI Connections', description: 'Connect Epic Stocks to ChatGPT, Claude or another assistant', available: !!config?.ai_connections },
@@ -40,16 +38,6 @@ export default function Settings() {
   const active = categories.find(category => category.hash === categoryHash)
 
   const activeHash = active?.hash
-
-  useEffect(() => {
-    if (activeHash) {
-      panelRef.current?.focus({ preventScroll: true })
-    } else if (previousHash.current !== hash) {
-      headingRef.current?.focus({ preventScroll: true })
-    }
-    if (activeHash || previousHash.current !== hash) window.scrollTo(0, 0)
-    previousHash.current = hash
-  }, [activeHash, hash])
 
   const [emailEnabled, setEmailEnabled] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
@@ -122,11 +110,11 @@ export default function Settings() {
   ]
 
   return (
-    <SettingsNavigation
+    <SectionNavigation
+      title="Settings"
       categories={categories}
       active={active}
-      headingRef={headingRef}
-      panelRef={panelRef}
+      showBuildVersion
       indexContent={config?.staging_demo && !me?.reviewer_account && <StagingSeedPanel currentScenario={me?.staging_account?.scenario} />}
     >
       {activeHash === '#appearance' && <Card as="section" pad="md">
@@ -314,7 +302,7 @@ export default function Settings() {
       {activeHash === '#sharing' && <SharingSection />}
 
       {activeHash === '#account' && <AccountSettings epicMode={Boolean(config?.epic_mode)} />}
-    </SettingsNavigation>
+    </SectionNavigation>
   )
 }
 
@@ -449,61 +437,6 @@ function AccountSettings({ epicMode }: { epicMode: boolean }) {
         </div>
       </div>
     </Card>
-  )
-}
-
-type SettingsCategory = { hash: string; label: string; description: string }
-
-function SettingsNavigation({
-  categories, active, headingRef, panelRef, indexContent, children,
-}: {
-  categories: SettingsCategory[]
-  active?: SettingsCategory
-  headingRef: React.RefObject<HTMLHeadingElement | null>
-  panelRef: React.RefObject<HTMLDivElement | null>
-  indexContent: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="space-y-4">
-      <h1 ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-cs-text outline-none!">Settings</h1>
-      {!active && indexContent}
-      <div className={active ? 'md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-5' : 'max-w-xl'}>
-        <nav aria-label="Settings categories" className={active ? 'hidden md:sticky md:top-28 md:block' : ''}>
-          <Card pad="none" className="divide-y divide-cs-border overflow-hidden">
-            {categories.map(category => (
-              <Link
-                key={category.hash}
-                to={`/settings${category.hash}`}
-                aria-current={active?.hash === category.hash ? 'location' : undefined}
-                className={`flex min-h-14 items-center justify-between gap-3 px-4 py-2.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cs-brand ${active?.hash === category.hash ? 'bg-cs-brand-subtle' : 'hover:bg-cs-raised'}`}
-              >
-                <span>
-                  <span className="block text-sm font-semibold text-cs-text">{category.label}</span>
-                  <span className="mt-0.5 block text-xs text-cs-text-2">{category.description}</span>
-                </span>
-                <span aria-hidden="true" className="text-cs-muted">›</span>
-              </Link>
-            ))}
-          </Card>
-        </nav>
-
-        {active && <div className="min-w-0 space-y-2">
-          <Link to="/settings" className="inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-cs-brand dark:text-rose-300 md:hidden">
-            <span aria-hidden="true">‹</span> Back to Settings
-          </Link>
-          <div ref={panelRef} tabIndex={-1} role="region" aria-label={active.label} className="min-w-0 space-y-4 outline-none!">
-            {children}
-          </div>
-        </div>}
-      </div>
-
-      {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-cs-text-2">
-          {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
-        </p>
-      )}
-    </div>
   )
 }
 

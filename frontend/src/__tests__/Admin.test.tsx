@@ -102,8 +102,8 @@ const DB_TABLES = [
   { table_name: 'users', size_bytes: 65536, row_estimate: 3 },
 ]
 
-function renderPage() {
-  return render(<AppProvider><MemoryRouter><Admin /></MemoryRouter></AppProvider>)
+function renderPage(hash = '') {
+  return render(<AppProvider><MemoryRouter initialEntries={[`/admin${hash}`]}><Admin /></MemoryRouter></AppProvider>)
 }
 
 describe('Admin', () => {
@@ -128,7 +128,7 @@ describe('Admin', () => {
             : job),
       },
     })
-    renderPage()
+    renderPage('#health')
 
     expect(await screen.findByRole('status')).toHaveTextContent('Job failed; retrying')
     expect(screen.getByText('Admin digest')).toBeInTheDocument()
@@ -148,7 +148,7 @@ describe('Admin', () => {
         records: [{ action: 'block', count: 1200 }, { action: 'managed_challenge', count: 34 }],
       },
     })
-    renderPage()
+    renderPage('#health')
 
     expect(await screen.findByText('Blocked')).toBeInTheDocument()
     expect(screen.getByText('Managed challenge')).toBeInTheDocument()
@@ -158,7 +158,7 @@ describe('Admin', () => {
 
   it('says why the Cloudflare summary is unavailable', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
     expect(await screen.findByText(/Set DIAGNOSTICS_CF_ZONE_ID/)).toBeInTheDocument()
   })
 
@@ -167,13 +167,13 @@ describe('Admin', () => {
       '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [],
       '/api/admin/edge-summary': { ...EDGE_UNCONFIGURED, reason: 'denied' },
     })
-    renderPage()
+    renderPage('#health')
     expect(await screen.findByText(/Cloudflare refused the token/)).toBeInTheDocument()
   })
 
   it('renders stats overview', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#usage')
 
     await waitFor(() => {
       expect(screen.getByText('5')).toBeInTheDocument()  // total users
@@ -185,7 +185,7 @@ describe('Admin', () => {
 
   it('renders user list', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByText('admin@test.com')).toBeInTheDocument()
@@ -198,7 +198,7 @@ describe('Admin', () => {
       '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE,
       '/api/admin/blocked': [{ id: 1, email: 'bad@evil.com', reason: 'Spam', blocked_at: '2025-01-01T00:00:00' }],
     })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByText('bad@evil.com')).toBeInTheDocument()
@@ -209,7 +209,7 @@ describe('Admin', () => {
 
   it('shows no blocked emails message when empty', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByText('No blocked emails.')).toBeInTheDocument()
@@ -229,7 +229,7 @@ describe('Admin', () => {
 
   it('has block email form', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('email@example.com')).toBeInTheDocument()
@@ -240,7 +240,7 @@ describe('Admin', () => {
 
   it('shows user record counts', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByText(/5 grants · 3 loans · 2 prices/)).toBeInTheDocument()
@@ -249,7 +249,7 @@ describe('Admin', () => {
 
   it('delete requires confirmation click in user detail card', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     // Click the non-admin user row to open the detail card
@@ -262,14 +262,9 @@ describe('Admin', () => {
 
   it('shows admin badge and hides delete button for admin users', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/1/detail': USER_DETAIL_ADMIN })
-    renderPage()
+    renderPage('#users')
 
-    await waitFor(() => {
-      // Admin badge is a span inside the user row (distinct from the page heading)
-      const badges = screen.getAllByText('Admin')
-      // Page heading "Admin" + badge = 2
-      expect(badges.length).toBeGreaterThanOrEqual(2)
-    })
+    expect(await screen.findByText('Admin', { selector: 'span' })).toBeInTheDocument()
 
     // Click the admin user row to open the detail card
     await userEvent.click(screen.getByText('admin@test.com'))
@@ -280,7 +275,7 @@ describe('Admin', () => {
 
   it('has a search input field', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search by email or name...')).toBeInTheDocument()
@@ -289,7 +284,7 @@ describe('Admin', () => {
 
   it('renders test notification modal from user detail card', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -303,7 +298,7 @@ describe('Admin', () => {
 
   it('Notify button opens modal scoped to that user', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -317,7 +312,7 @@ describe('Admin', () => {
 
   it('selecting a template pre-fills title and body', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -335,7 +330,7 @@ describe('Admin', () => {
 
   it('each event type template uses correct content', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -355,7 +350,7 @@ describe('Admin', () => {
 
   it('editing title/body resets template to custom', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -385,7 +380,7 @@ describe('Admin', () => {
       if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
       return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
-    renderPage()
+    renderPage('#users')
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
     await userEvent.click(screen.getByText('user@test.com'))
@@ -406,16 +401,16 @@ describe('Admin', () => {
 
   it('renders System Health section', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
-      expect(screen.getByText('System Health')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'System Health', level: 3 })).toBeInTheDocument()
     })
   })
 
   it('shows current CPU and RAM percentages from stats', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText('42%')).toBeInTheDocument()  // CPU
@@ -425,7 +420,7 @@ describe('Admin', () => {
 
   it('shows dashes when no metrics collected yet', async () => {
     mockFetch({ '/api/admin/stats': STATS_NO_METRICS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
@@ -439,7 +434,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/metrics': METRICS,
     })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText('CPU %')).toBeInTheDocument()
@@ -450,7 +445,7 @@ describe('Admin', () => {
 
   it('shows collecting message when not enough data', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       const collecting = screen.getAllByText('collecting…')
@@ -460,7 +455,7 @@ describe('Admin', () => {
 
   it('renders time window toggle buttons', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '24h' })).toBeInTheDocument()
@@ -472,7 +467,7 @@ describe('Admin', () => {
 
   it('shows GB breakdown for RAM', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       // 2048 MB / 1024 = 2.0 GB, 8192 MB / 1024 = 8.0 GB
@@ -486,7 +481,7 @@ describe('Admin', () => {
 
   it('renders Database Tables section', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText('Database Tables')).toBeInTheDocument()
@@ -500,7 +495,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/db-tables': [],
     })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText(/only available on PostgreSQL/)).toBeInTheDocument()
@@ -514,7 +509,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/db-tables': DB_TABLES,
     })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText('error_logs')).toBeInTheDocument()
@@ -530,7 +525,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/db-tables': DB_TABLES,
     })
-    renderPage()
+    renderPage('#health')
 
     await waitFor(() => {
       expect(screen.getByText(/PostgreSQL baseline/)).toBeInTheDocument()
@@ -557,7 +552,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/tips-report': TIPS_REPORT,
     })
-    renderPage()
+    renderPage('#usage')
 
     await waitFor(() => {
       expect(screen.getByText('Smart Tips')).toBeInTheDocument()
@@ -575,7 +570,7 @@ describe('Admin', () => {
       '/api/admin/blocked': [],
       '/api/admin/tips-report': { unique_users_accepted: 0, total_estimated_savings: 0, by_type: [] },
     })
-    renderPage()
+    renderPage('#usage')
 
     await waitFor(() => {
       expect(screen.getByText('Smart Tips')).toBeInTheDocument()

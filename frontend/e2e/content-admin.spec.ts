@@ -27,6 +27,7 @@ test.describe('Content admin role', () => {
     // Admin logs in, opens user detail, promotes editor
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Site Admin')
+    await page.getByRole('link', { name: /^Users & Access/ }).click()
     await page.getByPlaceholder('Search by email or name...').fill(editorEmail)
     await expect(page.getByText(editorEmail).first()).toBeVisible()
     await page.getByText(editorEmail).first().click()
@@ -45,10 +46,10 @@ test.describe('Content admin role', () => {
     await loginAs(editorPage, editorEmail, 'Editor')
     // Content lives in the responsive More menu at mobile widths.
     await navigateTo(editorPage, 'Content Admin')
-    await expect(editorPage.getByText('Grant-program content')).toBeVisible()
+    await expect(editorPage.getByRole('heading', { name: 'Content Admin', exact: true })).toBeVisible()
 
     // Change flexible-payoff toggle and save
-    await editorPage.getByRole('button', { name: 'Program Settings' }).click()
+    await editorPage.getByRole('link', { name: /^Program Settings/ }).click()
     await editorPage.getByLabel(/Flexible loan-payoff methods/).check()
     await editorPage.getByRole('button', { name: 'Save settings' }).click()
     await expect(editorPage.getByText('Program settings saved')).toBeVisible()

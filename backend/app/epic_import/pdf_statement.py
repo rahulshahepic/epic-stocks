@@ -182,5 +182,22 @@ def parse_statement_lines(lines: list[str]) -> tuple[Statement, list[Finding]]:
     return st, findings
 
 
+def repair_statement_lines(lines: list[str]) -> list[str]:
+    """Omit the account and employee header between the title and the loan table."""
+    result = []
+    in_header = False
+    for raw in lines:
+        line = raw.strip()
+        if _HEADER_DATE.match(line):
+            in_header = True
+        elif in_header:
+            if not (_TOTAL_PRINCIPAL.match(line) or _ROW.match(line)
+                    or line.lower().startswith(_BOILERPLATE)):
+                continue
+            in_header = False
+        result.append(raw)
+    return result
+
+
 def parse_statement_pdf(pdf_bytes: bytes) -> tuple[Statement, list[Finding]]:
     return parse_statement_lines(extract_lines(pdf_bytes))

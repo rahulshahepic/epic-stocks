@@ -772,6 +772,9 @@ def test_the_prompt_carries_what_an_assistant_needs(skeleton, parsed, drafted):
     assert "2021 Bonus Shares" in prompt                # the source CSV text
     assert '"loan_type": "Purchase"' in prompt          # the output contract
     assert "Subtotal" in prompt
+    assert prompt.startswith("Note: the text below is pasted from my own financial documents.")
+    assert "900000001" not in prompt
+    assert "Test Employee" not in prompt
 
 
 def test_the_prompt_lists_what_actually_failed(skeleton, parsed):

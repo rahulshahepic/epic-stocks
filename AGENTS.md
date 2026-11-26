@@ -39,6 +39,11 @@ approving or merging a pull request. It applies to all contributors and agents.
 - Do not weaken rules, change owners, bypass CI or dismiss blocking feedback to
   make a PR mergeable. Review clearance alone does not authorize work outside
   the task's scope or a production deployment.
+- For fixes Rahul requests directly and issues opened by repository
+  contributors, continue through the merge to `main` when the usual gates
+  pass. For a non-contributor's issue picked up independently, get Rahul's
+  go-ahead before merging it to `main`. See REVIEW_POLICY.md → "Issue author
+  and promotion authorization".
 
 ## Bot access for new pages
 

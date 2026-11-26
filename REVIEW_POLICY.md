@@ -63,6 +63,22 @@ or a production deployment. Do not manufacture an approval,
 approve your own implementation in the same session, disable CI, dismiss genuine
 blocking feedback to force a merge, or push directly to protected branches.
 
+## Issue author and promotion authorization
+
+For fixes Rahul requests directly and issues opened by repository contributors,
+follow the staging-to-main process below without a separate go-ahead from Rahul.
+Use GitHub's author association on the original issue to verify contributor status.
+For this workflow, `OWNER`, `MEMBER`, `COLLABORATOR`, and `CONTRIBUTOR` qualify.
+A direct request from Rahul authorizes the usual merge process regardless of who
+opened the issue, subject to any explicit scope limits he sets.
+
+For a non-contributor's issue picked up independently, complete the fix and its
+staging review under the normal process. Get Rahul's go-ahead before merging
+a promotion PR that carries the fix. Apply the same hold when the author's
+contributor status cannot be verified. Record the hold in the promotion PR.
+An explicit hold from Rahul takes precedence in every case. The existing
+review, CI, staging deploy, and production approval requirements still apply.
+
 ## Promoting staging to main
 
 Merging a feature PR into `staging` is not the end of the job. Whoever merges it

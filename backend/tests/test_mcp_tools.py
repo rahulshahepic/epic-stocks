@@ -52,6 +52,9 @@ LOAN = {
 }
 
 
+FINANCIAL_NOTICE = "Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice."
+
+
 def seed(client) -> dict:
     """A small but complete account: two grants, four prices, a loan, a sale."""
     ids = {}
@@ -603,3 +606,41 @@ def test_empty_dashboard_guides_import_without_zero_valuation(client):
     assert "apply_changes" in data["next_step"]["message"]
     client.post("/api/grants", json=GRANT)
     assert Mcp(client).call("get_dashboard")["account_empty"] is False
+
+
+def test_financial_advice_notice_is_advertised_and_in_results(client):
+    register_user(client)
+    seed(client)
+    mcp = Mcp(client)
+    assert FINANCIAL_NOTICE in mcp.rpc("initialize")["result"]["instructions"]
+    financial_tools = {
+        "get_dashboard", "list_events", "list_grants", "list_loans", "list_prices",
+        "list_sales", "list_interest_checkpoints", "get_compensation",
+        "get_retirement_params", "show_equity", "refresh_equity_view", "show_retirement",
+        "refresh_retirement_view", "run_retirement_simulation", "compare_retirement_scenarios",
+        "estimate_sale", "get_tax_breakdown", "explain", "plan_life_events", "apply_changes",
+    }
+    advertised = {tool["name"]: tool["description"] for tool in mcp.list_tools()}
+    assert all(FINANCIAL_NOTICE in advertised[name] for name in financial_tools)
+    assert FINANCIAL_NOTICE not in advertised["get_account_context"]
+
+    calls = [
+        ("get_dashboard", {}),
+        ("explain", {"topic": "vesting"}),
+        ("show_equity", {}),
+        ("apply_changes", {"changes": [{
+            "kind": "price", "action": "create",
+            "values": {"effective_date": "2036-01-01", "price": 10},
+        }]}),
+    ]
+    for name, args in calls:
+        result = mcp.raw_call(name, **args)
+        assert not result.get("isError"), result
+        payload = json.loads(result["content"][0]["text"])
+        assert result["content"][-1] == {"type": "text", "text": FINANCIAL_NOTICE}
+        if name == "show_equity":
+            assert result["structuredContent"] == payload
+
+    for resource in mcp.rpc("resources/list")["result"]["resources"]:
+        html = mcp.rpc("resources/read", {"uri": resource["uri"]})["result"]["contents"][0]["text"]
+        assert FINANCIAL_NOTICE in html

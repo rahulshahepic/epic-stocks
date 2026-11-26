@@ -1,5 +1,9 @@
 # Anthropic reviewer guide
 
+A secondary personal tracker for Epic employee equity and stock loans. Enter or import your records and explore how different assumptions affect estimated outcomes. Epic Stocks cannot service, refinance, or repay loans.
+
+Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.
+
 Production server: **https://epic-stocks.com/mcp**. Authentication is required,
 OAuth with DCR and S256 PKCE; no API key/custom static header needed.
 Sign-in URL: **https://epic-stocks.com/reviewer-login**.

@@ -31,6 +31,7 @@ def _apply(ctx: ToolContext, args: dict):
 
 register(Tool(
     name="apply_changes", title="Add, correct or remove equity records", scope=EQUITY_WRITE,
+    financial_output=True,
     description=(
         "Record or correct the person's grants, loans, share prices, sales, loan payments and statement interest checkpoints. This only edits tracking records: it never executes a securities sale, pays a loan or moves money. Hypothetical events remain planning assumptions. Changes run in one "
         "all-or-nothing step. Call it first WITHOUT confirm: that previews — every change is "

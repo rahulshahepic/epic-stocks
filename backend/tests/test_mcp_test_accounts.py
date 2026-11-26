@@ -341,8 +341,8 @@ def test_expiry_and_reprovision_invalidate_import_even_when_ids_are_reused(stagi
 
 def test_notice_aware_widget_resource_versions_invalidate_cached_templates(staging):
     tools = {tool['name']: tool for tool in staging.list_tools()}
-    assert tools['show_equity']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/portfolio-v5.html'
-    assert tools['show_retirement']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/retirement-v8.html'
+    assert tools['show_equity']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/portfolio-v6.html'
+    assert tools['show_retirement']['_meta']['ui']['resourceUri'] == 'ui://epic-stocks/retirement-v9.html'
     # Previously advertised URIs remain readable while hosts refresh metadata.
     for uri in ('ui://epic-stocks/portfolio-v3.html', 'ui://epic-stocks/retirement-v4.html',
                 'ui://epic-stocks/portfolio-v4.html', 'ui://epic-stocks/retirement-v5.html',

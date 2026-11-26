@@ -72,8 +72,8 @@
     "evidence_kind": "local-simulation",
     "width": 1280,
     "height": 800,
-    "bytes": 51483,
-    "sha256": "606c54bb48d13be07aaad65ac02b794ecfa0435c13ddf54cbc803f4d79d91fce",
+    "bytes": 58794,
+    "sha256": "5f66e151c46e060ae1df422552462eb3ac1d009f213066a0c1c59fb87da7daa1",
     "actual_host_capture": false
   },
   {
@@ -82,9 +82,9 @@
     "purpose": "Local simulated host retirement widget; NOT actual ChatGPT or Claude",
     "evidence_kind": "local-simulation",
     "width": 1280,
-    "height": 1124,
-    "bytes": 82819,
-    "sha256": "bb94ef3300873138d87cbdc2e089aa0e7e21c33d55f0294ce40141e844adc296",
+    "height": 1153,
+    "bytes": 90301,
+    "sha256": "652ff11108735bf5fad36fed63cb4341d744414a6967c4c41848501b877528db",
     "actual_host_capture": false
   },
   {

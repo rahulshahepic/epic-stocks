@@ -167,7 +167,7 @@ def _run(ctx: ToolContext, args: dict):
 
 RETIREMENT_CONFIRM_PROPERTY = {
     "type": "string",
-    "description": "Omit to preview. After the user approves, send this token with the same inputs.",
+    "description": "Omit to preview. After the user approves, send this token with the same inputs within 30 minutes.",
 }
 
 

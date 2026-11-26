@@ -18,9 +18,10 @@ Nothing returns the document it just changed. A connection may hold comp:write
 without comp:read, and a write must not become a way to read.
 """
 from datetime import date
+from app.changes import confirmation
 from app.financial_literacy import MAX_PORTFOLIO_MILLIONS
 
-from scaffold.oauth.scopes import COMP_WRITE
+from scaffold.oauth.scopes import COMP_READ, COMP_WRITE
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .retirement_tools import RETIREMENT_CONFIRM_PROPERTY, apply_retirement_patch
 from .tools import Tool, ToolContext, object_schema, register
@@ -201,6 +202,7 @@ def _normalise(raw, existing: list) -> dict:
 
 def _add_compensation(ctx: ToolContext, args: dict):
     owner = _account(ctx, args)
+    ctx.db.refresh(owner, with_for_update=True)
     held = _held(owner)
 
     added, duplicates = [], 0
@@ -307,34 +309,47 @@ def _remove_compensation(ctx: ToolContext, args: dict):
         raise ValueError(f"That is more than {MAX_ENTRIES_PER_CALL} ids in one call")
     wanted = {str(i) for i in ids}
 
+    confirm = args.get("confirm")
+    ctx.db.refresh(owner, with_for_update=True)
     held = _held(owner)
-    kept = [e for e in held if not (isinstance(e, dict) and str(e.get("id")) in wanted)]
-    removed = len(held) - len(kept)
+    matched, kept = [], []
+    for entry in held:
+        if isinstance(entry, dict) and str(entry.get("id")) in wanted:
+            matched.append(entry)
+        else:
+            kept.append(entry)
+    missing = sorted(wanted - {str(entry.get("id")) for entry in matched})
+    token = confirmation(owner, ctx.db, {"kind": "remove_compensation", "ids": sorted(wanted)},
+                         matched, confirm)
+    if confirm is None:
+        preview_entries = matched if COMP_READ in ctx.connector.scopes else [
+            {"id": entry["id"]} for entry in matched
+        ]
+        ctx.db.rollback()
+        result = {"applied": False, "removed": 0, "would_remove": preview_entries, "not_found": missing}
+        if matched:
+            result["confirm"] = token
+            result["next_step"] = "Show the proposed deletions and ask for approval before calling again with this token."
+        return result
 
-    if removed:
-        owner.comp_entries = kept
-        ctx.db.commit()
+    if not matched:
+        ctx.db.rollback()
+        raise ValueError("No matching entries remain; preview again")
 
-    missing = sorted(
-        wanted - {str(e.get("id")) for e in held if isinstance(e, dict)}
-    )
-    return {
-        "removed": removed,
-        "entries_now": len(kept),
-        # Named rather than silently ignored: a stale id usually means the model
-        # is working from a copy of the list that has since changed.
-        "not_found": missing,
-    }
+    owner.comp_entries = kept
+    owner.change_confirmation_version += 1
+    ctx.db.commit()
+    return {"applied": True, "removed": len(matched), "entries_now": len(kept), "not_found": missing}
 
 
 register(Tool(
     name="remove_compensation",
     title="Delete salary or bonus entries",
     description=(
-        "Delete entries from the salary and bonus history by id. Get the ids "
-        "from get_compensation. Use this to correct a mistake — deleting a "
-        "salary entry changes every year after it, because each rate applies "
-        "until the next one replaces it."
+        "Preview deleting entries from the salary and bonus history by id. Get the ids "
+        "from get_compensation. Show the proposed deletions and obtain approval, then call "
+        "again with the same ids and the preview's confirm token. Deleting a salary entry "
+        "changes each year's salary until the next rate takes effect."
     ),
     input_schema=object_schema({
         "ids": {
@@ -343,12 +358,13 @@ register(Tool(
             "maxItems": MAX_ENTRIES_PER_CALL,
             "description": "Ids of the entries to delete, from get_compensation.",
         },
+        "confirm": RETIREMENT_CONFIRM_PROPERTY,
         "account": ACCOUNT_PROPERTY,
     }, required=["ids"]),
     scope=COMP_WRITE,
     handler=_remove_compensation,
     read_only=False,
-    idempotent=True,
+    idempotent=False,
     destructive=True,
 ))
 

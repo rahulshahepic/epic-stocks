@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
+import { SectionNavigation } from '../components/SectionNavigation.tsx'
 import { api } from '../../api.ts'
 import { NotifyModal } from './admin/NotifyModal.tsx'
 import { UserDetailModal } from './admin/UserDetailModal.tsx'
@@ -25,17 +27,18 @@ import type {
   SystemMetricPoint, DbTableInfo, TipsReport, TrialFunnelReport,
 } from '../../api.ts'
 
-/**
- * The admin console. Everything it shows is a panel in ./admin/, and each of
- * those owns its own working state — which row is expanded, what is typed in
- * its form, what request is in flight.
- *
- * What stays here is the data those panels display, because it arrives in one
- * Promise.all that also gates the "Loading..." screen below: e2e's navigateTo()
- * waits for that placeholder to appear and clear, so without it every read of a
- * Danger Zone button races the admin API calls with nothing to synchronise on.
- */
+const categories = [
+  { hash: '#health', label: 'System Health', description: 'Deployments, scheduled jobs, Cloudflare and database size' },
+  { hash: '#support', label: 'Reports & Errors', description: 'Problem reports, error logs and import diagnostics' },
+  { hash: '#users', label: 'Users & Access', description: 'Accounts, content admin roles and blocked emails' },
+  { hash: '#ai-connections', label: 'AI Connections', description: 'Connector settings, approval requests and directory reviewer accounts' },
+  { hash: '#usage', label: 'Usage', description: 'Account totals, onboarding metrics and Smart Tips' },
+  { hash: '#maintenance', label: 'Maintenance & Backups', description: 'Backups, maintenance mode, key rotation and site-wide switches' },
+]
+
 export default function Admin() {
+  const { hash } = useLocation()
+  const active = categories.find(category => category.hash === hash)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [totalUsers, setTotalUsers] = useState(0)
@@ -160,7 +163,7 @@ export default function Admin() {
   if (error && !stats) {
     return (
       <div className="space-y-6">
-        <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
+        <h1 className="text-lg font-semibold text-cs-text">Site Admin</h1>
         <p className="text-sm text-red-500">{error}</p>
       </div>
     )
@@ -168,56 +171,63 @@ export default function Admin() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
+      <SectionNavigation
+        title="Site Admin"
+        categories={categories}
+        active={active}
+        showBuildVersion
+        headerContent={<>
+          {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
+          {snapshotExists && <RotationBanner onRestored={() => { setSnapshotExists(false); setMaintenanceActive(false) }} />}
+        </>}
+      >
+        <h2 className="sr-only">{active?.label}</h2>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+        {active?.hash === '#health' && <>
+          <DeploymentHealth />
+          <SystemHealth stats={stats} metrics={metrics} metricHours={metricHours} onWindowChange={setMetricHours} />
+          <EdgeTraffic />
+          <DatabaseTables dbTables={dbTables} />
+        </>}
 
-      <DeploymentHealth />
-      <EdgeTraffic />
-      <Backups />
+        {active?.hash === '#support' && <>
+          <ReportsSection reports={reports} onReportsChanged={setReports} />
+          <ErrorLogSection errorLogs={errorLogs} onCleared={setErrorLogs} />
+          <ToolsSection />
+        </>}
 
-      <ToolsSection />
+        {active?.hash === '#users' && <>
+          <UsersSection users={users} totalUsers={totalUsers} searchInput={searchInput}
+            onSearchInput={setSearchInput} onOpenUser={openUserDetail} />
+          <EmailLookup onChanged={load} onError={setError} />
+          <BlockedEmails blocked={blocked} onChanged={load} onError={setError} />
+        </>}
 
-      {stats && <OverviewSection stats={stats} />}
+        {active?.hash === '#ai-connections' && <>
+          <AiConnections onError={setError} />
+          <Reviewers />
+        </>}
 
-      {tipsReport && <SmartTips tipsReport={tipsReport} />}
+        {active?.hash === '#usage' && <>
+          {stats && <OverviewSection stats={stats} />}
+          {funnel && <TrialFunnel funnel={funnel} />}
+          {tipsReport && <SmartTips tipsReport={tipsReport} />}
+        </>}
 
-      {funnel && <TrialFunnel funnel={funnel} />}
+        {active?.hash === '#maintenance' && <Backups />}
 
-      <SystemHealth stats={stats} metrics={metrics} metricHours={metricHours} onWindowChange={setMetricHours} />
+        {/* Keep the rotation stream and its controls intact across category changes. */}
+        <div hidden={active?.hash !== '#maintenance'}>
+          <DangerZone
+            maintenanceActive={maintenanceActive} setMaintenanceActive={setMaintenanceActive}
+            epicModeActive={epicModeActive} setEpicModeActive={setEpicModeActive}
+            flexiblePayoffActive={flexiblePayoffActive} setFlexiblePayoffActive={setFlexiblePayoffActive}
+            onSnapshotChanged={setSnapshotExists} onError={setError}
+          />
+        </div>
+      </SectionNavigation>
 
-      <DatabaseTables dbTables={dbTables} />
-
-      <EmailLookup onChanged={load} onError={setError} />
-
-      <UsersSection users={users} totalUsers={totalUsers} searchInput={searchInput}
-        onSearchInput={setSearchInput} onOpenUser={openUserDetail} />
-
-      <BlockedEmails blocked={blocked} onChanged={load} onError={setError} />
-
-      <AiConnections onError={setError} />
-      <Reviewers />
-
-      <ReportsSection reports={reports} onReportsChanged={setReports} />
-
-      <ErrorLogSection errorLogs={errorLogs} onCleared={setErrorLogs} />
-
-      {snapshotExists && <RotationBanner onRestored={() => { setSnapshotExists(false); setMaintenanceActive(false) }} />}
-
-      <DangerZone
-        maintenanceActive={maintenanceActive} setMaintenanceActive={setMaintenanceActive}
-        epicModeActive={epicModeActive} setEpicModeActive={setEpicModeActive}
-        flexiblePayoffActive={flexiblePayoffActive} setFlexiblePayoffActive={setFlexiblePayoffActive}
-        onSnapshotChanged={setSnapshotExists} onError={setError}
-      />
-
-      {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-cs-text-2">
-          {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
-        </p>
-      )}
-
-      {selectedUser && (
+      {active?.hash === '#users' && selectedUser && (
         <UserDetailModal
           user={selectedUser}
           onClose={() => setSelectedUser(null)}
@@ -227,7 +237,7 @@ export default function Admin() {
         />
       )}
 
-      {notifyModal && (
+      {active?.hash === '#users' && notifyModal && (
         <NotifyModal
           user={notifyModal}
           onClose={() => setNotifyModal(null)}

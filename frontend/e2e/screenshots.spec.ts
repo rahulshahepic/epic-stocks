@@ -384,7 +384,7 @@ test.describe('Screenshots', () => {
   for (const theme of ['light', 'dark'] as const) test(`trial metrics - ${theme} - mobile`, async ({page}) => {
     await authedPage(page, MOBILE, theme)
     await page.request.post(`${BASE}/api/trial/analyze`, {multipart: {share_csv: {name: 'fictional.csv', mimeType: 'text/csv', buffer: readFileSync(TRIAL_CSV)}}})
-    await page.goto(`${BASE}/admin`)
+    await page.goto('/admin#usage')
     const panel = page.getByRole('heading', {name: 'Onboarding attempts', exact: true}).locator('..')
     await expect(panel.getByText('Import attempts', {exact: true})).toBeVisible()
     await page.locator('.sticky, nav[aria-label="Main navigation"], nav[aria-label="Mobile navigation"]').evaluateAll(nodes => nodes.forEach(node => node.remove()))
@@ -411,7 +411,7 @@ test.describe('Screenshots', () => {
     test(`admin backups - ${theme} - mobile`, async ({ page }) => {
       await page.route('**/api/admin/backups', route => route.fulfill({ json: backupStatus }))
       await authedPage(page, MOBILE, theme)
-      await navigateTo(page, 'Site Admin')
+      await page.goto('/admin#maintenance')
       const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Backups', exact: true }) })
       await panel.getByRole('button', { name: 'Configure backups' }).click()
       await panel.scrollIntoViewIfNeeded()
@@ -429,7 +429,7 @@ test.describe('Screenshots', () => {
         record_limit_reached: false, cache_age_seconds: 0,
       } }))
       await authedPage(page, MOBILE, theme)
-      await navigateTo(page, 'Site Admin')
+      await page.goto('/admin#health')
       const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare edge', exact: true }) })
       await panel.getByText('Blocked').waitFor()
       await panel.scrollIntoViewIfNeeded()
@@ -440,7 +440,7 @@ test.describe('Screenshots', () => {
 
   test('admin AI plugin downloads - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Site Admin')
+    await page.goto('/admin#ai-connections')
     await page.waitForLoadState('networkidle')
     const heading = page.getByText('Admin MCP', { exact: true })
     await heading.scrollIntoViewIfNeeded()
@@ -671,7 +671,7 @@ test.describe('Screenshots', () => {
     await dialog.getByRole('button', { name: 'Send report' }).click()
     await expect(dialog.getByText('Thanks — that went straight to the maintainer.')).toBeVisible()
     await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: EMAIL, name: 'Test Admin' } })
-    await page.goto(`${BASE}/admin`)
+    await page.goto('/admin#support')
     await page.getByRole('button', { name: /private report with consented material/i }).first().click()
     await page.getByRole('button', { name: 'Open private details' }).click()
     await page.getByRole('button', { name: 'View text' }).click()
@@ -963,7 +963,7 @@ test.describe('Screenshots', () => {
 
   test('admin AI requests awaiting approval - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Site Admin')
+    await page.goto('/admin#ai-connections')
     await page.waitForLoadState('networkidle')
     const heading = page.getByRole('heading', { name: /Requests from AI assistants/ })
     await heading.evaluate(el => el.scrollIntoView({ block: 'start' }))
@@ -979,7 +979,7 @@ test.describe('Screenshots', () => {
     await page.request.post(`${REVIEW_TEST_BACKEND}/oauth/register`, {
       data: { client_name: 'Copilot', redirect_uris: ['https://copilot.microsoft.com/oauth/callback'] },
     })
-    await navigateTo(page, 'Site Admin')
+    await page.goto('/admin#ai-connections')
     await page.waitForLoadState('networkidle')
     const refused = page.getByText('Refused redirect addresses', { exact: true })
     await refused.scrollIntoViewIfNeeded()
@@ -1002,7 +1002,7 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await shoot(page, 'content-light-mobile', { fullPage: true })
+    await shoot(page, 'content-light-mobile')
   })
 
   test('content - dark - mobile', async ({ page }) => {
@@ -1010,12 +1010,12 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Content Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await shoot(page, 'content-dark-mobile', { fullPage: true })
+    await shoot(page, 'content-dark-mobile')
   })
 
   test('content - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
-    await navigateTo(page, 'Content Admin')
+    await page.goto('/content#templates')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-light-desktop', { fullPage: true })
@@ -1023,7 +1023,7 @@ test.describe('Screenshots', () => {
 
   test('content - dark - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'dark')
-    await navigateTo(page, 'Content Admin')
+    await page.goto('/content#templates')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-dark-desktop', { fullPage: true })
@@ -1294,7 +1294,7 @@ test.describe('Directory reviewer screenshots', () => {
 
   test('directory reviewer admin - light - mobile', async ({ page }) => {
     await authedPage(page, { width: 390, height: 844 }, 'light')
-    await page.goto('/admin')
+    await page.goto('/admin#ai-connections')
     const panel = page.getByRole('heading', { name: 'Directory reviewer accounts', exact: true }).locator('..')
     await expect(panel).toBeVisible()
     await panel.screenshot({ path: `${OUT}/directory-reviewer-admin-light-mobile.png` })

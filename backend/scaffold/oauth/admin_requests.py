@@ -612,7 +612,7 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
     db.commit()
     minutes = int(APPROVAL_CODE_TTL.total_seconds() // 60)
     from scaffold.email_sender import app_url
-    link = f"{app_url()}/admin" if app_url() else "Admin → AI Connections"
+    link = f"{app_url()}/admin#ai-connections" if app_url() else "Site Admin → AI Connections"
     try:
         channels = deliver(
             db, admin, "Epic Stocks admin approval",

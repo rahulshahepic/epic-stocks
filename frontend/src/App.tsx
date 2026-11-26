@@ -37,8 +37,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const intent = ['/connect-ai', '/import', '/retirement', '/comp-calculator'].includes(location.pathname) ? `?intent=${encodeURIComponent(location.pathname)}` : ''
   const annualSummary = location.hash === '#annual-summary' && ['/', '/events'].includes(location.pathname)
-  const planning = location.pathname === '/planning'
-  const signIn = planning ? `/login?next=${encodeURIComponent(location.pathname + location.search)}` : annualSummary ? `/login?next=${encodeURIComponent('/events#annual-summary')}` : `/login${intent}`
+  const adminPage = ['/admin', '/content'].includes(location.pathname)
+  const next = adminPage
+    ? location.pathname + location.search + location.hash
+    : location.pathname === '/planning'
+      ? location.pathname + location.search
+      : annualSummary ? '/events#annual-summary' : undefined
+  const signIn = next ? `/login?next=${encodeURIComponent(next)}` : `/login${intent}`
   return isLoggedIn() ? <>{children}</> : <Navigate to={signIn} replace />
 }
 

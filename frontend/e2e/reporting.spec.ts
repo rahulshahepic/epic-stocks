@@ -23,7 +23,7 @@ test('failed import report discloses options, sends only selected files and supp
 
   const login = await page.request.post('/api/auth/test-login', { data: { email: 'admin@e2e.test', name: 'Test Admin' } })
   expect(login.ok()).toBeTruthy()
-  await page.goto('/admin')
+  await page.goto('/admin#support')
   const row = page.getByRole('button', { name: /private report with consented material/i }).first()
   await row.click()
   await page.getByRole('button', { name: 'Open private details' }).click()

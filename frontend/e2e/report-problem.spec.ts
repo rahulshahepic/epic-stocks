@@ -68,6 +68,7 @@ test.describe('Reporting a problem', () => {
 
     await loginAs(page, ADMIN_EMAIL, 'Admin')
     await navigateTo(page, 'Site Admin')
+    await page.getByRole('link', { name: /^Reports & Errors/ }).click()
 
     const report = page.getByText(marker)
     await expect(report).toBeVisible({ timeout: 15_000 })

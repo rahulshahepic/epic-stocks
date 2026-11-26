@@ -1,6 +1,6 @@
 {
   "name": "epic-stocks",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "A secondary personal tracker for Epic employee equity and stock loans. Enter or import your records and explore how different assumptions affect estimated outcomes. Epic Stocks cannot service, refinance, or repay loans. Epic Stocks provides recordkeeping and scenario estimates for information only. Its output is not professional financial, investment, legal, or tax advice.",
   "author": {
     "name": "rahulshahepic",
@@ -9,6 +9,8 @@
   "homepage": "https://epic-stocks.com/mcp-setup",
   "privacyPolicyUrl": "https://epic-stocks.com/privacy-policy",
   "supportUrl": "https://epic-stocks.com/support",
+  "documentationUrl": "https://epic-stocks.com/mcp-setup",
+  "termsOfServiceUrl": "https://epic-stocks.com/terms",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "license": "MIT",
   "keywords": [

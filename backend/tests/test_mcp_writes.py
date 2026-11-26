@@ -175,8 +175,15 @@ def test_what_was_written_reads_back_through_the_read_tool(mcp):
 def test_removing_an_entry_by_id(mcp, client):
     mcp.call("add_compensation", entries=[SALARY, RAISE])
     victim = held(client)[0]["id"]
-    answer = mcp.call("remove_compensation", ids=[victim])
-    assert answer["removed"] == 1
+    preview = mcp.call("remove_compensation", ids=[victim])
+    assert preview["applied"] is False
+    assert [entry["id"] for entry in preview["would_remove"]] == [victim]
+    assert len(held(client)) == 2
+    other = held(client)[1]["id"]
+    assert "preview again" in mcp.error("remove_compensation", ids=[other], confirm=preview["confirm"])
+    answer = mcp.call("remove_compensation", ids=[victim], confirm=preview["confirm"])
+    assert answer["applied"] is True and answer["removed"] == 1
+    assert "preview again" in mcp.error("remove_compensation", ids=[victim], confirm=preview["confirm"])
     assert [e["id"] for e in held(client)] != [victim]
     assert len(held(client)) == 1
 
@@ -191,8 +198,60 @@ def test_a_stale_id_is_named_rather_than_silently_ignored(mcp):
 
 def test_removing_everything_leaves_an_empty_history(mcp, client):
     mcp.call("add_compensation", entries=[SALARY, RAISE, BONUS])
-    mcp.call("remove_compensation", ids=[e["id"] for e in held(client)])
+    ids = [e["id"] for e in held(client)]
+    preview = mcp.call("remove_compensation", ids=ids)
+    mcp.call("remove_compensation", ids=ids, confirm=preview["confirm"])
     assert held(client) == []
+
+
+def test_compensation_delete_confirmation_expires(mcp, client, monkeypatch):
+    from app import changes
+
+    mcp.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    issued = 1_800_000_000
+    monkeypatch.setattr(changes, "time", lambda: issued)
+    preview = mcp.call("remove_compensation", ids=ids)
+    monkeypatch.setattr(changes, "time", lambda: issued + changes.CONFIRMATION_TTL_SECONDS)
+    assert "expired" in mcp.error("remove_compensation", ids=ids, confirm=preview["confirm"])
+    assert len(held(client)) == 1
+
+
+def test_compensation_delete_confirmation_is_account_bound(client):
+    register_user(client, "first@example.test")
+    first = Mcp(client)
+    first.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    preview = first.call("remove_compensation", ids=ids)
+    register_user(client, "second@example.test")
+    second = Mcp(client)
+    second.call("add_compensation", entries=[SALARY])
+    assert [held(client)[0]["id"]] == ids
+    assert "preview again" in second.error("remove_compensation", ids=ids, confirm=preview["confirm"])
+    assert len(held(client)) == 1
+
+
+def test_compensation_delete_skips_entries_without_ids(client):
+    register_user(client)
+    writer = Mcp(client, scope="comp:write")
+    entries = [SALARY, {**BONUS, "id": None}]
+    assert client.put("/api/retirement/comp-entries", json={"entries": entries}).status_code == 200
+    preview = writer.call("remove_compensation", ids=["None"])
+    assert preview["would_remove"] == []
+    assert preview["not_found"] == ["None"]
+    assert "confirm" not in preview
+    assert held(client) == entries
+
+
+def test_compensation_delete_preview_respects_read_scope(client):
+    register_user(client)
+    user = Mcp(client)
+    user.call("add_compensation", entries=[SALARY])
+    ids = [held(client)[0]["id"]]
+    writer = Mcp(client, scope="comp:write")
+    preview = writer.call("remove_compensation", ids=ids)
+    assert preview["would_remove"] == [{"id": ids[0]}]
+    assert len(held(client)) == 1
 
 
 # ── retirement balances ─────────────────────────────────────────────────────

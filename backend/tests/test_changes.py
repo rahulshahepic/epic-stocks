@@ -157,3 +157,20 @@ def test_retirement_change_has_update_only_blob_semantics(extra):
     change = {"kind": "retirement_params", "action": "update", "values": {"defaultSpend": 205}, **extra}
     with pytest.raises(ChangeError, match="update without a row"):
         apply_changes(None, None, [change], retirement_only=True)
+
+
+def test_stale_confirmation_version_cannot_be_consumed_twice(db_session, client):
+    from app.changes import ChangeError, consume_confirmation
+    from scaffold.models import User
+
+    register_user(client)
+    owner = db_session.query(User).filter_by(email="test@example.com").one()
+
+    class StaleAccount:
+        id = owner.id
+        change_confirmation_version = owner.change_confirmation_version
+
+    consume_confirmation(owner, db_session)
+    db_session.commit()
+    with pytest.raises(ChangeError, match="already used"):
+        consume_confirmation(StaleAccount(), db_session)

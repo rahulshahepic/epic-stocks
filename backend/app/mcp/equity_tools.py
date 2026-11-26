@@ -56,7 +56,7 @@ register(Tool(
                 "note": {"type": "string", "description": "Where this came from, e.g. '2026 purchase agreement'."},
             }, "required": ["kind", "action"]},
         },
-        "confirm": {"type": "string", "description": "The token from the preview the person agreed to. Omit to preview."},
+        "confirm": {"type": "string", "description": "The token from the preview the person agreed to. Valid for 30 minutes. Omit to preview."},
         "account": ACCOUNT_PROPERTY,
     }, required=["changes"]),
     handler=_apply, read_only=False, idempotent=False, destructive=True,

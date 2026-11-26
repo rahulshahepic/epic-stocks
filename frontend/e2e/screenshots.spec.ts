@@ -1344,6 +1344,22 @@ test.describe('Public privacy screenshots', () => {
 })
 
 
+test.describe('Public terms screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+  for (const theme of ['light', 'dark'] as const) {
+    test(`public terms - ${theme} - mobile`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.setViewportSize(MOBILE)
+      await page.goto(`${BASE}/terms`)
+      await expect(page.getByRole('heading', { name: 'Epic Stocks Terms of Use', exact: true })).toBeVisible()
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: `${OUT}/public-terms-${theme}-mobile.png`, fullPage: true })
+    })
+  }
+})
+
+
 test.describe('Public support screenshots', () => {
   test.skip(!EMAIL, 'Run through screenshots/run.sh')
   for (const theme of ['light', 'dark'] as const) {

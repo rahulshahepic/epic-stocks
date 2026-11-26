@@ -23,6 +23,21 @@ def test_public_privacy_renderer_never_interprets_raw_html_or_script_links():
     assert '<li><strong>safe</strong></li>' in rendered
 
 
+def test_public_terms_are_readable_without_sign_in_or_javascript(client):
+    response = client.get('/terms')
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('text/html')
+    assert '<h1>Epic Stocks Terms of Use</h1>' in response.text
+    assert '<h2>Connecting an AI assistant</h2>' in response.text
+    assert 'https://epic-stocks.com/privacy-policy' in response.text
+    assert 'https://epic-stocks.com/support' in response.text
+    assert '<script' not in response.text
+    assert client.head('/terms').status_code == 200
+    metadata = client.get('/.well-known/oauth-protected-resource/mcp').json()
+    assert metadata['resource_tos_uri'] == metadata['resource_documentation'].removesuffix('/mcp-setup') + '/terms'
+    assert '<a href="/terms">Terms of Use</a>' in client.get('/mcp-setup').text
+
+
 def test_public_support_is_readable_without_sign_in(client):
     response = client.get('/support')
     assert response.status_code == 200

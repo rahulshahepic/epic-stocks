@@ -42,7 +42,12 @@ def package_files(platform: str, name: str, description: str, url: str) -> dict[
         interface = manifest["extensions"]["com.openai"]["interface"]
         display_name = description.split(" — ")[0]
         interface["displayName"] = display_name if len(display_name) <= 30 else "Epic Stocks Site Admin"
-        interface.update(websiteURL=origin, supportURL=f"{origin}/support", privacyPolicyURL=f"{origin}/privacy-policy")
+        interface.update(
+            websiteURL=origin,
+            supportURL=f"{origin}/support",
+            privacyPolicyURL=f"{origin}/privacy-policy",
+            termsOfServiceURL=f"{origin}/terms",
+        )
         if url.endswith("/admin-mcp"):
             interface["shortDescription"] = "Read-only site diagnostics"
             interface["longDescription"] = (

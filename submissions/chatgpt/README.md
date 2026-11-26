@@ -11,13 +11,13 @@ uses a plugin ZIP; older Apps SDK submission links redirect there.
    support/review contact; no placeholder identity should be submitted.
 3. Approve production deployment only after independent review, CI and staging
    acceptance pass. Complete the narrow edge/documentation fixes and validate
-   privacy/terms URLs. Adopt/publish terms after reviewing the supplied draft.
+   privacy/terms URLs. Review [the terms](../../TERMS.md) before production deployment.
 4. Provision independent OpenAI reviewers using [secure setup](../shared/reviewer-setup.md).
 5. Run `python scripts/package_submissions.py`. From the generated artifacts,
    upload **chatgpt-plugin.zip**, not the documentation-only materials ZIP.
    [Candidate source](plugin/plugin.json) includes listing fields, 5 positive/3
-   negative review cases and an onboarding skill. Supply the adopted terms URL
-   and the actual-host demo recording URL before submission. Replace developerName if your
+   negative review cases and an onboarding skill. Verify the terms URL and
+   supply the actual-host demo recording URL before submission. Replace developerName if your
    verified identity differs from the GitHub handle.
 6. In the draft, complete the domain challenge, connect MCP using DCR/OAuth,
    resolve required scans, and use [form answers](form-answers.md).

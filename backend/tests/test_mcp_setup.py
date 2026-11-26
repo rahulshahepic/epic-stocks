@@ -80,6 +80,8 @@ def test_staging_public_packages_target_staging_only(client, platform):
         config = json.loads(bundle.read('mcp.json' if platform == 'chatgpt' else '.mcp.json'))
         assert config['mcpServers']['epic-stocks-staging-test']['url'] == 'https://staging.epic-stocks.com/mcp'
         manifest = json.loads(bundle.read('plugin.json' if platform == 'chatgpt' else '.claude-plugin/plugin.json'))
+        if platform == 'chatgpt':
+            assert manifest['extensions']['com.openai']['interface']['termsOfServiceURL'] == 'https://staging.epic-stocks.com/terms'
         assert 'fictional' in manifest['description']
         assert 'secret' not in json.dumps(config).lower()
 

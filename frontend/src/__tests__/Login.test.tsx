@@ -119,6 +119,7 @@ describe('Login page', () => {
   it('shows privacy policy link', () => {
     renderLogin()
     expect(screen.getByRole('link', { name: /privacy policy/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /terms of use/i })).toHaveAttribute('href', '/terms')
   })
 
   it('shows data privacy blurb', () => {

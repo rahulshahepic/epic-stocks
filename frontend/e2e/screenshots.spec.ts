@@ -333,6 +333,7 @@ test.describe('Screenshots', () => {
 
   test('dashboard - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
+    await expect(page.getByRole('contentinfo').getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', '/terms')
     await shoot(page, 'dashboard-light-mobile')
   })
 

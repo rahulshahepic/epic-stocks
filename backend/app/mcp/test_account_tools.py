@@ -62,9 +62,12 @@ def _seed(db, owner, scenario):
                     ('grant_year', 'grant_type', 'loan_type', 'loan_year', 'amount', 'interest_rate', 'due_date', 'disbursed_on', 'loan_number')})
         db.add(loan)
         db.flush()
-        if row.loan_year == AS_OF.year:
-            db.add(LoanInterestCheckpoint(user_id=owner.id, loan_id=loan.id, statement_date=AS_OF,
-                                         accrued_through=AS_OF, accrued_interest=500, source='Fictional test statement'))
+        for checkpoint in row.interest_checkpoints:
+            db.add(LoanInterestCheckpoint(user_id=owner.id, loan_id=loan.id,
+                                         statement_date=checkpoint.statement_date,
+                                         accrued_through=checkpoint.accrued_through,
+                                         accrued_interest=checkpoint.accrued_interest,
+                                         source=checkpoint.source))
     db.add(TaxSettings(user_id=owner.id))
     db.flush()
 

@@ -40,6 +40,16 @@ approving or merging a pull request. It applies to all contributors and agents.
   make a PR mergeable. Review clearance alone does not authorize work outside
   the task's scope or a production deployment.
 
+## Bot access for new pages
+
+For each new web page, decide whether automated readers need to fetch it and
+identify the intended readers, such as search crawlers, user-directed assistants,
+or connector reviewers. Record the decision in the PR. If the page needs bot
+access, verify the deployed response and attempt any needed Cloudflare change
+on the staging hostname through authorized access. Get Rahul's explicit approval
+before applying a production Cloudflare change. Record the proposed production
+change in the PR. See [Bot access for public pages](OPERATIONS.md#bot-access-for-public-pages).
+
 ## Working from a contributor's own data
 
 When someone asks for a change that depends on their equity — a projection

@@ -14,7 +14,7 @@ not portal approval. [Official requirement register](../shared/requirements.md).
 | Financial effects | equity tool wording, deterministic services, no trade/bank APIs | Complete implementation; platform policy review still required |
 | [Privacy/restricted inputs](https://developers.openai.com/plugins/plugin-guidelines#4-privacy) | PRIVACY.md and public page; minimal import fields, website parser | Production scriptless policy /privacy-policy and /privacy.md return policy text; use the scriptless URL |
 | Retention/export/deletion | single deletion service, export, audit cleanup, privacy | Existing controls; operator must verify deployed backup retention and restore policy |
-| Terms/support URLs | setup URL exists; terms draft supplied | Terms blocked: owner adoption/public URL; monitored contact needed |
+| Terms/support URLs | ChatGPT manifest includes public `/terms` and `/support` URLs | Review the terms and verify the live page after deployment. Supply a monitored support contact. |
 | [UI sandbox/mobile](https://developers.openai.com/plugins/build/chatgpt-ui) | versioned resources, empty external CSP, browser tests | Local simulation only; actual ChatGPT/iOS/Android rendering and unique component origin pending |
 | IP/independent branding | existing brand icon, unofficial name/disclosures | Complete copy; publisher must attest rights/affiliation truthfully |
 | [Listing/package/assets](https://developers.openai.com/plugins/deploy/submission) | plugin candidate, asset manifest, packaging validation | Prepared; authenticated OpenAI scanner required; keep documented OAuth/DCR extension pending its verdict |

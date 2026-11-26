@@ -26,6 +26,7 @@
         "websiteURL": "https://epic-stocks.com",
         "supportURL": "https://epic-stocks.com/support",
         "privacyPolicyURL": "https://epic-stocks.com/privacy-policy",
+        "termsOfServiceURL": "https://epic-stocks.com/terms",
         "composerIcon": "./assets/icon.svg",
         "composerIconDark": "./assets/icon.svg",
         "logoDark": "./assets/icon.svg",

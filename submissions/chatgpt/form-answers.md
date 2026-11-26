@@ -12,13 +12,13 @@ required fields. Do not submit until the checklist is clear.
 | Website | https://epic-stocks.com |
 | Support URL | https://epic-stocks.com/support |
 | Privacy | https://epic-stocks.com/privacy-policy |
-| Terms | **BLOCKED:** owner-adopted public terms URL; proposed https://epic-stocks.com/terms is not yet implemented |
+| Terms | https://epic-stocks.com/terms (verify the published page after production deployment) |
 | MCP URL | https://epic-stocks.com/mcp |
 | Authentication | OAuth; Dynamic Client Registration. No static headers or embedded credentials. |
 | Developer identity/name/contact | **OWNER:** use the verified individual/organization in the dashboard and your actual support contact. GitHub handle is rahulshahepic; it is not evidence of developer verification. |
 | Commerce | No. The application does not sell securities, initiate transactions or move money. |
 | Country availability/legal acknowledgments | **OWNER:** select applicable supported countries and review/accept required attestations yourself. No legal declaration is made by these materials. |
-| Walkthrough URL | **BLOCKED:** record actual ChatGPT use and publish an accessible video URL; see demonstration script. |
+| Walkthrough URL | [Actual ChatGPT recording](../evidence/epic-stocks-chatgpt-walkthrough.mp4) captured using fictional data. Supply an accessible video URL for review. |
 
 Long description (under 4,000 characters):
 

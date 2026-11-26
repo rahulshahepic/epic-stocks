@@ -45,8 +45,8 @@ do not approve or trigger another deploy for this release.
 
 - [ ] Complete verified developer identity and publishing role configuration.
   Use a Global data-residency project for MCP app review.
-- [ ] Adopt/publish [service terms](shared/terms-draft.md) at a stable HTTPS URL;
-  then add its URL to the ChatGPT manifest or submission portal.
+- [ ] Review [service terms](../TERMS.md) and verify [the public terms page](https://epic-stocks.com/terms)
+  after deployment. Use that URL in the ChatGPT submission portal.
 - [x] Record the [live ChatGPT reviewer walkthrough](evidence/epic-stocks-chatgpt-walkthrough.mp4) (2:47, fictional account only).
 - [ ] Supply an accessible video URL or upload the MP4 in the submission portal.
 - [ ] Build/upload `chatgpt-plugin.zip`; complete domain challenge and scans.

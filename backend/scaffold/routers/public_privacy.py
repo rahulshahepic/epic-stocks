@@ -1,4 +1,4 @@
-"""Server-readable privacy text for directory review without a JavaScript app."""
+"""Server-readable legal and support pages for directory review."""
 from html import escape
 from pathlib import Path
 import re
@@ -92,6 +92,17 @@ def privacy_policy():
 @router.api_route('/privacy.md', methods=['GET', 'HEAD'])
 def privacy_markdown():
     return PlainTextResponse(policy_text(), headers={'Cache-Control': 'public, max-age=300'})
+
+
+@router.api_route('/terms', methods=['GET', 'HEAD'])
+def public_terms():
+    root = Path(__file__).resolve().parents[2]
+    for path in (root / 'PUBLIC_TERMS.md', root.parent / 'TERMS.md'):
+        if path.is_file():
+            text = path.read_text(encoding='utf-8')
+            return HTMLResponse(policy_html(text, title='Epic Stocks Terms of Use', plain_policy=False),
+                                headers={'Cache-Control': 'public, max-age=300'})
+    raise HTTPException(503, 'Terms of use are temporarily unavailable')
 
 
 @router.api_route('/support', methods=['GET', 'HEAD'])

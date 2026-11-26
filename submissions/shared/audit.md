@@ -16,8 +16,8 @@ See [requirements](requirements.md), [public request evidence](evidence/producti
   (`/privacy-policy`, `/privacy.md`) are accessible. A 200 SPA shell is not
   evidence of a published terms page. See the
   [current production probes](evidence/production-public-probes.json).
-- **OpenAI terms, identity and video.** No verified operator identity/contact or
-  adopted public terms can be invented. Draft terms supplied for owner review.
+- **OpenAI terms, identity and video.** Verified publishing identity and support
+  contact are still required. Review `TERMS.md` and verify `/terms` on production.
   The [actual ChatGPT walkthrough](../evidence/epic-stocks-chatgpt-walkthrough.mp4) is recorded.
   The owner still needs to supply a reviewer-accessible video URL.
 - **Actual-host validation and Anthropic carousel.** Existing screenshots show

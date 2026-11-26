@@ -655,6 +655,32 @@ deletion or an approved admin purge removes it sooner. See
    access, or the Cloudflare product cannot make a scoped exception, report
    the specific blocker and the required change.
 
+## OpenAI plugin domain verification
+
+OpenAI's submission verifier fetches `/.well-known/openai-apps-challenge` without
+cookies. The app serves the exact public token on the configured production and
+staging domains. Keep it in place through review. If a replacement submission
+issues a new token, update `OPENAI_APPS_CHALLENGE` and its test together.
+
+Cloudflare's **No bots on non mcp** rule challenges this path. For staging,
+append `and not` followed by the predicate below to the parenthesized live
+expression of that rule. Append `or` followed by the same predicate to the
+parenthesized live expression of **Browser Integrity Check exception for public
+MCP discovery**. Preserve each rule's action and settings.
+
+```text
+(http.host eq "staging.epic-stocks.com" and http.request.method in {"GET" "HEAD"} and http.request.uri.path eq "/.well-known/openai-apps-challenge")
+```
+
+After staging verification and explicit production approval, extend this
+predicate in both rules by replacing the host clause with
+`http.host in {"staging.epic-stocks.com" "epic-stocks.com"}`. Re-read the live
+expressions before editing them.
+
+After deploying to each host, use an anonymous GET with an empty user agent.
+Require HTTP 200, `text/plain`, and a byte-for-byte match with the token issued
+by the submission portal before selecting **Verify Domain**.
+
 ## Directory reviewer staging acceptance
 
 The tracked Deploy workflow invokes `python -m directory_reviewer_smoke` inside

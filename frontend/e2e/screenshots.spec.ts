@@ -480,6 +480,8 @@ test.describe('Screenshots', () => {
       const position = page.getByRole('region', {name: 'Your position'})
       const exit = page.getByRole('region', {name: 'If you leave'})
       await expect(position.getByText('Earnings and borrowing costs', {exact: true})).toBeVisible()
+      await expect(position.getByRole('link', {name: 'See total compensation'})).toHaveAttribute('href', '/comp-calculator')
+      await expect(page.getByRole('link', {name: 'Ask your assistant'})).toHaveCount(0)
       await expect(position.locator('[data-equity-term="vesting"]')).toHaveCount(1)
       await expect(page.getByText(/Your \d{4} stock summary/)).toHaveCount(0)
       await expect(page.getByText('Explore with your assistant', {exact: true})).toHaveCount(0)

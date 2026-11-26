@@ -686,7 +686,6 @@ export default function Dashboard() {
       {recordLinks}
       {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
         <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
-        {config?.ai_connections && <Link to="/connect-ai" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Ask your assistant</Link>}
       </div>}
 
       {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}

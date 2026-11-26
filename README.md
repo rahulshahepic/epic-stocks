@@ -359,7 +359,7 @@ On the dashboard, open **Your position → Earnings and borrowing costs** for th
 |--------|---------|
 | ![Comp Calc Mobile](screenshots/comp-calculator-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-light-desktop.png) |
 
-Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Comp Calc** tab gives you a single comparable number, year by year.
+Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Compensation Calculator** gives you a single comparable number, year by year.
 
 The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
 

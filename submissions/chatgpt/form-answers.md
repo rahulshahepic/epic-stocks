@@ -60,8 +60,8 @@ Permissions:
 > equity:read reads holdings, grants, loans, recorded sales and projections;
 > equity:write previews and applies confirmed tracking edits. comp:read reads
 > compensation and retirement settings/results; comp:write saves named values
-> when requested. import:propose supports existing import preparation and does
-> not itself apply records. Users choose individual permissions on consent and
+> when requested. A connection that requests no scopes starts with equity:read
+> and comp:read. Users choose individual permissions on consent and
 > can disconnect at any time. Admin permissions belong to a separate unlisted
 > endpoint and are never requested by this public package.
 

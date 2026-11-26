@@ -25,7 +25,9 @@ is invented. No promotional banner is claimed mandatory in current public forms.
 
 Actual-host assets still required:
 
-- OpenAI: reviewer-accessible actual-host walkthrough video URL.
+- OpenAI: the [actual ChatGPT walkthrough](../evidence/epic-stocks-chatgpt-walkthrough.mp4)
+  is in the repository, outside the plugin and materials archives. The owner
+  still needs to supply a reviewer-accessible video URL.
 - Anthropic MCP App: 3–5 PNG app-response crops >=1000px wide, prompt text
   separately; no chat prompt in crop and no GIF/video carousel.
 

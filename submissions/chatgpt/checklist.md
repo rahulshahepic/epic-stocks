@@ -19,5 +19,5 @@ not portal approval. [Official requirement register](../shared/requirements.md).
 | IP/independent branding | existing brand icon, unofficial name/disclosures | Complete copy; publisher must attest rights/affiliation truthfully |
 | [Listing/package/assets](https://developers.openai.com/plugins/deploy/submission) | plugin candidate, asset manifest, packaging validation | Prepared; authenticated OpenAI scanner required; keep documented OAuth/DCR extension pending its verdict |
 | Five positive/three negative tests | review-cases.json + candidate manifest | Complete cases; actual-host results pending |
-| Reviewer walkthrough video | [Live ChatGPT capture](epic-stocks-chatgpt-walkthrough.mp4) (2:47; fictional OpenAI reviewer) | Captured: account context, equity/Grants/Loans, dated loans and vesting, 2032 vs. 2034 comparison, and confirmed estimate read-back. Owner supplies video in portal. |
+| Reviewer walkthrough video | [Live ChatGPT capture](../evidence/epic-stocks-chatgpt-walkthrough.mp4) (2:47; fictional OpenAI reviewer) | Captured: account context, equity/Grants/Loans, dated loans and vesting, 2032 vs. 2034 comparison, and confirmed estimate read-back. Owner supplies video in portal. |
 | Legal/publish/deploy approval | Release already deployed; no listing submission or legal approval performed | Owner action only |

@@ -36,4 +36,6 @@ Website/local screenshot tests cover different evidence and cannot replace it.
 
 A completed, supplemental website-only recording is linked in [assets](assets.md).
 It demonstrates the actual public fictional demo, with settled results and no
-host chrome. The actual-host walkthrough and Claude carousel remain outstanding.
+host chrome. The [actual ChatGPT walkthrough](../evidence/epic-stocks-chatgpt-walkthrough.mp4)
+was recorded using only the fictional established OpenAI reviewer. The owner
+still needs to supply a reviewer-accessible URL. The Claude carousel remains outstanding.

@@ -82,6 +82,16 @@ describe('Connect your AI', () => {
     expect(notice.compareDocumentPosition(firstStep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('explains the Epic Claude restriction and offers direct import before setup', () => {
+    renderPage()
+    const notice = screen.getByText(/Epic’s Claude Enterprise workspace currently blocks custom connectors/)
+    expect(notice).toHaveTextContent('Personal Claude Free accounts can add one custom connector.')
+    const fallback = screen.getByRole('link', { name: 'Import your documents directly' })
+    expect(fallback).toHaveAttribute('href', '/import')
+    const firstStep = screen.getByText(/^In Claude, open/)
+    expect(fallback.compareDocumentPosition(firstStep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('gives Muse a setup request carrying this server', async () => {
     const write = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText: write } })

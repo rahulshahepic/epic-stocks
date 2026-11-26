@@ -258,6 +258,12 @@ The preview then says what an account adds that a one-off read cannot: notificat
 
 11. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
+**Find a setting.** On a phone, open **Settings**, tap a category, and use **Back to Settings** to return. On desktop the category list stays beside the open section. **Stock, Tax & Loan Assumptions** has separate pages for taxes, loans, and stock down payment when available.
+
+| Settings on a phone | Settings on desktop |
+| --- | --- |
+| ![Settings categories on a phone](screenshots/settings-light-mobile.png) | ![Loan assumptions with the desktop Settings sidebar](screenshots/settings-loans-light-desktop.png) |
+
 ---
 
 ### The Dashboard
@@ -319,7 +325,7 @@ Epic books loan interest once a year: every 31 December the year's unpaid intere
 
 Accrual is actual/365 from the loan's **Disbursed On** date (optional on the Loans form, from the loan agreement); without it, from the grant's exercise date for a new purchase loan, the vest date for a tax loan, and 1 January after the last booked Interest loan once a statement has booked one. A grant's first partial year rolls into the following 31 December, as the statements do. Importing a statement replaces projections rather than adding to them: a real Interest loan for a year covers that grant's whole projection through that year, and a real Tax loan for a grant and vest year replaces its projected one.
 
-**Settings → Tax Rates → Projection assumptions:**
+**Projection settings** are under **Settings → Stock, Tax & Loan Assumptions**. Set withholding under **Taxes** and the interest rate and payoff timing under **Loans**.
 
 | Setting | Default | Used for |
 |---|---|---|
@@ -367,10 +373,10 @@ Using outstanding loan principal is intentional. Paying it down reduces the fina
 - **Selected year detail** — the year's stock appreciation percentage, outstanding loan principal at Dec 31, gain on principal, interest paid, and resulting net comp. Plus after-capital-gains-tax dollars and the equivalent pretax salary at your ordinary income rate. When salary/bonus data is entered, the detail also shows a **total comp breakdown**: net Epic stock comp + base salary + bonuses for that year.
 - **3-year and 5-year rolling-average overlays** — toggleable lines on the chart that smooth out spikes from Epic's annual repricing. The same averages also appear inside the year-detail panel.
 - **Projected years** — if you've entered estimated prices for future Dec 31 dates in **Prices**, those years appear as striped, lighter bars and are flagged "Projected" in the detail panel. No separate override input on this page — projections live in the prices table.
-- **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
+- **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Stock, Tax & Loan Assumptions → Taxes** preference.
 - **Salary & bonus history** — a collapsible event log (owner only, read-only for viewers) lets you record salary changes and year-end bonuses alongside the stock comp. Salary changes can happen on any date and multiple times in a year — the calculator prorates each rate by the days it was in effect. Bonuses are tied to a year and support an optional note. Data is auto-saved and encrypted.
 
-All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
+All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Stock, Tax & Loan Assumptions → Taxes**.
 
 ---
 
@@ -533,7 +539,7 @@ The **Retirement** tab runs a 100,000-path simulation of your retirement entirel
 - **Default / minimum spend** ($K/yr real, excluding health insurance) — default-spend defaults to **3%** of total portfolio; minimum-spend (the floor used in negative-return years) defaults to **2%**. A click-to-expand explainer next to "Minimum spend" walks through the formula and notes you can set the floor equal to default spend to model no spending cuts in down years. Both defaults track total portfolio until you edit them.
 - **Health insurance** ($K/yr real, default $25K) — pre-Medicare premium estimate. With **Apply Medicare model after age 65** checked (default), post-65 cost is replaced by base Medicare premium (Part B + Part D) plus **IRMAA** surcharges based on each year's MAGI. With **Include spouse** on, both spouses pay separately, and the line uses pre-Medicare cost for whichever spouse is still under 65.
 - **Taxes** — computed at the end of each 12-month simulation year from 2026 federal brackets (ordinary + LTCG, MFJ when spouse is included), **NIIT** (3.8% on investment income above MAGI thresholds), Medicare **IRMAA** after 65, and Wisconsin progressive brackets on traditional 401(k)/IRA withdrawals (see WI assumption below). Withdrawal order each month: cash → taxable (LTCG on gain only) → traditional → Roth, with traditional and Roth gated until 59½. Income is accumulated monthly. Cash refills and rebalancing enter the same annual income ledger, then the tax bill is funded in the same withdrawal order and with the same age restrictions as spending. Taxable withdrawals made to pay taxes generate additional tax, which is funded iteratively to a sub-cent tolerance. Unpaid taxes remain a liability, reduce reported wealth, and are included in the next annual settlement; late-payment interest and penalties are not modeled. Cost basis is tracked through the path: each month it's eroded by that sampled month's actual CPI from the historical bootstrap (basis is fixed in nominal $ in real life but the sim runs in real $, so basis loses purchasing power over time — inflation reduces nominal returns to real returns and erodes the real value of basis). When the cash buffer gets refilled from taxable equity gains, the gain portion realizes LTCG on top of the year's spending tax — refills are not free.
-  - **Wisconsin assumption.** This app targets Epic employees (Verona, WI), so the simulator bakes in WI's tax rules: (a) **Social Security is exempt from state tax** — 85% of SS still counts toward federal taxable income (per IRS rules) but it's not in the WI bracket calc; (b) **state ordinary income tax uses WI's progressive brackets** (3.5%/4.4%/5.3%/7.65%, MFJ thresholds at $20K/$40K/$440K), not a flat marginal rate. The retirement sim knows your full income each year, so each dollar can land in its actual bracket — same justification as for federal brackets. The user's `state_income_rate` from **Settings → Tax Rates** is not consulted by the retirement sim. **State LTCG** uses your `state_lt_cg_rate` flat — set it to your post-30%-WI-exclusion effective rate (~5.36% at the top WI bracket). If we ever ship to a non-WI userbase, the WI brackets and SS exemption should both become per-user toggles.
+  - **Wisconsin assumption.** This app targets Epic employees (Verona, WI), so the simulator bakes in WI's tax rules: (a) **Social Security is exempt from state tax** — 85% of SS still counts toward federal taxable income (per IRS rules) but it's not in the WI bracket calc; (b) **state ordinary income tax uses WI's progressive brackets** (3.5%/4.4%/5.3%/7.65%, MFJ thresholds at $20K/$40K/$440K), not a flat marginal rate. The retirement sim knows your full income each year, so each dollar can land in its actual bracket — same justification as for federal brackets. The user's `state_income_rate` from **Settings → Stock, Tax & Loan Assumptions → Taxes** is not consulted by the retirement sim. **State LTCG** uses your `state_lt_cg_rate` flat — set it to your post-30%-WI-exclusion effective rate (~5.36% at the top WI bracket). If we ever ship to a non-WI userbase, the WI brackets and SS exemption should both become per-user toggles.
 - **Market outlook** — four options that all share the same bootstrap shape but apply a constant shift to every resampled return:
   - **Historical** — no shift; the raw 1928–2023 distribution. Average real CAGR ≈ 6.7% stocks, 2% 10yr Treasury.
   - **Moderate** — stocks −2pp, bonds −0.5pp. Roughly Vanguard's 2025 10-year outlook given current equity valuations.
@@ -593,7 +599,7 @@ When you sell, the app needs to know which lots are consumed first. This matters
 | **FIFO** | Oldest lots first | Maximizing the proportion of long-term-qualified shares |
 | **Manual** | You set the share count for each lot individually | Full control — pick exactly which lots to sell |
 
-Your default method is set in **Settings → Tax Rates → Manual Sale Lot Method**.
+Your default method is set in **Settings → Stock, Tax & Loan Assumptions → Taxes → Manual Sale Lot Method**.
 
 > **Tax note:** The IRS may require you to elect a consistent lot identification method at time of sale. Consult a tax advisor before changing this for large or tax-sensitive sales.
 
@@ -654,7 +660,7 @@ If you later change tax rates or add new share prices, the stored share count wi
 
 ### Investment Interest Deduction
 
-Toggle the deduction estimate on the **Dashboard**. In **Settings → Tax Rates**, choose the investment interest method that matches the tax treatment you want to model. The default is **Accrual**. Changing the app setting changes projections.
+Toggle the deduction estimate on the **Dashboard**. In **Settings → Stock, Tax & Loan Assumptions → Taxes**, choose the investment interest method that matches the tax treatment you want to model. The default is **Accrual**. Changing the app setting changes projections.
 
 **Background:** Investment interest is interest paid on loans used to buy investments. Under IRS Form 4952 you can elect to deduct it against *net investment income* — and you may elect to treat net capital gains as investment income for this purpose. The trade-off: gains treated as investment income lose their preferential cap-gains rate and are taxed as ordinary income instead. For large enough interest amounts, the tax saving from reducing the gain can outweigh the rate difference; this estimate helps you model that.
 
@@ -664,7 +670,7 @@ Toggle the deduction estimate on the **Dashboard**. In **Settings → Tax Rates*
 - **Cash** counts interest in the year it is paid, including repayment of an Interest loan or settlement at exit.
 - It offsets only gains actually **realized** that year — sales, payoff sales and the projected liquidation. Vesting is not a realized gain (under 83(b) it is no tax event at all), so nothing is deducted against it.
 - It is applied first to short-term gains, then long-term, and saves the rate of the gain it offsets. Any unused amount carries forward indefinitely.
-- Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction; interest attributed to an excluded year is left out of the app’s estimate.
+- Use **Settings → Stock, Tax & Loan Assumptions → Taxes → Customize by year** to exclude years where you took the standard deduction; interest attributed to an excluded year is left out of the app’s estimate.
 
 **What changes on the dashboard when enabled:**
 
@@ -824,6 +830,8 @@ The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields
 **If registration is blocked:** Muse's callbacks (`agent.meta.ai` and `muse.ai`, `/api/hatch/oauth/callback`) are allowed by default. If any assistant reports that this server does not accept its redirect address, the refusal is already logged for the administrator under **Admin → AI Connections → Refused redirect addresses**; use **… would not connect** on Connect your AI to say which assistant it was. The server address is this site's `/mcp`; the callback is where the assistant receives the OAuth response, and is a different address. No API key or account session token is needed.
 
 Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
+
+**In Claude.** Epic’s Claude Enterprise workspace currently blocks custom connectors. Personal Claude Free accounts can add one custom connector. Under **Customize → Connectors**, use **Add custom connector** (or **Add → Custom → Web**, depending on the menu). You can also [import your documents directly](https://epic-stocks.com/import). See [Claude plan and workspace requirements](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
 **In ChatGPT.** Epic’s ChatGPT Enterprise workspace currently blocks custom connectors. ChatGPT Free cannot add custom connectors. You can still import your Eureka CSV or Stock Loan Statement directly in Epic Stocks. OpenAI lists [plan and workspace requirements](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
 

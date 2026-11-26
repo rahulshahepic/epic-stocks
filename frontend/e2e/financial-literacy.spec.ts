@@ -57,7 +57,7 @@ for (const theme of ['light', 'dark'] as const) for (const device of ['mobile', 
     await page.goto('/settings#tax')
     const settings = page.locator('#tax')
     await settings.getByRole('button', {name: 'Edit', exact: true}).click()
-    await settings.getByLabel('Federal income rate', {exact: true}).fill('0.30')
+    await settings.getByLabel('Federal income rate (%)', {exact: true}).fill('30')
     await settings.getByRole('button', {name: 'Save', exact: true}).click()
     await expect(settings.getByRole('button', {name: 'Confirm and save assumptions'})).toBeVisible()
     expect((await (await page.request.get('/api/tax-settings')).json()).federal_income_rate).not.toBe(0.30)

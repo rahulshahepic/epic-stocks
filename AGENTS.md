@@ -42,8 +42,10 @@ approving or merging a pull request. It applies to all contributors and agents.
 - For fixes Rahul requests directly and issues opened by repository
   contributors, continue through the merge to `main` when the usual gates
   pass. For a non-contributor's issue picked up independently, get Rahul's
-  go-ahead before merging it to `main`. See REVIEW_POLICY.md → "Issue author
-  and promotion authorization".
+  go-ahead before merging it to `main`. Record the originating issue and any
+  required promotion hold in the feature PR before merging to `staging`. Check
+  every carried PR for holds before merging a promotion. See REVIEW_POLICY.md →
+  "Issue author and promotion authorization".
 
 ## Bot access for new pages
 

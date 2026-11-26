@@ -12,7 +12,7 @@ required fields. Do not submit until the checklist is clear.
 | Website | https://epic-stocks.com |
 | Support URL | https://epic-stocks.com/support |
 | Privacy | https://epic-stocks.com/privacy-policy |
-| Terms | **BLOCKED:** owner-adopted public terms URL; proposed https://epic-stocks.com/terms is not yet implemented |
+| Terms | https://epic-stocks.com/terms (verify the published page after production deployment) |
 | MCP URL | https://epic-stocks.com/mcp |
 | Authentication | OAuth; Dynamic Client Registration. No static headers or embedded credentials. |
 | Developer identity/name/contact | **OWNER:** use the verified individual/organization in the dashboard and your actual support contact. GitHub handle is rahulshahepic; it is not evidence of developer verification. |

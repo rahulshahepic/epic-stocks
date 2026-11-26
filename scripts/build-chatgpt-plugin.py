@@ -22,7 +22,12 @@ def build(endpoint: str, output: Path) -> None:
     origin = f"{url.scheme}://{url.netloc}"
     manifest["homepage"] = origin
     interface = manifest["extensions"]["com.openai"]["interface"]
-    interface.update(websiteURL=origin, supportURL=f"{origin}/support", privacyPolicyURL=f"{origin}/privacy-policy")
+    interface.update(
+        websiteURL=origin,
+        supportURL=f"{origin}/support",
+        privacyPolicyURL=f"{origin}/privacy-policy",
+        termsOfServiceURL=f"{origin}/terms",
+    )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     config = {
         "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",

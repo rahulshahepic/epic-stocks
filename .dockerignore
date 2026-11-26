@@ -32,6 +32,7 @@ backend/data
 # Docs and non-runtime assets
 *.md
 !PRIVACY.md
+!TERMS.md
 screenshots
 # NOTE: test_data/ stays in context — Dockerfile.e2e does `COPY test_data/`.
 

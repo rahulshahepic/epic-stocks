@@ -55,7 +55,7 @@ def validate():
     assert 0 < len(ui['developerName']) <= 80
     assert ui['category']
     assert m['author']['name'] and m['version'] and m['homepage'] and m['license']
-    for key in ('websiteURL', 'supportURL', 'privacyPolicyURL'):
+    for key in ('websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL'):
         assert ui[key].startswith('https://')
     for key in ('logo', 'composerIcon', 'logoDark', 'composerIconDark'):
         icon = package / ui[key]
@@ -85,7 +85,7 @@ def validate():
     assert (claude / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
     assert (claude / 'skills/get-started/SKILL.md').read_bytes() == (package / 'skills/get-started/SKILL.md').read_bytes()
     print('Package structure, listing limits, review cases and shared URLs validated.')
-    print('Publication gates remain: terms URL, verified identity/contact, actual-host testing/video/carousel and authenticated portal validation.')
+    print('Publication gates remain: live terms verification, verified identity/contact, actual-host testing/video/carousel and authenticated portal validation.')
 
 
 def write_zip(name, files):

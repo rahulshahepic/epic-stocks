@@ -995,7 +995,7 @@ Choose **Send a private report** for account-specific problems or to report with
 
 Content admins edit the grant-program data new grants start from for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
 
-Content admins see a **Content** nav link. From `/content` they can edit:
+Content admins can open **More → Content**. Site admins can also open **More → Admin**. From `/content` they can edit:
 
 | Section | What it controls |
 |---------|----------------|

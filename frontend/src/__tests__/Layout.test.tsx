@@ -45,16 +45,17 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-function renderLayout() {
+function renderLayout(path = '/') {
   return render(
     <AppProvider>
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/']}>
+        <MemoryRouter initialEntries={[path]}>
           <MaintenanceProvider>
             <ViewingProvider>
               <Routes>
                 <Route element={<Layout />}>
                   <Route index element={<p>content</p>} />
+                  <Route path="settings" element={<h1>Settings</h1>} />
                 </Route>
               </Routes>
             </ViewingProvider>
@@ -133,11 +134,15 @@ describe('Layout responsive navigation', () => {
     }
   })
 
-  it.each(['Mobile navigation', 'Main navigation'])('opens secondary destinations from %s', async name => {
+  it.each(['Mobile navigation', 'Main navigation'])('opens secondary destinations from More on Settings in %s', async name => {
     isAdmin = true
     const user = userEvent.setup()
-    renderLayout()
+    renderLayout('/settings')
     await screen.findByText('A', { exact: true })
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    for (const linkName of ['Admin', 'Content', 'Connect AI']) {
+      expect(screen.queryByRole('link', { name: linkName })).not.toBeInTheDocument()
+    }
     const navigation = within(screen.getByRole('navigation', { name }))
     const more = navigation.getByRole('button', { name: 'More' })
     await user.click(more)

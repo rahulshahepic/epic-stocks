@@ -125,9 +125,6 @@ export default function Layout() {
               </nav>}
               <Outlet />
             </>}
-          {location.pathname === '/settings' && !location.hash && accountLinks.length > 0 && <nav aria-label="Account tools" className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
-            {accountLinks.map(({ to, label }) => <Link key={to} to={to} className="inline-flex min-h-11 items-center rounded-lg border border-cs-border px-3">{label}</Link>)}
-          </nav>}
         </div>
       </main>
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden">

@@ -16,7 +16,10 @@ work nobody can see or review.
 required CI passes, merge to `staging` and continue the staging-to-main process
 in REVIEW_POLICY.md without asking again. Rahul's standing authorization applies
 to agents authenticated through his account. Respect an explicit hold or a
-review-only / PR-only task. Production deployment still requires Rahul's approval.
+review-only / PR-only task. For Rahul-requested fixes and contributor-filed
+issues, proceed through the merge to `main` after the usual gates pass. For a
+non-contributor's issue picked up independently, get Rahul's go-ahead before
+merging to `main`. Production deployment still requires Rahul's approval.
 
 ## Contributors' own data
 

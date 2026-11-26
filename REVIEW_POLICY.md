@@ -63,6 +63,24 @@ or a production deployment. Do not manufacture an approval,
 approve your own implementation in the same session, disable CI, dismiss genuine
 blocking feedback to force a merge, or push directly to protected branches.
 
+## Issue author and promotion authorization
+
+For fixes Rahul requests directly and issues opened by repository contributors,
+follow the staging-to-main process below without a separate go-ahead from Rahul.
+Check the current GitHub author association on the original issue. For this
+workflow, `OWNER`, `MEMBER`, `COLLABORATOR`, and `CONTRIBUTOR` qualify. A direct
+request from Rahul authorizes the usual merge process regardless of who opened
+the issue, subject to any explicit scope limits he sets.
+
+Before merging an issue fix into `staging`, link the issue in the feature PR
+and record its author association or Rahul's direct request. For a non-contributor's
+issue picked up independently, complete the fix and its staging review under the
+normal process, and record **Promotion hold: needs Rahul's go-ahead** in the
+feature PR. Apply the same hold when the author's contributor status cannot be
+verified. Carry the hold into the promotion PR until Rahul clears it on either PR.
+An explicit hold from Rahul takes precedence in every case. The existing
+review, CI, staging deploy, and production approval requirements still apply.
+
 ## Promoting staging to main
 
 Merging a feature PR into `staging` is not the end of the job. Whoever merges it
@@ -94,6 +112,8 @@ that the paragraph above otherwise requires. It gives no permission to deploy.
      Promotion resumes after its staging `Deploy` run succeeds;
    - no review thread is unresolved, no `Waiting for Changes` label is set,
      and no comment from Rahul asks to hold the release;
+   - no carried feature PR has a promotion hold under the issue-author rule
+     unless Rahul gave the go-ahead on that feature PR or on the promotion PR;
    - every feature PR it carries was cleared by its assistant review. The
      evidence is that the PR had `Ready to merge` when it merged, or carries an
      assistant review comment naming the head SHA that merged. A carried PR

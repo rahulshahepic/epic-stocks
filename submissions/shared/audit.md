@@ -18,7 +18,8 @@ See [requirements](requirements.md), [public request evidence](evidence/producti
   [current production probes](evidence/production-public-probes.json).
 - **OpenAI terms, identity and video.** Verified publishing identity and support
   contact are still required. Review `TERMS.md` and verify `/terms` on production.
-  Record actual-host walkthrough and publish reviewer-accessible video URL.
+  The [actual ChatGPT walkthrough](../evidence/epic-stocks-chatgpt-walkthrough.mp4) is recorded.
+  The owner still needs to supply a reviewer-accessible video URL.
 - **Actual-host validation and Anthropic carousel.** Existing screenshots show
   the website or local MCP host simulation. They are not proof of ChatGPT or
   Claude rendering. Capture 3–5 actual Claude app-response crops at >=1000px

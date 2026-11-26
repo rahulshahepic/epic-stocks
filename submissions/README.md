@@ -47,7 +47,8 @@ do not approve or trigger another deploy for this release.
   Use a Global data-residency project for MCP app review.
 - [ ] Review [service terms](../TERMS.md) and verify [the public terms page](https://epic-stocks.com/terms)
   after deployment. Use that URL in the ChatGPT submission portal.
-- [ ] Record/publish an actual ChatGPT walkthrough video and supply its URL.
+- [x] Record the [live ChatGPT reviewer walkthrough](evidence/epic-stocks-chatgpt-walkthrough.mp4) (2:47, fictional account only).
+- [ ] Supply an accessible video URL or upload the MP4 in the submission portal.
 - [ ] Build/upload `chatgpt-plugin.zip`; complete domain challenge and scans.
 - [ ] Enter credentials privately in Review details, review the prepared 5 positive
   and 3 negative cases, personally submit/attest, and publish after acceptance.

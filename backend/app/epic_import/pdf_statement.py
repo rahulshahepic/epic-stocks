@@ -183,18 +183,23 @@ def parse_statement_lines(lines: list[str]) -> tuple[Statement, list[Finding]]:
 
 
 def repair_statement_lines(lines: list[str]) -> list[str]:
-    """Omit the account and employee header between the title and the loan table."""
+    """Remove the two identity lines while preserving unrecognized financial rows."""
     result = []
-    in_header = False
+    expect_account = expect_employee = False
     for raw in lines:
         line = raw.strip()
         if _HEADER_DATE.match(line):
-            in_header = True
-        elif in_header:
-            if not (_TOTAL_PRINCIPAL.match(line) or _ROW.match(line)
-                    or line.lower().startswith(_BOILERPLATE)):
+            expect_account, expect_employee = True, False
+        elif line and expect_account:
+            expect_account = False
+            expect_employee = bool(_ACCOUNT.fullmatch(line))
+            if expect_employee:
                 continue
-            in_header = False
+        elif line and expect_employee:
+            expect_employee = False
+            if (all(char.isalpha() or char in " .,'’-" for char in line)
+                    and not line.lower().startswith(("loan ", "number ", *_BOILERPLATE))):
+                continue
         result.append(raw)
     return result
 

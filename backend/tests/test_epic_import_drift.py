@@ -153,6 +153,26 @@ def prompt_for(mutation, skeleton) -> str:
                         "\n".join(lines), share_summary_text(raw)[0].decode())
 
 
+def test_repair_prompt_preserves_unrecognized_rows_after_redacting_statement_header(skeleton):
+    def changed_loan_statement(lines, csv_raw):
+        changed = [
+            line.replace("Loan Loan Principal", "Loan No. Description")
+            .replace("7/15/2029", "2029-07-15")
+            for line in lines if not line.startswith(("Total Principal Balance:", "Number Name"))
+        ]
+        return changed, csv_raw
+
+    brief = prompt_for(changed_loan_statement, skeleton)
+    excerpt = brief.split("## Stock Loan Statement", 1)[1]
+    for line in statement_lines():
+        loan_number = re.match(r"^([0-9]{6}) ", line)
+        if loan_number:
+            assert loan_number[1] in excerpt
+    assert "2029-07-15" in excerpt
+    assert "900000001" not in brief
+    assert "Test Employee" not in brief
+
+
 def clean_draft(skeleton):
     """What a correct answer looks like — the draft from the unmutated files."""
     statement, _ = parse_statement_lines(statement_lines())

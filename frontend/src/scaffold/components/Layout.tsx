@@ -45,6 +45,7 @@ export default function Layout() {
   const workshopRoutes = ['/settings', '/connect-ai', '/content', '/admin', '/import-diagnostics']
   const isRecords = recordsRoutes.includes(location.pathname)
   const isWorkshop = workshopRoutes.includes(location.pathname)
+  const hasCategorySidebar = ['/settings', '/admin', '/content'].includes(location.pathname)
   const isPlanning = ['/planning', '/retirement'].includes(location.pathname)
   const isObservatory = isPlanning || location.pathname === '/comp-calculator'
   const moreGroups: NavigationGroup[] = [
@@ -104,7 +105,7 @@ export default function Layout() {
         </header>
       </div>
       {config && !viewing && !staging && !me?.reviewer_account && <PushNudge />}
-      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className={`campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 scroll-mt-28 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8 ${location.pathname === '/settings' ? 'overflow-clip' : 'overflow-hidden'}`}>
+      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className={`campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 scroll-mt-28 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8 ${hasCategorySidebar ? 'overflow-clip' : 'overflow-hidden'}`}>
         <CampusCorner variant={motif} className="pointer-events-none absolute -right-5 top-2 h-36 w-52 text-cs-text opacity-70 sm:right-3 lg:h-44 lg:w-64" />
         <div className="relative z-[1]">
           {me?.reviewer_account && <p role="status" className="mb-4 rounded-xl border border-cs-border bg-cs-surface p-3 text-sm font-semibold">FICTIONAL REVIEW DATA · {me.reviewer_account.platform} · {me.reviewer_account.scenario}. These are invented financial records, not actual Epic prices or personal accounts.</p>}

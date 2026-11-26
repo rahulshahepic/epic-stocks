@@ -28,11 +28,14 @@ test('mobile Site Admin opens one category at a time and restores focus', async 
 
 test('desktop Content Admin keeps its categories visible on a direct link', async ({ page }) => {
   await loginAs(page, 'admin@e2e.test')
-  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.setViewportSize({ width: 1280, height: 600 })
   await page.goto('/content#templates')
   const categories = page.getByRole('navigation', { name: 'Content Admin categories' })
   await expect(categories.getByRole('link', { name: /^Grant Templates/ })).toHaveAttribute('aria-current', 'location')
   await expect(page.getByRole('button', { name: /Add template/ })).toBeVisible()
+  await page.evaluate(() => window.scrollTo(0, 280))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(180)
+  await expect(categories.getByRole('link', { name: /^Grant Templates/ })).toBeInViewport({ ratio: 1 })
   await categories.getByRole('link', { name: /^Program Settings/ }).click()
   await expect(page).toHaveURL(/\/content#settings$/)
   await expect(page.getByRole('heading', { name: 'Program Settings', exact: true })).toBeVisible()

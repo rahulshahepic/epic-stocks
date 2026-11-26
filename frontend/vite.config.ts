@@ -80,6 +80,7 @@ export default defineConfig({
     proxy: {
       '/support': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/privacy-policy': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
+      '/terms': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/privacy.md': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/reviewer-login': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/api': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',

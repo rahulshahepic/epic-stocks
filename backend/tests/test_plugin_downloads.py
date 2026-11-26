@@ -37,6 +37,7 @@ def test_default_account_package_is_production_and_requires_sign_in(client, plat
         assert interface["websiteURL"] == "https://epic-stocks.com"
         assert interface["supportURL"].endswith("/support")
         assert interface["privacyPolicyURL"].endswith("/privacy-policy")
+        assert interface["termsOfServiceURL"] == "https://epic-stocks.com/terms"
         assert 0 < len(interface["defaultPrompt"]) <= 3
         with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
             for asset in ("logo", "logoDark", "composerIcon", "composerIconDark"):

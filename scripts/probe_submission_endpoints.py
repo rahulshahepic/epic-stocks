@@ -39,7 +39,9 @@ def probe(origin, path, method='GET'):
         if path == '/support':
             item['support_text_present'] = b'Report a problem privately' in raw
         if path == '/terms':
-            item['terms_verified'] = False  # Owner adoption of the draft remains outstanding.
+            item['terms_text_present'] = (b'<h1>Epic Stocks Terms of Use</h1>' in raw
+                                          and b'<h2>Connecting an AI assistant</h2>' in raw)
+            item['spa_shell'] = b'<div id="root"></div>' in raw
         if path == '/reviewer-login':
             item['reviewer_form_present'] = b'name="password"' in raw
         return item

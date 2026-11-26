@@ -91,6 +91,7 @@ def _protected_resource_doc(request: Request, *, admin: bool = False) -> dict:
         "bearer_methods_supported": ["header"],
         "resource_documentation": f"{issuer(request)}/mcp-setup",
         "resource_policy_uri": f"{issuer(request)}/privacy-policy",
+        "resource_tos_uri": f"{issuer(request)}/terms",
     }
 
 

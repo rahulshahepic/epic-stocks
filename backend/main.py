@@ -654,7 +654,27 @@ class EncryptionMiddleware:
             pass
 
 
-_fastapi_app = FastAPI(title="Epic Stocks", lifespan=lifespan)
+def _api_docs_enabled() -> bool:
+    """Interactive API docs and the OpenAPI schema are a development aid.
+
+    A deployed environment (staging or production) must not publish the
+    full API surface — including the admin API's shape — to anyone who
+    asks (#818). Deploys always set DOMAIN and APP_ENV; a local run sets
+    neither, so local development keeps the docs.
+    """
+    if os.getenv("DOMAIN"):
+        return False
+    return os.getenv("APP_ENV", "").strip().lower() not in {"production", "staging"}
+
+
+_DOCS_ENABLED = _api_docs_enabled()
+_fastapi_app = FastAPI(
+    title="Epic Stocks",
+    lifespan=lifespan,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+)
 
 
 @_fastapi_app.exception_handler(StaleDataError)

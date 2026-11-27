@@ -117,6 +117,12 @@ export interface McpActionRequest {
   reason: string | null
   status: 'pending' | 'approved' | 'rejected' | 'expired' | 'failed' | 'cancelled'
   client_name: string | null
+  /** Server-recorded filing connection (#826): the client name on the
+   * grant that filed this request and the account that authorized it.
+   * Unlike client_name, these are stamped by the server, not claimed. */
+  filed_by_account?: string | null
+  filed_by_client?: string | null
+  filed_connection_active?: boolean
   outcome: string | null
   decided_by: string | null
   requested_at: string | null

@@ -236,7 +236,18 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   </figure>
                 )}
                 <p className="mt-1.5 text-xs text-cs-muted">
-                  From {entry.client_name ?? 'an assistant'}{entry.client_name ? ' (name chosen by the app)' : ''}
+                  {entry.filed_connection_active ? (
+                    <>Filed by the connection server-recorded as <span className="text-cs-text">{entry.filed_by_client ?? 'an assistant'}</span>
+                    {entry.filed_by_account ? <> on {entry.filed_by_account}&rsquo;s account</> : ''}. </>
+                  ) : (
+                    <>Filed by a connection that is no longer active. </>
+                  )}
+                  {entry.client_name && entry.client_name !== entry.filed_by_client && (
+                    <>The app claims the name <span className="text-cs-text">{entry.client_name}</span> — unverified. </>
+                  )}
+                  {entry.client_name && entry.client_name === entry.filed_by_client && (
+                    <>The name is the app&rsquo;s own claim, recorded when the connection was authorized. </>
+                  )}
                   {entry.requested_at ? ` · ${new Date(entry.requested_at).toLocaleString()}` : ''}
                 </p>
                 <div className="mt-2 flex gap-2">

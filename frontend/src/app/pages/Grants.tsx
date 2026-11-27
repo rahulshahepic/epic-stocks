@@ -644,8 +644,7 @@ export default function Grants() {
         </p>
       )}
 
-      {grants.length > 0 && <RecordListControls name="grants" controls={records} />}
-      {grants.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No grants match your filter.</p>}
+      {grants.length > 0 && <RecordListControls name="grants" controls={records} count={visibleRows.length} total={grants.length} />}
 
       {/* Mobile card layout */}
       {isMobile ? <div className="record-list space-y-2">
@@ -802,7 +801,7 @@ export default function Grants() {
             : <>No grants yet. Tap <span className="font-medium">+ Purchase</span> or <span className="font-medium">+ Bonus</span> above, or head to Import / Export to bring in your documents.</>}
         </p>
       )}
-      <p className="text-xs text-cs-text-2">{grants.length} grants</p>
+      {!records.query.trim() && <p className="text-xs text-cs-text-2">{grants.length} grants</p>}
 
       {/* Sell Shares Modal */}
       {sellModal && (

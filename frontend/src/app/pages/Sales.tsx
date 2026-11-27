@@ -752,8 +752,7 @@ export default function Sales() {
         <Link to="/retirement?view=expenses" className="inline-flex min-h-11 items-center text-sm font-semibold underline">Review in Planned Expenses</Link>
       </section>}
 
-      {sales.length > 0 && <RecordListControls name="sales" controls={records} />}
-      {sales.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No sales match your filter.</p>}
+      {sales.length > 0 && <RecordListControls name="sales" controls={records} count={visibleRows.length} total={sales.length} />}
 
       {/* Mobile card layout */}
       {isMobile ? <div className="record-list space-y-2">
@@ -781,7 +780,7 @@ export default function Sales() {
                   )}
                 </div>
                 {!readOnly && (
-                  <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300" aria-label="Edit sale">
+                  <button onClick={() => openEdit(s)} className="grid size-11 shrink-0 place-items-center rounded-lg text-cs-brand hover:bg-cs-raised dark:text-rose-300" aria-label="Edit sale">
                     <PencilIcon />
                   </button>
                 )}
@@ -932,7 +931,7 @@ export default function Sales() {
             : <>No sales yet. Tap <span className="font-medium">+ Sale</span> above to plan or record one.</>}
         </p>
       )}
-      <p className="text-xs text-cs-text-2">{sales.length} sales</p>
+      {!records.query.trim() && <p className="text-xs text-cs-text-2">{sales.length} sales</p>}
     </div>
   )
 }

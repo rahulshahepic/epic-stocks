@@ -238,7 +238,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                 <p className="mt-1.5 text-xs text-cs-muted">
                   {entry.filed_connection_active ? (
                     <>Filed by the connection server-recorded as <span className="text-cs-text">{entry.filed_by_client ?? 'an assistant'}</span>
-                    {entry.filed_by_account ? <> on {entry.filed_by_account}&rsquo;s account</> : ''}. </>
+                      {entry.filed_by_account ? <> on {entry.filed_by_account}&rsquo;s account</> : ''}. </>
                   ) : (
                     <>Filed by a connection that is no longer active. </>
                   )}

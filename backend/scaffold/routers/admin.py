@@ -920,6 +920,13 @@ class McpActionRequestOut(BaseModel):
     reason: str | None
     status: str
     client_name: str | None
+    # Server-recorded attribution (#826): the connection that filed this
+    # request, resolved from its grant row — as opposed to client_name,
+    # which is the name the app claimed for itself. filed_connection_active
+    # is False when that grant has since been disconnected.
+    filed_by_account: str | None = None
+    filed_by_client: str | None = None
+    filed_connection_active: bool = False
     outcome: str | None
     decided_by: str | None
     requested_at: str | None
@@ -967,10 +974,22 @@ def _mcp_status(db: Session) -> McpStatus:
     def request_out(row):
         data = admin_requests.as_dict(row)
         payload = data.pop("payload") or {}
-        data.pop("grant_id", None)
-        return McpActionRequestOut(**data, label=payload.get("label"),
-                                   match_type=payload.get("match_type"),
-                                   pattern=payload.get("pattern"), rule_id=payload.get("rule_id"))
+        # The grant id itself is an internal handle; what the admin needs
+        # is who it was (#826). Resolve it to the connection the server
+        # recorded at authorization time and the account that authorized
+        # it, instead of dropping the only server-stamped identity and
+        # leaving the self-claimed client_name as the whole attribution.
+        grant_id = data.pop("grant_id", None)
+        grant = db.get(OAuthGrant, grant_id) if grant_id else None
+        account = db.get(User, grant.user_id) if grant else None
+        return McpActionRequestOut(
+            **data, label=payload.get("label"),
+            match_type=payload.get("match_type"),
+            pattern=payload.get("pattern"), rule_id=payload.get("rule_id"),
+            filed_by_client=grant.client_name if grant else None,
+            filed_by_account=account.email if account else None,
+            filed_connection_active=grant is not None,
+        )
 
     rejected = db.query(OAuthRejectedRedirect).order_by(
         OAuthRejectedRedirect.last_seen.desc()

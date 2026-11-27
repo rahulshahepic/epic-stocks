@@ -495,6 +495,13 @@ class OriginCheckMiddleware:
             )
             if has_session_cookie:
                 origin = _scope_header(scope, b"origin")
+                # `Origin: null` is an opaque origin (sandboxed frame, or a
+                # page served with Referrer-Policy: no-referrer): there is
+                # no origin to validate, so treat it like no Origin at all
+                # rather than rejecting a same-origin write we cannot
+                # attribute. SameSite=Lax remains the control there.
+                if origin is not None and origin.strip() == "null":
+                    origin = None
                 if origin is None:
                     referer = _scope_header(scope, b"referer")
                     if referer:

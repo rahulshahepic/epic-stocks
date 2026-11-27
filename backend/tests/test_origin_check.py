@@ -73,3 +73,32 @@ def test_reads_are_not_checked(client):
     register_user(client)
     resp = client.get("/api/grants", headers={"Origin": "https://evil.example"})
     assert resp.status_code == 200
+
+
+def test_opaque_origin_is_not_rejected(client):
+    # `Origin: null` is an opaque origin (e.g. a page served with
+    # Referrer-Policy: no-referrer): unvalidatable, not foreign. The
+    # reviewer sign-in page was the live case — its policy is now
+    # same-origin, and the middleware must not 403 what it cannot
+    # attribute either way.
+    register_user(client)
+    resp = client.post("/api/grants", json=_GRANT, headers={"Origin": "null"})
+    assert resp.status_code in (200, 201)
+
+
+def test_reviewer_login_post_is_not_origin_rejected(client):
+    # With a session cookie already held, the reviewer sign-in POST must
+    # reach the route (which runs its own CSRF check), not die in the
+    # middleware — under either the real origin or an opaque one.
+    register_user(client)
+    page = client.get("/reviewer-login")
+    assert page.headers["Referrer-Policy"] == "same-origin"
+    csrf = page.text.split('name="csrf" value="')[1].split('"')[0]
+    for origin in ("http://testserver", "null"):
+        resp = client.post(
+            "/reviewer-login",
+            data={"login": "nobody", "password": "wrong", "csrf": csrf},
+            headers={"Origin": origin},
+            follow_redirects=False,
+        )
+        assert "Cross-origin request rejected" not in resp.text

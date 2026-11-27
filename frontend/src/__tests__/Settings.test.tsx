@@ -75,7 +75,7 @@ describe('Settings', () => {
     expect(screen.getByRole('button', { name: 'Dark theme' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('heading', { name: 'Account' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('link', { name: 'Back to Settings' }))
-    expect(screen.getByRole('heading', { name: 'Settings' })).toHaveFocus()
+    expect(screen.getByRole('link', { name: /Appearance/ })).toHaveFocus()
     expect(screen.queryByRole('button', { name: 'Dark theme' })).not.toBeInTheDocument()
   })
 

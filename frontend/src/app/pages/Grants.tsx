@@ -1,3 +1,5 @@
+import { reportDateErrors } from '../../scaffold/components/ui/dateValidation.ts'
+import { DisclosureButton, DisclosureSummary } from '../../scaffold/components/ui/Disclosure.tsx'
 import { RecordListControls } from '../components/RecordListControls.tsx'
 import { useRecordList } from '../hooks/useRecordList.ts'
 import EquityTerms from '../components/EquityTerms.tsx'
@@ -47,10 +49,10 @@ function VestingSchedule({ grant }: { grant: GrantEntry }) {
   )
   return (
     <details>
-      <summary className="min-h-11 cursor-pointer content-center text-cs-text-2">
+      <DisclosureSummary className="min-h-11 cursor-pointer content-center text-cs-text-2">
         {vesting.length} {annual ? 'annual ' : ''}{vesting.length === 1 ? 'vest' : 'vests'} · {fmtMonthYear(first)}
         {last !== first && ` to ${fmtMonthYear(last)}`}
-      </summary>
+      </DisclosureSummary>
       <ul className="list-disc space-y-1 pb-2 pl-5 text-cs-text-2">
         {vesting.map(vest => <li key={vest.date}>{fmtNum(vest.shares)} shares on {fmtFullDate(vest.date)}</li>)}
       </ul>
@@ -505,7 +507,7 @@ export default function Grants() {
           {form.type === 'Purchase' && (
             <label className="block">
               <span className="text-xs text-cs-muted">Shares used as down payment</span>
-              <p className="text-[10px] text-cs-text-2">Existing shares you handed in toward this purchase. Bonus shares are used first, then oldest — this swap is not taxed.</p>
+              <p className="text-xs text-cs-text-2">Existing shares you handed in toward this purchase. Bonus shares are used first, then oldest — this swap is not taxed.</p>
               <input
                 type="number"
                 value={Math.abs(form.dp_shares)}
@@ -589,7 +591,7 @@ export default function Grants() {
         <div className="flex items-center justify-between pt-2">
           <div className="flex gap-2">
             <button
-              onClick={() => handleSave(false)}
+              onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(false) }}
               disabled={saving}
               className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
             >
@@ -597,7 +599,7 @@ export default function Grants() {
             </button>
             {mode !== 'edit' && (
               <button
-                onClick={() => handleSave(true)}
+                onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(true) }}
                 disabled={saving}
                 className="rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-cs-brand hover:bg-indigo-200 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50 disabled:opacity-50"
               >
@@ -678,14 +680,14 @@ export default function Grants() {
               <VestingSchedule grant={g} />
               {g.exercise_date && <p className="text-cs-muted">Exercised {fmtFullDate(g.exercise_date)}</p>}
               {loan && (
-                <button
+                <DisclosureButton
                   type="button"
                   onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
                   aria-expanded={isExpanded}
                   className="mt-1 flex min-h-11 w-full items-center justify-between rounded-lg bg-cs-raised px-3 text-left font-medium text-cs-text"
                 >
-                  {hasSale ? 'Loan and sale details' : 'Loan details'} <span aria-hidden="true">{isExpanded ? '▴' : '▾'}</span>
-                </button>
+                  {hasSale ? 'Loan and sale details' : 'Loan details'}
+                </DisclosureButton>
               )}
               {/* Expanded loan detail */}
               {isExpanded && loan && (
@@ -747,13 +749,13 @@ export default function Grants() {
                       <td className="px-3 py-2 text-cs-muted">{g.exercise_date}</td>
                       <td className="px-3 py-2">
                         {loan ? (
-                          <button
+                          <DisclosureButton
                             onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
                             aria-expanded={isExpanded}
-                            className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
+                            className="w-full rounded-lg bg-cs-raised px-3 text-left text-xs font-medium text-cs-text"
                           >
                             {hasSale ? 'Loan and sale details' : 'Loan details'}
-                          </button>
+                          </DisclosureButton>
                         ) : (
                           <span className="text-[10px] text-cs-text-2">&mdash;</span>
                         )}
@@ -856,7 +858,7 @@ export default function Grants() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleSell}
+                  onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSell() }}
                   disabled={!sellEstimate || sellSubmitting || sellEstimate.covers_loan === false}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >

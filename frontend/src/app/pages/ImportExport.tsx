@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -272,8 +273,7 @@ export default function ImportExport() {
         </button>
         <label className="mt-3 block border-t border-cs-border pt-3">
           <span className="text-xs font-medium text-cs-text">As of a past date (optional)</span>
-          <input
-            type="date"
+          <DateInput
             value={exportAsOf}
             onChange={e => setExportAsOf(e.target.value)}
             className="mt-1 w-full rounded-md border border-cs-border bg-cs-surface px-2 py-1.5 text-sm text-cs-text"

@@ -30,7 +30,7 @@
 .purchase-warning{color:var(--muted);font-size:12px;margin-top:12px}
 .probability-meter{display:block;width:100%;min-width:0;height:8px;margin:8px 0;background:var(--line);border-radius:6px;overflow:hidden;flex:1}
 .probability-meter>span{display:block;height:100%;background:var(--muted);border-radius:6px}
-.result-details{margin:14px 0;font-size:12px;color:var(--muted)}.result-details>summary{cursor:pointer;font-weight:650;color:var(--fg);min-height:32px;display:list-item}.result-details>p{margin-top:8px}.result-details .grid{margin-top:10px}.purchase-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.purchase-heading h3{min-width:0}.purchase-heading strong{white-space:nowrap;font-size:14px}.purchase-distribution>h3,.purchase-distribution>p{grid-column:1/-1;margin:0}.purchase-distribution>p{color:var(--muted);font-size:12px}
+.result-details{margin:14px 0;font-size:12px;color:var(--muted)}.result-details>summary{cursor:pointer;font-weight:650;color:var(--fg);min-height:44px}.result-details>p{margin-top:8px}.result-details .grid{margin-top:10px}.purchase-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.purchase-heading h3{min-width:0}.purchase-heading strong{white-space:nowrap;font-size:14px}.purchase-distribution>h3,.purchase-distribution>p{grid-column:1/-1;margin:0}.purchase-distribution>p{color:var(--muted);font-size:12px}
 
 header>div,.status-row #status{min-width:0;overflow-wrap:anywhere}#expand,#save{flex-shrink:0}
 button{max-width:100%;line-height:1.3;overflow-wrap:anywhere}
@@ -44,7 +44,12 @@ button{max-width:100%;line-height:1.3;overflow-wrap:anywhere}
 .event-actions button{flex:1;min-width:0;font-size:13px}
 @media(min-width:480px){.event-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.event-actions button{flex:0 1 auto;min-width:80px}}
 .inputs{grid-template-columns:minmax(0,1fr)}
-input[type=date]{appearance:none;-webkit-appearance:none;display:block;min-inline-size:0;max-inline-size:100%}
+input:not([type=checkbox]),select{font-size:16px}
+input[type=date],input.date-field{display:block;min-inline-size:0;max-inline-size:100%;min-height:44px}
+details>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+details>summary::after{content:'';width:6px;height:6px;flex:none;margin-inline-end:4px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}
+details[open]>summary::after{transform:rotate(45deg)}
 input::-webkit-date-and-time-value{min-width:0;text-align:left}
 .run-actions{display:grid;margin:16px 0}.run-actions button{width:100%}
 @media(min-width:400px){.inputs{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -86,11 +91,11 @@ input::-webkit-date-and-time-value{min-width:0;text-align:left}
 </div>
 <div id="editView" hidden><section class="controls"><h2>Edit retirement assumptions</h2>
 <div class="inputs">
-<label>Retirement date<input id="date" type="date" min="2026-01-01" max="2100-12-31"></label>
+<label>Retirement date<input id="date" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" min="2026-01-01" max="2100-12-31"></label>
 
 <label>Annual spending ($)<input id="spend" type="number" min="0" max="10000000" step="any"></label>
-<label>Stocks (%)<input id="stocks" type="number" min="0" max="100" step="5"></label>
-<label>Bonds (%)<input id="bonds" type="number" min="0" max="100" step="5"></label>
+<label>Stocks (%)<input id="stocks" type="number" min="0" max="100" step="1"></label>
+<label>Bonds (%)<input id="bonds" type="number" min="0" max="100" step="1"></label>
 <label>Annual health insurance ($)<input id="health" type="number" min="0" max="10000000" step="any"></label>
 <label>Market scenario<select id="scenario"><option value="historical">Historical</option><option value="moderate">Moderate</option><option value="cautious">Cautious</option><option value="custom">Custom</option></select></label>
 </div>
@@ -111,19 +116,19 @@ input::-webkit-date-and-time-value{min-width:0;text-align:left}
 <div class="inputs">
 <label>Type<select id="eventKind"><option value="home">House</option><option value="vehicle">Car</option><option value="education">College / tuition</option><option value="wedding">Wedding</option><option value="travel">Vacation / Disney</option><option value="childcare">Childcare</option><option value="care">Care</option><option value="renovation">Renovation</option><option value="gift">Gift</option><option value="other">Other</option></select></label>
 <label>Name<input id="eventTitle" type="text" maxlength="100" value="House"></label>
-<label>Date<input id="eventDate" type="date" min="2026-01-01" max="2100-12-31"></label>
+<label>Date<input id="eventDate" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" min="2026-01-01" max="2100-12-31"></label>
 <label>Prices entered in<select id="eventBasis"><option value="today">Today's dollars</option><option value="retirement">Retirement-year dollars</option><option id="eventOriginalBasis" value="original" hidden>Saved price basis</option></select></label>
 <label>Purchase / one-time cost ($)<input id="eventAmount" type="number" min="0" step="1000" value="0"></label>
 <label>Additional annual cost ($; ownership stops at sale)<input id="eventAnnual" type="number" min="0" step="1000" value="0"></label>
 <label>Duration (years; optional)<input id="eventDuration" type="number" min="1" max="50" step="1"></label>
-<label>Specific recurring cost end date (optional)<input id="eventEnd" type="date"></label>
+<label>Specific recurring cost end date (optional)<input id="eventEnd" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"></label>
 <label>Payment<select id="eventPayment"><option value="cash">Cash</option><option value="finance">Finance</option></select></label>
 <label>Down payment (%)<input id="eventDown" type="number" min="0" max="100" value="100"></label>
 <label>Loan years<input id="eventLoanYears" type="number" min="0" max="50" step="1" value="0"></label>
 <label>Loan rate (%)<input id="eventRate" type="number" min="0" max="100" step=".1" value=""></label>
 <label>Assumed inflation (%)<input id="eventInflation" type="number" min="0" max="100" step=".1" value="2.5"></label>
 <label>Existing home / car net proceeds (first purchase only; $)<input id="eventOffset" type="number" min="0" step="1000" value="0"></label>
-<label>Resale date<input id="eventResaleDate" type="date"></label>
+<label>Resale date<input id="eventResaleDate" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"></label>
 <label>Resale value (retirement-year $)<input id="eventResaleValue" type="number" min="0" step="1000" value="0"></label>
 <label>Repeat every N years<input id="eventReplaceYears" type="number" min="0" max="50" step="1" value="0"></label>
 <label>Repeat cost (retirement-year $; 0 = original)<input id="eventReplaceCost" type="number" min="0" step="1000" value="0"></label>
@@ -135,7 +140,7 @@ input::-webkit-date-and-time-value{min-width:0;text-align:left}
 <label>Annual nominal depreciation (%)<input id="eventDepreciation" type="number" min="0" max="100" step=".5" value="0"></label>
 <label>Purchase rule<select id="eventRule"><option value="always">Always buy</option><option value="conditional">Buy only if conditions hold</option></select></label>
 <label>If conditions are not met<select id="eventFailure"><option value="skip">Skip this purchase</option><option value="defer">Wait until eligible</option></select></label>
-<label>Stop waiting after (optional)<input id="eventDeadline" type="date"></label>
+<label>Stop waiting after (optional)<input id="eventDeadline" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"></label>
 <label><input id="eventFullSpending" type="checkbox" checked> Only if regular spending is not cut</label>
 <label>Minimum portfolio (retirement-year $; optional)<input id="eventMinPortfolio" type="number" min="0" max="1000000000" step="10000"></label>
 <label>Minimum portfolio as % of starting wealth (optional)<input id="eventMinRatio" type="number" min="0" max="10000" step="5"></label>
@@ -156,7 +161,7 @@ input::-webkit-date-and-time-value{min-width:0;text-align:left}
 <label class="check"><input type="checkbox" id="compareProjectExit" checked>Project Epic exit separately for each date</label>
 <p id="compareExitBasis" class="foot"></p>
 <details class="result-details"><summary>Comparison assumptions</summary><p>Both dates use the same spending, purchase dates and rules. Other account balances stay fixed. Purchases before retirement reduce starting wealth; working-life savings and investment returns are not modeled.</p></details>
-<div class="compare-controls"><label>Compare against<input id="compareDate" type="date" min="2026-01-01" max="2100-12-31"></label>
+<div class="compare-controls"><label>Compare against<input id="compareDate" type="date" class="date-field" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" min="2026-01-01" max="2100-12-31"></label>
 <button id="compareBtn" class="primary">Compare retirement dates</button></div>
 <p id="compareError" class="foot" role="alert" hidden></p>
 <section id="compare" hidden aria-label="Retirement date comparison"><h2>Comparison results</h2><div id="comparison"></div></section></section>

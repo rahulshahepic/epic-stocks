@@ -43,7 +43,7 @@ export default function AnnouncedPrice({ onSaved }: { onSaved?: () => void }) {
     finally { setBusy(false) }
   }
   const position = saved ?? preview?.result
-  return <section id="announced-price" aria-label="Record announced price" className="scroll-mt-28 space-y-3 rounded-2xl border border-cs-border bg-cs-surface p-4">
+  return <section id="announced-price" tabIndex={-1} aria-label="Record announced price" className="scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] space-y-3 rounded-2xl border border-cs-border bg-cs-surface p-4">
     <h2 className="text-base font-semibold text-cs-text">{saved ? 'Your position, updated' : 'Record this year’s announced price'}</h2>
     {!saved && <>
       <p className="text-xs text-cs-text-2">Use the figure Epic announced, applicable from {applicable}. It will be confirmed, replacing any price already recorded for that date. An announcement date already on record is preserved; otherwise it stays unknown until you add it in price history.</p>

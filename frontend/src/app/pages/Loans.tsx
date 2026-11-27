@@ -1,3 +1,5 @@
+import { reportDateErrors } from '../../scaffold/components/ui/dateValidation.ts'
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { RecordListControls } from '../components/RecordListControls.tsx'
 import { useRecordList } from '../hooks/useRecordList.ts'
 import { Fragment, useCallback, useState } from 'react'
@@ -334,7 +336,7 @@ export default function Loans() {
         <div className="flex items-center justify-between pt-2">
           <div className="flex gap-2">
             <button
-              onClick={() => handleSave(false)}
+              onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(false) }}
               disabled={saving}
               className="rounded-full bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
             >
@@ -342,7 +344,7 @@ export default function Loans() {
             </button>
             {mode === 'add' && (
               <button
-                onClick={() => handleSave(true)}
+                onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(true) }}
                 disabled={saving}
                 className="rounded-md bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60 disabled:opacity-50"
               >
@@ -560,7 +562,7 @@ export default function Loans() {
 
       {payoffModal && (
         <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
-          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
+          <div data-payoff-editor className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-cs-text">{payoffModal.loan.due_date < today ? "Record this loan's payoff" : "Repay this loan early"}</h3>
               <button onClick={closePayoffModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
@@ -576,8 +578,8 @@ export default function Loans() {
             {payoffModal.loan.due_date < today && !payoffModal.existingSale && (
               <label className="mt-3 block">
                 <span className="text-xs text-cs-text-2">Paid on</span>
-                <input
-                  type="date"
+                <DateInput
+                  required
                   max={today}
                   value={payoffDate}
                   onChange={e => e.target.value && openPayoffModal(payoffModal.loan, e.target.value)}
@@ -635,7 +637,7 @@ export default function Loans() {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={closePayoffModal} className="rounded-md px-3 py-1.5 text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
               <button
-                onClick={handleExecutePayoff}
+                onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[data-payoff-editor]'))) void handleExecutePayoff() }}
                 disabled={payoffExecuting || !payoffModal.suggestion}
                 className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
               >

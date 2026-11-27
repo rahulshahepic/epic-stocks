@@ -23,3 +23,9 @@ test('backdated estimate stays tentative until announced, without another increa
   await expect(page.getByText('$112.00')).toBeVisible()
   await expect(page.getByText('Jan 1, 2020', {exact: true})).toBeVisible()
 })
+
+test('announced-price link focuses the price form after it loads', async ({ page }) => {
+  await loginAs(page, 'announced-price-anchor@example.test')
+  await page.goto('/prices#announced-price')
+  await expect(page.getByRole('region', { name: 'Record announced price' })).toBeFocused()
+})

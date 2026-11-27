@@ -931,7 +931,7 @@ export default function Sales() {
             : <>No sales yet. Tap <span className="font-medium">+ Sale</span> above to plan or record one.</>}
         </p>
       )}
-      <p className="text-xs text-cs-text-2">{sales.length} sales</p>
+      {!records.query.trim() && <p className="text-xs text-cs-text-2">{sales.length} sales</p>}
     </div>
   )
 }

@@ -592,16 +592,16 @@ test.describe('Screenshots', () => {
   test('sales page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Sales')
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
+    await expect(page.getByLabel('Filter sales')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Edit sale' }).first()).toBeVisible()
     await shoot(page, 'sales-light-mobile', { fullPage: true })
   })
 
   test('sales page - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
     await navigateTo(page, 'Sales')
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
+    await expect(page.getByLabel('Filter sales')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Edit sale' }).first()).toBeVisible()
     await shoot(page, 'sales-dark-mobile', { fullPage: true })
   })
 
@@ -808,6 +808,7 @@ test.describe('Screenshots', () => {
     await expect(filter).toBeFocused()
     await filter.fill('purchase')
     await expect(page.getByRole('status').filter({ hasText: /\d+ of \d+ grants/ })).toBeVisible()
+    await expect(page.getByText(/^\d+ grants$/)).toHaveCount(0)
     await shoot(page, 'grants-filter-light-mobile', { fullPage: true })
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })

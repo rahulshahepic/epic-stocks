@@ -422,7 +422,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 border-t border-white/35 text-sm">
             {cv.next_event && <Link to={`/events?date=${cv.next_event.date}`} className="inline-flex min-h-11 flex-wrap items-center gap-x-1">
               <span className="font-semibold">Next stock event</span>
-              <span>· {fmtFullDate(cv.next_event.date)} · {cv.next_event.event_type}</span>
+              <span>{fmtFullDate(cv.next_event.date)} · {cv.next_event.event_type}</span>
               {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && <span>· estimated price change</span>}
             </Link>}
             <Link to="/events" className="inline-flex min-h-11 items-center underline underline-offset-2">Stock Records</Link>

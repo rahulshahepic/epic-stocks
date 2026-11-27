@@ -557,7 +557,7 @@ export default function Loans() {
             : <>No loans yet. Tap <span className="font-medium">+ Loan</span> above to record one.</>}
         </p>
       )}
-      <p className="text-xs text-cs-text-2">{loans.length} loans</p>
+      {!records.query.trim() && <p className="text-xs text-cs-text-2">{loans.length} loans</p>}
 
       {payoffModal && (
         <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>

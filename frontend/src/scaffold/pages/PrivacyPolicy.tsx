@@ -176,7 +176,7 @@ export default function PrivacyPolicy() {
           <Section title="Data Retention and Portability">
             <P>
               Your data persists until you explicitly delete it. You can export your financial records at any
-              time using the Excel export feature. Account deletion removes live account data immediately. Existing encrypted backup archives can retain deleted records under the operator's retention policy. The newest seven complete backups are retained even beyond the nominal window, including if backups stop. Ordinary diagnostic reports are retained with linked identifying fields removed. Separately consented material linked to the deleted account is erased. The operator must prevent restored backups from reactivating deleted accounts; ask them about retention and restore procedures.
+              time using the Excel export feature. Account deletion removes live account data immediately. Existing encrypted backup archives can retain deleted records under the operator's retention policy. The newest seven complete backups are retained even beyond the nominal window, including if backups stop. Ordinary diagnostic reports are retained with linked identifying fields removed. Separately consented material linked to the deleted account is erased. A deletion marker holding hashed identifiers only is kept outside the database and re-applied during a restore, so a restored backup does not reactivate a deleted account; ask the operator about retention and restore procedures.
             </P>
           </Section>
 

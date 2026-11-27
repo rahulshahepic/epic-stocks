@@ -1092,6 +1092,8 @@ Admin → **Backups** shows the last attempt and successful upload, backup age, 
 
 Upload success and restore testing are separate. After following the [test-restore procedure](OPERATIONS.md#test-restore-in-a-codespace-phone-friendly), explicitly confirm the restored run in Admin. This is an admin-recorded test, not an automatic restore check; changing destination or encryption key invalidates the displayed confirmation.
 
+Deleting an account also writes a deletion tombstone — hashed identifiers only — to `deleted-accounts.json` in the same host handoff directory, outside the database backup set. The restore procedure re-applies the tombstones (`python -m tombstone_reapply`, also run at app startup) so a restored backup cannot reactivate an account its owner deleted. Entries are pruned on the same rule as the backups: the retention window plus the newest seven.
+
 ![Backup status and configuration on a phone](screenshots/admin-backups-light-mobile.png)
 ![Backup status and configuration in dark mode](screenshots/admin-backups-dark-mobile.png)
 

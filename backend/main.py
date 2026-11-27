@@ -495,13 +495,13 @@ class OriginCheckMiddleware:
             )
             if has_session_cookie:
                 origin = _scope_header(scope, b"origin")
-                # `Origin: null` is an opaque origin (sandboxed frame, or a
-                # page served with Referrer-Policy: no-referrer): there is
-                # no origin to validate, so treat it like no Origin at all
-                # rather than rejecting a same-origin write we cannot
-                # attribute. SameSite=Lax remains the control there.
-                if origin is not None and origin.strip() == "null":
-                    origin = None
+                # An opaque `Origin: null` is NOT treated as no origin:
+                # an attacker page can force one cross-site with a
+                # `no-referrer` meta tag (or a sandboxed frame), so
+                # exempting it would reopen the #821 forged write. It
+                # falls through to `_origin_allowed`, which rejects it.
+                # Nothing legitimate sends one since the reviewer
+                # sign-in page moved to `Referrer-Policy: same-origin`.
                 if origin is None:
                     referer = _scope_header(scope, b"referer")
                     if referer:

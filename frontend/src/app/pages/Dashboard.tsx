@@ -396,19 +396,19 @@ export default function Dashboard() {
         <img aria-hidden="true" src={campusWatercolor} className="campus-watercolor opacity-20!" alt="" />
         <div className="relative z-10 space-y-3">
           <h2 id="dashboard-summary" className="text-base font-semibold text-white">Your stock at a glance</h2>
-          <div className="grid grid-cols-2 gap-3 sm:gap-6">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:gap-6">
             <div>
               <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">
                 {totalValue === null ? 'Vested shares' : cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
               </h3>
-              <p className="mt-1 text-2xl font-bold tabular-nums sm:text-4xl">
+              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
                 {totalValue === null ? <Link to="/grants" className="underline underline-offset-2" aria-label={`${fmtNum(cv.total_shares)} vested shares`}>{fmtNum(cv.total_shares)}</Link> : fmt$(totalValue)}
               </p>
               {totalValue !== null && <p className="mt-1 text-xs text-white">{stockValueLabel}</p>}
             </div>
             {showExitFigure && <div>
               <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">{exitCashLabel(cardDate === today)}</h3>
-              <p className="mt-1 text-2xl font-bold tabular-nums sm:text-4xl">
+              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
                 {datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)}
               </p>
               <p className="mt-1 text-xs text-white">
@@ -420,7 +420,7 @@ export default function Dashboard() {
           {hasPrice && <p className="text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
             datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 border-t border-white/35 text-sm">
-            {cv.next_event && <Link to={`/events?date=${cv.next_event.date}`} aria-label="Open next event" className="inline-flex min-h-11 flex-wrap items-center gap-x-1">
+            {cv.next_event && <Link to={`/events?date=${cv.next_event.date}`} className="inline-flex min-h-11 flex-wrap items-center gap-x-1">
               <span className="font-semibold">Next stock event</span>
               <span>· {fmtFullDate(cv.next_event.date)} · {cv.next_event.event_type}</span>
               {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && <span>· estimated price change</span>}
@@ -432,6 +432,7 @@ export default function Dashboard() {
       <details className="rounded-xl border border-cs-border bg-cs-surface px-3 text-sm text-cs-text">
         <DisclosureSummary className="font-semibold">How these values are calculated</DisclosureSummary>
         <div className="space-y-2 pb-3">
+          {totalValue !== null && <p>Stock value includes vested shares at the applicable share price and unvested purchased shares at their cost.</p>}
           <p className="font-bold tabular-nums">
             {showExitPreview && datedExit ? <>
               {fmt$(datedExit.gross_vested)} vested shares
@@ -544,6 +545,13 @@ export default function Dashboard() {
       {carryover === 'matched' && <p role="status" className="text-sm text-cs-text">Your preview already matches your saved records. Here’s your position.</p>}
       {carryover === 'expired' && <p role="status" className="text-sm text-cs-text">Your preview expired after 30 minutes. <Link to="/import" className="underline">Import the files again</Link> to review and save them.</p>}
       {carryover === 'failed' && <p role="alert" className="text-sm text-cs-text">We couldn’t save your preview automatically. <Link to="/import" className="underline">Import your files again</Link> to review and save it.</p>}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {cv && grantHoldings && <>
+          {fmtFullDate(cardDate)}. {totalValue === null ? `${fmtNum(cv.total_shares)} vested shares. Stock value needs a share price.` : `Stock value ${fmt$(totalValue)}.`}
+          {datedExit?.liquidation_net_cash != null && ` Estimated exit cash ${fmt$(datedExit.liquidation_net_cash)}.`}
+          {!!datedExit?.liquidation_shortfall && ` Additional cash needed to settle ${fmt$(datedExit.liquidation_shortfall)}.`}
+        </>}
+      </p>
       {headline}
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">

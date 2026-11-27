@@ -250,7 +250,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
     expect(screen.getAllByText('$75,000').length).toBeGreaterThan(0)
-    expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Mar 1, 2027')
+    expect(screen.getByRole('link', {name: /^Next stock event/})).toHaveTextContent('Mar 1, 2027')
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
 
@@ -419,11 +419,11 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Mar 1, 2027')
+      expect(screen.getByRole('link', {name: /^Next stock event/})).toHaveTextContent('Mar 1, 2027')
     })
     expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('link', {name: 'Open next event'})).toHaveAttribute('href', '/events?date=2027-03-01')
+    expect(screen.getByRole('link', {name: /^Next stock event/})).toHaveAttribute('href', '/events?date=2027-03-01')
   })
 
   it('marks an estimated price change as the next event', async () => {
@@ -435,7 +435,7 @@ describe('Dashboard', () => {
     try {
       renderDashboard()
       await waitFor(() => {
-        expect(screen.getByRole('link', {name: 'Open next event'})).toHaveTextContent('Jan 1, 2027')
+        expect(screen.getByRole('link', {name: /^Next stock event/})).toHaveTextContent('Jan 1, 2027')
       })
       expect(screen.getByText(/estimated price change/i)).toBeInTheDocument()
     } finally {

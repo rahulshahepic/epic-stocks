@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 const tabs = [
   { view: 'expenses', label: 'Planned Expenses', shortLabel: 'Expenses', to: '/planning?view=expenses' },
   { view: 'retirement', label: 'Retirement', shortLabel: 'Retirement', to: '/planning' },
-  { view: 'compensation', label: 'Compensation Calculator', shortLabel: 'Comp Calc', to: '/comp-calculator' },
+  { view: 'compensation', label: 'Compensation Calculator', shortLabel: 'Calculator', to: '/comp-calculator' },
 ] as const
 
 type PlanningView = typeof tabs[number]['view']

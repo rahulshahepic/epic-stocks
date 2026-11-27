@@ -393,7 +393,7 @@ test.describe('Screenshots', () => {
         await page.waitForLoadState('networkidle')
         await page.locator('input[type="date"]').first().fill('2026-12-31')
         await page.waitForLoadState('networkidle')
-        const card = page.getByRole('link', { name: 'Open next event' })
+        const card = page.getByRole('link', { name: /^Next stock event/ })
         await expect(card).toBeVisible()
         await expect(card).toContainText('estimated price change')
         await page.getByText(/Your estimate · announcement expected/).first().scrollIntoViewIfNeeded()

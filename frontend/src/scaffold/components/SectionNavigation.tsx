@@ -121,7 +121,7 @@ export function SectionNavigation({
             id={compact && activeHash ? panelId(activeHash) : undefined}
             aria-labelledby={compact && activeHash && !panelLabel ? tabId(activeHash) : undefined}
             aria-label={compact && !panelLabel ? undefined : panelLabel ?? active?.label}
-            className="min-w-0 space-y-4 outline-none!">
+            className={`min-w-0 space-y-4 ${compact ? 'rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cs-brand' : 'outline-none!'}`}>
             {children}
           </div>
         </div>

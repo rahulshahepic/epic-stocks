@@ -55,6 +55,7 @@ function renderLayout(path = '/') {
               <Routes>
                 <Route element={<Layout />}>
                   <Route index element={<p>content</p>} />
+                  <Route path="*" element={<p>content</p>} />
                   <Route path="settings" element={<h1>Settings</h1>} />
                 </Route>
               </Routes>
@@ -152,10 +153,10 @@ describe('Layout responsive navigation', () => {
     expect(navigation.getByRole('heading', { name: 'Admin' })).toBeInTheDocument()
     expect(navigation.queryByRole('heading', { name: 'Planning' })).not.toBeInTheDocument()
     expect(navigation.queryByRole('link', { name: 'Connect AI' })).not.toBeInTheDocument()
-    expect(navigation.getByRole('link', { name: 'Compensation Calculator' })).toHaveAttribute('href', '/comp-calculator')
+    expect(navigation.queryByRole('link', { name: 'Compensation Calculator' })).not.toBeInTheDocument()
     expect(navigation.getByRole('link', { name: 'Import / Export' })).toHaveAttribute('href', '/import')
     await user.tab()
-    expect(navigation.getByRole('link', { name: 'Compensation Calculator' })).toHaveFocus()
+    expect(navigation.getByRole('link', { name: 'Events' })).toHaveFocus()
     await user.keyboard('{Escape}')
     expect(more).toHaveFocus()
     expect(navigation.queryByRole('link', { name: 'Site Admin' })).not.toBeInTheDocument()
@@ -163,6 +164,17 @@ describe('Layout responsive navigation', () => {
     await user.tab({ shift: true })
     expect(navigation.getByRole('link', { name: 'Settings' })).toHaveFocus()
     expect(more).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it.each(['/grants', '/comp-calculator'])('marks the parent navigation for %s', async path => {
+    renderLayout(path)
+    await screen.findByText('A', { exact: true })
+    for (const name of ['Mobile navigation', 'Main navigation']) {
+      const nav = within(screen.getByRole('navigation', { name }))
+      const current = path === '/grants' ? nav.getByRole('button', { name: 'More' }) : nav.getByRole('link', { name: 'Planning' })
+      expect(current).toHaveAttribute('aria-current', 'location')
+      expect(nav.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+    }
   })
 
   it('shows Content to content editors and hides Admin and Epic-mode imports', async () => {

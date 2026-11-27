@@ -1,5 +1,7 @@
+import { RecordListControls } from '../components/RecordListControls.tsx'
+import { useRecordList } from '../hooks/useRecordList.ts'
 import { Link } from 'react-router-dom'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { PriceEntry, SaleEntry, SaleEstimate, TaxBreakdown, TaxSettings, TrancheLine, TrancheAllocation } from '../../api.ts'
@@ -283,6 +285,7 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
 }
 
 export default function Sales() {
+  const records = useRecordList()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
@@ -725,6 +728,8 @@ export default function Sales() {
     )
   }
 
+  const visibleRows = records.select(sales, row => row.date, row => row.shares, row => [row.date, fmtFullDate(row.date), row.notes, row.loan_id ? 'repayment' : 'cash sale'])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -746,9 +751,12 @@ export default function Sales() {
         <Link to="/retirement?view=expenses" className="inline-flex min-h-11 items-center text-sm font-semibold underline">Review in Planned Expenses</Link>
       </section>}
 
+      {sales.length > 0 && <RecordListControls name="sales" controls={records} />}
+      {sales.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No sales match your filter.</p>}
+
       {/* Mobile card layout */}
-      {isMobile ? <div className="space-y-2">
-        {sales.map(s => {
+      {isMobile ? <div className="record-list space-y-2">
+        {visibleRows.map(s => {
           const bd = breakdowns.get(s.id)
           const isExpanded = expanded.has(s.id)
           const isLoading = loadingTaxIds.has(s.id)
@@ -782,13 +790,13 @@ export default function Sales() {
                 {s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app for loan repayment — not a recorded sale. <Link to="/settings#loans" className="text-cs-brand underline">Repayment settings</Link></p>}<span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
               </div>
               {/* Line 3: Gross + Tax */}
-              <div className="mt-1 flex items-center justify-between">
+              <div className="mt-1 space-y-2">
                 <span className="tabular-nums font-medium text-cs-text">Gross: {fmtUSD(s.shares * s.price_per_share)}</span>
                 <button
                   onClick={() => toggleTax(s.id)}
                   aria-expanded={isExpanded}
                   aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
-                  className="inline-flex items-center gap-1"
+                  className="flex w-full items-center justify-between gap-1 rounded-lg bg-cs-raised px-3 text-left"
                 >
                   {isLoading ? (
                     <span className="text-cs-text-2">...</span>
@@ -818,7 +826,7 @@ export default function Sales() {
           )
         })}
       </div> : /* Desktop table layout */
-        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
+        <Card pad="none" className="record-list overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">
@@ -832,14 +840,14 @@ export default function Sales() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {sales.map(s => {
+              {visibleRows.map(s => {
                 const bd = breakdowns.get(s.id)
                 const isExpanded = expanded.has(s.id)
                 const isLoading = loadingTaxIds.has(s.id)
                 const hasST = bd && bd.st_shares > 0
                 return (
-                  <>
-                    <tr key={s.id} className="bg-cs-surface">
+                  <Fragment key={s.id}>
+                    <tr className="bg-cs-surface">
                       <td className="px-3 py-2 text-cs-text-2">{fmtFullDate(s.date)}{s.is_generated && s.date > today && <p className="mt-1 text-xs font-normal text-cs-muted">Planned by the app for loan repayment — not a recorded sale. <Link to="/settings#loans" className="text-cs-brand underline">Repayment settings</Link></p>}</td>
                       <td className="px-3 py-2">
                         {s.loan_id != null ? (
@@ -910,7 +918,7 @@ export default function Sales() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

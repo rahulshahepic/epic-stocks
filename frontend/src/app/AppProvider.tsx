@@ -157,7 +157,6 @@ const DisclaimerBody = (
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
-  { to: '/comp-calculator', label: 'Comp Calc' },
   { to: '/planning', label: 'Planning' },
   { to: '/events', label: 'Events' },
   { to: '/grants', label: 'Grants' },

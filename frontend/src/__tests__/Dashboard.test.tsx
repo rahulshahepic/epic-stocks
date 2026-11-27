@@ -462,7 +462,7 @@ describe('Dashboard stale-price banner', () => {
   it('warns when the newest price predates this year', async () => {
     mockApi()   // newest real price is from 2021
     renderDashboard()
-    expect(await screen.findByText(/Your last recorded share price is from 2021/)).toBeInTheDocument()
+    expect(await screen.findByText(/Last recorded share price: 2021/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Add a price' }))
     expect(screen.getByLabelText('Announced price', {exact: true})).toHaveFocus()
   })
@@ -471,25 +471,25 @@ describe('Dashboard stale-price banner', () => {
     mockApi(MOCK_PRICES_CURRENT)
     renderDashboard()
     await screen.findByText(/Estimated cash if you left/i)
-    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Last recorded share price:/)).not.toBeInTheDocument()
   })
 
   it('does not treat the user\'s own estimate as knowing this year\'s price', async () => {
     mockApi(MOCK_PRICES_ESTIMATE_ONLY)
     renderDashboard()
-    expect(await screen.findByText(/Your last recorded share price is from 2020/)).toBeInTheDocument()
+    expect(await screen.findByText(/Last recorded share price: 2020/)).toBeInTheDocument()
   })
 
   it('stays dismissed for that year once dismissed', async () => {
     mockApi()
     const { unmount } = renderDashboard()
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
-    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Last recorded share price:/)).not.toBeInTheDocument()
 
     unmount()
     renderDashboard()
     await screen.findByText(/Estimated cash if you left/i)
-    expect(screen.queryByText(/Your last recorded share price is from/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Last recorded share price:/)).not.toBeInTheDocument()
   })
 })
 

@@ -45,11 +45,8 @@ export default function Layout() {
   const workshopRoutes = ['/settings', '/connect-ai', '/content', '/admin', '/import-diagnostics']
   const isRecords = recordsRoutes.includes(location.pathname)
   const isWorkshop = workshopRoutes.includes(location.pathname)
-  const hasCategorySidebar = ['/settings', '/admin', '/content'].includes(location.pathname)
-  const isPlanning = ['/planning', '/retirement'].includes(location.pathname)
-  const isObservatory = isPlanning || location.pathname === '/comp-calculator'
+  const isPlanning = ['/planning', '/retirement', '/comp-calculator'].includes(location.pathname)
   const moreGroups: NavigationGroup[] = [
-    { links: navItems.filter(item => item.to === '/comp-calculator').map(item => ({ ...item, label: 'Compensation Calculator' })) },
     {
       label: 'Stock records',
       links: navItems.filter(item => recordsRoutes.includes(item.to))
@@ -60,18 +57,19 @@ export default function Layout() {
       links: adminLinks,
     },
   ].filter(group => group.links.length > 0)
+  const moreActive = moreGroups.some(group => group.links.some(link => link.to === location.pathname))
   const primaryLocation = (to: string) => {
     if (to === location.pathname) return 'page'
-    if ((to === '/' && isRecords) || (to === '/planning' && isPlanning)) return 'location'
+    if (to === '/planning' && isPlanning) return 'location'
   }
   const campusWing = isRecords
     ? { id: 'records', label: 'The records wing', motto: 'Verba volant, scripta manent', translation: 'Spoken words fly; written words remain' }
     : isWorkshop
       ? { id: 'workshop', label: 'The workshop', motto: 'Festina lente', translation: 'Make haste slowly' }
-      : isObservatory
+      : isPlanning
         ? { id: 'observatory', label: 'The observatory', motto: 'Ad astra per aspera', translation: 'Through hardship to the stars' }
         : null
-  const motif = isRecords ? 'records' : isWorkshop ? 'workshop' : isObservatory ? 'observatory' : 'garden'
+  const motif = isRecords ? 'records' : isWorkshop ? 'workshop' : isPlanning ? 'observatory' : 'garden'
 
   return (
     <div className="flex min-h-screen flex-col bg-cs-base">
@@ -100,23 +98,28 @@ export default function Layout() {
           </div>
           <nav aria-label="Main navigation" className="mx-auto hidden w-full max-w-[90rem] gap-1 px-6 pb-2.5 lg:px-8 md:flex">
             {primaryItems.map(({ to, label }) => <Link key={to} to={to} aria-current={primaryLocation(to)} className={`campus-nav-link group flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${primaryLocation(to) ? 'bg-rose-700 text-white shadow-sm' : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}><CampusNavIcon route={to} className="h-3.5 w-3.5 opacity-75 transition-transform group-hover:-rotate-6" />{label}</Link>)}
-            <MoreNavigation key={location.key} groups={moreGroups} />
+            <MoreNavigation key={location.key} groups={moreGroups} active={moreActive} />
           </nav>
         </header>
       </div>
       {config && !viewing && !staging && !me?.reviewer_account && <PushNudge />}
-      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className={`campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 scroll-mt-28 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8 ${hasCategorySidebar ? 'overflow-clip' : 'overflow-hidden'}`}>
-        <CampusCorner variant={motif} className="pointer-events-none absolute -right-5 top-2 h-36 w-52 text-cs-text opacity-70 sm:right-3 lg:h-44 lg:w-64" />
+      <main id="main-content" ref={mainRef} tabIndex={-1} data-campus-wing={campusWing?.id} className="campus-page-shell relative mx-auto w-full max-w-[90rem] flex-1 overflow-clip scroll-mt-28 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 lg:px-8 md:pb-8">
         <div className="relative z-[1]">
           {me?.reviewer_account && <p role="status" className="mb-4 rounded-xl border border-cs-border bg-cs-surface p-3 text-sm font-semibold">FICTIONAL REVIEW DATA · {me.reviewer_account.platform} · {me.reviewer_account.scenario}. These are invented financial records, not actual Epic prices or personal accounts.</p>}
-          {campusWing && <div className="campus-wing-marker max-w-4xl"><span>{campusWing.label}</span><span lang="la" title={campusWing.translation}>{campusWing.motto}</span></div>}
+          <div className="campus-wing-marker">
+            <CampusCorner variant={motif} className="campus-wing-art" />
+            {campusWing && <>
+              <span>{campusWing.label}</span>
+              <span className="campus-wing-motto" lang="la" title={campusWing.translation}>{campusWing.motto}</span>
+            </>}
+          </div>
           {!config ? <p role="status">Loading application…</p> : staging && !['/admin', '/content', '/connect-ai'].some(path => location.pathname.startsWith(path)) && !me?.staging_account?.initialized
             ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)
             : <>
               {!viewing && <TaskOutcome />}
-              {isRecords && <nav aria-label="Stock records" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-cs-border pb-2">
+              {isRecords && <nav aria-label="Stock records" className="mb-4 flex items-center gap-2 overflow-x-auto border-b border-cs-border pb-2">
                 {navItems.filter(item => recordsRoutes.includes(item.to)).map(({ to, label }) => (
-                  <NavLink key={to} to={to} className={({ isActive }) => `inline-flex min-h-11 items-center rounded-lg px-3 text-sm ${isActive ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}>
+                  <NavLink key={to} to={to} className={({ isActive }) => `inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-sm ${isActive ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}>
                     {to === '/import' ? 'Import / Export' : label}
                   </NavLink>
                 ))}
@@ -133,7 +136,7 @@ export default function Layout() {
               <CampusNavIcon route={to} />{label}
             </Link>
           ))}
-          <MoreNavigation key={location.key} groups={moreGroups} mobile />
+          <MoreNavigation key={location.key} groups={moreGroups} active={moreActive} mobile />
         </div>
       </nav>
       <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0"><Link to="/privacy" className="underline hover:text-cs-text">Privacy Policy</Link><span className="mx-2 text-cs-muted">·</span><a href="/terms" className="underline hover:text-cs-text">Terms of Use</a><span className="mx-2 text-cs-muted">·</span><ReportProblemLink />{appDisclaimerShort && <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>}</footer>
@@ -143,7 +146,7 @@ export default function Layout() {
 
 type NavigationGroup = { label?: string; links: { to: string; label: string }[] }
 
-function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[]; mobile?: boolean }) {
+function MoreNavigation({ groups, active, mobile = false }: { groups: NavigationGroup[]; active: boolean; mobile?: boolean }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -181,12 +184,13 @@ function MoreNavigation({ groups, mobile = false }: { groups: NavigationGroup[];
       <button
         ref={button}
         type="button"
+        aria-current={active ? 'location' : undefined}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(previous => !previous)}
         className={`flex items-center justify-center text-xs font-semibold ${mobile
           ? 'min-h-11 w-full flex-col gap-0.5 rounded-xl px-1 py-1.5'
-          : 'h-full gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5'} ${open
+          : 'h-full gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5'} ${open || active
           ? 'bg-cs-brand-subtle text-cs-brand dark:text-rose-300'
           : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'}`}
       >

@@ -1,5 +1,7 @@
+import { RecordListControls } from '../components/RecordListControls.tsx'
+import { useRecordList } from '../hooks/useRecordList.ts'
 import EquityTerms from '../components/EquityTerms.tsx'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
@@ -10,7 +12,7 @@ import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from '
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
-import { fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
+import { fmtFullDate, fmtMonthYear, fmtNum, fmtPrice } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
@@ -35,6 +37,27 @@ const empty: GrantForm = {
   election_83b: false,
 }
 
+function VestingSchedule({ grant }: { grant: GrantEntry }) {
+  const vesting = vestingOf(grant)
+  const first = vesting[0]?.date
+  const last = vesting.at(-1)?.date
+  if (!first || !last) return <span className="text-cs-muted">No vesting dates</span>
+  const annual = vesting.length > 1 && vesting.every(({ date }, index) =>
+    date.slice(4) === first.slice(4) && Number(date.slice(0, 4)) === Number(first.slice(0, 4)) + index,
+  )
+  return (
+    <details>
+      <summary className="min-h-11 cursor-pointer content-center text-cs-text-2">
+        {vesting.length} {annual ? 'annual ' : ''}{vesting.length === 1 ? 'vest' : 'vests'} · {fmtMonthYear(first)}
+        {last !== first && ` to ${fmtMonthYear(last)}`}
+      </summary>
+      <ul className="list-disc space-y-1 pb-2 pl-5 text-cs-text-2">
+        {vesting.map(vest => <li key={vest.date}>{fmtNum(vest.shares)} shares on {fmtFullDate(vest.date)}</li>)}
+      </ul>
+    </details>
+  )
+}
+
 function priceAt(date: string, prices: PriceEntry[] | null | undefined): number {
   if (!prices || prices.length === 0) return 0
   let last = 0
@@ -46,6 +69,7 @@ function priceAt(date: string, prices: PriceEntry[] | null | undefined): number 
 }
 
 export default function Grants() {
+  const records = useRecordList()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
@@ -594,6 +618,8 @@ export default function Grants() {
     )
   }
 
+  const visibleRows = records.select(grants, row => String(row.year), row => row.shares, row => [row.year, row.type, row.exercise_date, row.vest_start])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -616,9 +642,12 @@ export default function Grants() {
         </p>
       )}
 
+      {grants.length > 0 && <RecordListControls name="grants" controls={records} />}
+      {grants.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No grants match your filter.</p>}
+
       {/* Mobile card layout */}
-      {isMobile ? <div className="space-y-2">
-        {grants.map(g => {
+      {isMobile ? <div className="record-list space-y-2">
+        {visibleRows.map(g => {
           const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
           const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
           const hasSale = !!linkedSale
@@ -637,7 +666,7 @@ export default function Grants() {
                   )}
                 </div>
                 {readOnly ? null : epicMode ? (
-                  <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">Sell</button>
+                  <button onClick={() => openSellModal(g)} className="rounded-lg px-2 text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">Record a sale</button>
                 ) : (
                   <button onClick={() => openEdit(g)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
                 )}
@@ -646,24 +675,18 @@ export default function Grants() {
               <div className="mt-1 text-cs-text-2">
                 <span className="tabular-nums">{fmtNum(g.shares)}</span> shares <span className="text-cs-muted">&middot;</span> <span className="tabular-nums">{fmtPrice(g.price)}</span> basis
               </div>
-              {/* Line 3: Vest details */}
-              <div className="mt-1 text-cs-muted">
-                Vests: {vestingOf(g).map(v => `${fmtNum(v.shares)} on ${fmtFullDate(v.date)}`).join(', ')}
-                {g.exercise_date && <> <span className="text-cs-muted">&middot;</span> Ex: {g.exercise_date}</>}
-              </div>
-              {/* Line 4: Loan status */}
-              <div className="mt-1">
-                {loan ? (
-                  <button
-                    onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
-                    className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
-                  >
-                    {hasSale ? '\u2713 loan+sale' : '\u2713 loan'} {isExpanded ? '\u25B2' : '\u25BC'}
-                  </button>
-                ) : (
-                  <span className="text-[10px] text-cs-text-2">&mdash;</span>
-                )}
-              </div>
+              <VestingSchedule grant={g} />
+              {g.exercise_date && <p className="text-cs-muted">Exercised {fmtFullDate(g.exercise_date)}</p>}
+              {loan && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
+                  aria-expanded={isExpanded}
+                  className="mt-1 flex min-h-11 w-full items-center justify-between rounded-lg bg-cs-raised px-3 text-left font-medium text-cs-text"
+                >
+                  {hasSale ? 'Loan and sale details' : 'Loan details'} <span aria-hidden="true">{isExpanded ? '▴' : '▾'}</span>
+                </button>
+              )}
               {/* Expanded loan detail */}
               {isExpanded && loan && (
                 <div className="mt-2 rounded-md bg-cs-raised p-3 ">
@@ -686,7 +709,7 @@ export default function Grants() {
           )
         })}
       </div> : /* Desktop table layout */
-        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
+        <Card pad="none" className="record-list overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">
@@ -694,22 +717,21 @@ export default function Grants() {
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2 text-right">Shares</th>
                 <th className="px-3 py-2 text-right">Cost Basis</th>
-                <th className="px-3 py-2">Vest Start</th>
-                <th className="px-3 py-2 text-right">Periods</th>
+                <th className="px-3 py-2">Vesting schedule</th>
                 <th className="px-3 py-2">Exercise</th>
                 <th className="px-3 py-2">Loan</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {grants.map(g => {
+              {visibleRows.map(g => {
                 const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
                 const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
                 const hasSale = !!linkedSale
                 const isExpanded = expandedGrantId === g.id
                 return (
-                  <>
-                    <tr key={g.id} className="bg-cs-surface">
+                  <Fragment key={g.id}>
+                    <tr className="bg-cs-surface">
                       <td className="px-3 py-2 text-cs-text-2">{g.year}</td>
                       <td className="px-3 py-2">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-rose-50 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
@@ -721,16 +743,16 @@ export default function Grants() {
                       </td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmtNum(g.shares)}</td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmtPrice(g.price)}</td>
-                      <td className="px-3 py-2 text-cs-muted">{fmtFullDate(g.vest_start)}</td>
-                      <td className="px-3 py-2 text-right text-cs-muted">{g.periods}</td>
+                      <td className="px-3 py-2"><VestingSchedule grant={g} /></td>
                       <td className="px-3 py-2 text-cs-muted">{g.exercise_date}</td>
                       <td className="px-3 py-2">
                         {loan ? (
                           <button
                             onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
+                            aria-expanded={isExpanded}
                             className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
                           >
-                            {hasSale ? '\u2713 loan+sale' : '\u2713 loan'}
+                            {hasSale ? 'Loan and sale details' : 'Loan details'}
                           </button>
                         ) : (
                           <span className="text-[10px] text-cs-text-2">&mdash;</span>
@@ -738,7 +760,7 @@ export default function Grants() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         {readOnly ? null : epicMode ? (
-                          <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Sell</button>
+                          <button onClick={() => openSellModal(g)} className="rounded-lg px-2 text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Record a sale</button>
                         ) : (
                           <button onClick={() => openEdit(g)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
                         )}
@@ -746,7 +768,7 @@ export default function Grants() {
                     </tr>
                     {isExpanded && loan && (
                       <tr key={`${g.id}-loan`} className="bg-cs-surface">
-                        <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <td colSpan={8} className="px-3 pb-3 pt-0">
                           <div className="rounded-md bg-cs-raised p-3 ">
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                               <div><span className="text-cs-text-2">Amount</span> <span className="ml-1 font-medium text-cs-text-2">{fmtPrice(loan.amount)}</span></div>
@@ -765,7 +787,7 @@ export default function Grants() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -786,7 +808,7 @@ export default function Grants() {
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl ">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-cs-text">
-                Sell Shares — {sellModal.grantType} {sellModal.grantYear}
+                Record a sale — {sellModal.grantType} {sellModal.grantYear}
               </h3>
               <button onClick={closeSellModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
             </div>
@@ -838,7 +860,7 @@ export default function Grants() {
                   disabled={!sellEstimate || sellSubmitting || sellEstimate.covers_loan === false}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
-                  {sellSubmitting ? 'Creating sale...' : 'Confirm Sale'}
+                  {sellSubmitting ? 'Recording sale…' : 'Save sale record'}
                 </button>
               </div>
             </div>

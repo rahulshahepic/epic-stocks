@@ -2213,6 +2213,7 @@ Vite's proxy target; use port 8100 where port 8000 is reserved. Optional
 `E2E_BACKEND_PORT` changes the Docker E2E host binding (default 8000).
 
 ![Fictional reviewer sign-in](screenshots/directory-reviewer-login-light-mobile.png)
+![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
 
 ## Internal test users
 
@@ -2231,9 +2232,6 @@ revocation and deletion are journaled through the admin action journal.
 Implementation: `scaffold/test_users.py`,
 `scaffold/routers/test_users.py`, the `InternalTestAccount` model and its
 Alembic migration. No new production environment variables.
-
-![Internal test user sign-in](screenshots/internal-test-user-login-light-mobile.png)
-![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
 
 ## Publication packages
 

@@ -83,6 +83,7 @@ export default defineConfig({
       '/terms': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/privacy.md': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/reviewer-login': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
+      '/test-user-login': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/api': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/mcp-setup': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',
       '/mcp/setup.json': process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000',

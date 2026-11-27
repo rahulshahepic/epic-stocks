@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type McpHost, type McpMatchType, type McpSettings, type McpUsageReport } from '../../../api.ts'
 import { AdminSection } from './AdminSection.tsx'
+import { targetRequestId } from './deepLink.ts'
 
 /**
  * Which AI assistants may connect, and whether any may.
@@ -27,6 +28,12 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState('')
   const [host, setHost] = useState('')
+  // Approval pushes and emails link to /admin?request=<id>#ai-connections
+  // (#825): when this page is arrived at that way, scroll the request into
+  // view and highlight it instead of leaving the admin to hunt for it.
+  const [deepLinkId] = useState(() => targetRequestId(window.location.search))
+  const [highlightId, setHighlightId] = useState<number | null>(null)
+  const [deepLinkMissing, setDeepLinkMissing] = useState(false)
   const [matchType, setMatchType] = useState<McpMatchType | ''>('')
 
   useEffect(() => {
@@ -40,6 +47,21 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       ))
       .catch(() => setUsage(null))
   }, [onError])
+
+  useEffect(() => {
+    if (deepLinkId === null || !settings) return
+    const el = document.getElementById(`admin-request-${deepLinkId}`)
+    if (el) {
+      el.scrollIntoView({ block: 'center' })
+      setHighlightId(deepLinkId)
+      setDeepLinkMissing(false)
+    } else {
+      // A stale push tapped after the request was decided: say so,
+      // rather than landing the admin on the section with no sign the
+      // link did anything.
+      setDeepLinkMissing(true)
+    }
+  }, [settings, deepLinkId])
 
   async function run(action: () => Promise<McpSettings>, failure: string) {
     setBusy(true)
@@ -204,6 +226,12 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
         </button>
       </form>
 
+      {deepLinkMissing && (
+        <p role="status" className="mt-3 rounded-md border border-cs-border bg-cs-raised p-3 text-xs text-cs-text">
+          The request this link pointed to is no longer pending — it may already have been approved, rejected or expired.
+        </p>
+      )}
+
       {requests.length > 0 && (
         <>
           <hr className="my-4 border-cs-border" />
@@ -217,7 +245,8 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           </p>
           <ul className="mt-2 space-y-2" aria-label="Pending requests from AI assistants">
             {requests.map((entry) => (
-              <li key={entry.id} className="rounded-md border border-cs-border p-2.5">
+              <li key={entry.id} id={`admin-request-${entry.id}`}
+                className={`rounded-md border p-2.5 ${highlightId === entry.id ? 'border-cs-brand ring-2 ring-cs-brand' : 'border-cs-border'}`}>
                 <p className="text-xs font-medium text-cs-text">
                   {REQUEST_TITLES[entry.action] ?? entry.description}
                 </p>
@@ -236,7 +265,18 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   </figure>
                 )}
                 <p className="mt-1.5 text-xs text-cs-muted">
-                  From {entry.client_name ?? 'an assistant'}{entry.client_name ? ' (name chosen by the app)' : ''}
+                  {entry.filed_connection_active ? (
+                    <>Filed by the connection server-recorded as <span className="text-cs-text">{entry.filed_by_client ?? 'an assistant'}</span>
+                      {entry.filed_by_account ? <> on {entry.filed_by_account}&rsquo;s account</> : ''}. </>
+                  ) : (
+                    <>Filed by a connection that is no longer active. </>
+                  )}
+                  {entry.client_name && entry.client_name !== entry.filed_by_client && (
+                    <>The app claims the name <span className="text-cs-text">{entry.client_name}</span> — unverified. </>
+                  )}
+                  {entry.client_name && entry.client_name === entry.filed_by_client && (
+                    <>The name is the app&rsquo;s own claim, recorded when the connection was authorized. </>
+                  )}
                   {entry.requested_at ? ` · ${new Date(entry.requested_at).toLocaleString()}` : ''}
                 </p>
                 <div className="mt-2 flex gap-2">

@@ -46,10 +46,12 @@ class Inbox:
         self.channels = list(channels)
         self.messages: list[str] = []
         self.emails: list[str] = []
+        self.urls: list[str | None] = []
 
-    def __call__(self, db, user, title, body, email_body=None):
+    def __call__(self, db, user, title, body, email_body=None, url=None):
         self.messages.append(body)
         self.emails.append(body if email_body is None else email_body)
+        self.urls.append(url)
         return list(self.channels)
 
     @property

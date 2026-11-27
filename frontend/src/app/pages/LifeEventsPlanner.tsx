@@ -1,3 +1,6 @@
+import { reportDateErrors } from '../../scaffold/components/ui/dateValidation.ts'
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
+import { DisclosureSummary } from '../../scaffold/components/ui/Disclosure.tsx'
 import type { ExpenseFundingPlan } from '../../api.ts'
 import ExpenseFunding from './ExpenseFunding.tsx'
 import { fmtFullDate } from '../format.ts'
@@ -240,7 +243,7 @@ export default function LifeEventsPlanner({
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
             </label>
             <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Purchase / start date
-              <input type="date" value={draft.date} onChange={e => set('date', e.target.value)}
+              <DateInput value={draft.date} onChange={e => set('date', e.target.value)}
                 className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
             </label>
 
@@ -269,7 +272,7 @@ export default function LifeEventsPlanner({
           </section>}
           <div className="grid grid-cols-2 gap-3">
             {retirementDate && !draft.priceBasisDate && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
-              <summary className="cursor-pointer font-semibold">Price basis · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</summary>
+              <DisclosureSummary className="cursor-pointer font-semibold">Price basis · {priceBasis === 'today' ? "today’s dollars" : retirementYear + " dollars"}</DisclosureSummary>
               <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Prices entered in
                 <select value={priceBasis} onChange={e => { const basis = e.target.value as 'today' | 'retirement'; setDraft(prev => convertMoney(prev, Math.pow(1 + conversionRate, yearsToRetirement) ** (basis === 'retirement' ? 1 : -1))); setPriceBasis(basis) }}
                   className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text">
@@ -278,7 +281,7 @@ export default function LifeEventsPlanner({
               </label>
               <p className="mt-2 text-cs-muted">Today's amounts are converted automatically to {retirementYear} dollars when saved, using {(conversionRate * 100).toFixed(1)}% inflation.</p>
             </details>}
-            {draft.condition && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><summary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</summary><fieldset className="mt-3 space-y-3">
+            {draft.condition && <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2"><DisclosureSummary className="cursor-pointer font-semibold">Purchase rule · {draft.condition ? draft.conditionFailure === 'defer' ? 'Wait until eligible' : 'Skip if ineligible' : 'Required'}{draft.condition?.minStartingWealthRatio != null ? ` · ${Math.round(draft.condition.minStartingWealthRatio * 100)}%` : ''}</DisclosureSummary><fieldset className="mt-3 space-y-3">
               <legend className="sr-only">Purchase conditions</legend>
               <label className="min-w-0 flex flex-col gap-1">Minimum portfolio as % of starting retirement wealth (optional)
                 <PercentInput min="0" max="10000" step="5" value={draft.condition.minStartingWealthRatio}
@@ -292,11 +295,11 @@ export default function LifeEventsPlanner({
                 </select>
               </label>
               {draft.conditionFailure === 'defer' && <label className="min-w-0 flex flex-col gap-1">Stop waiting after (optional)
-                <input type="date" value={draft.deadlineDate ?? ''} onChange={e => set('deadlineDate', e.target.value || undefined)}
+                <DateInput value={draft.deadlineDate ?? ''} onChange={e => set('deadlineDate', e.target.value || undefined)}
                   className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
               </label>}
               <details className="rounded border border-cs-border p-2">
-                <summary className="cursor-pointer">More conditions{draft.condition.requireFullSpending ? ' · full spending required' : ''}{draft.condition.minPortfolioM != null ? ` · ${dollar(draft.condition.minPortfolioM * 1_000_000)} minimum` : ''}</summary>
+                <DisclosureSummary className="cursor-pointer">More conditions{draft.condition.requireFullSpending ? ' · full spending required' : ''}{draft.condition.minPortfolioM != null ? ` · ${dollar(draft.condition.minPortfolioM * 1_000_000)} minimum` : ''}</DisclosureSummary>
                 <div className="mt-3 space-y-3">
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={draft.condition.requireFullSpending ?? false}
@@ -313,7 +316,7 @@ export default function LifeEventsPlanner({
               <p>Thresholds use purchasing power after inflation. Waiting checks monthly and moves ownership dates with the purchase.</p>
             </fieldset></details>}
             <details name={sectionName} className="col-span-2 rounded-lg border border-cs-border p-3 text-xs text-cs-text-2">
-              <summary className="cursor-pointer font-semibold">{asset ? 'Ownership and costs' : 'Recurring costs'} · {draft.lifetimeYears ? `sell after ${draft.lifetimeYears} years` : draft.durationYears ? `${draft.durationYears} years` : 'optional'}{draft.annualCostM ? ` · ${dollar(draft.annualCostM * 1_000_000)}/yr` : ''}</summary>
+              <DisclosureSummary className="cursor-pointer font-semibold">{asset ? 'Ownership and costs' : 'Recurring costs'} · {draft.lifetimeYears ? `sell after ${draft.lifetimeYears} years` : draft.durationYears ? `${draft.durationYears} years` : 'optional'}{draft.annualCostM ? ` · ${dollar(draft.annualCostM * 1_000_000)}/yr` : ''}</DisclosureSummary>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {draft.kind === 'vehicle' && <fieldset className="col-span-2 space-y-3 text-xs text-cs-text-2">
                   <legend className="sr-only">Ownership lifetime and sale</legend>
@@ -346,7 +349,7 @@ export default function LifeEventsPlanner({
                       Replace when sold
                     </label>
                     {!!draft.replacementEveryYears && <details className="rounded border border-cs-border p-3">
-                      <summary className="cursor-pointer">Replacement overrides · same price and timing by default</summary>
+                      <DisclosureSummary className="cursor-pointer">Replacement overrides · same price and timing by default</DisclosureSummary>
                       <div className="mt-3 space-y-3">
                         <label className="flex items-center gap-2"><input type="checkbox" checked={linkedReplacement}
                           onChange={e => { setReplaceOnSale(e.target.checked); set('replacementEveryYears', e.target.checked ? draft.lifetimeYears : (draft.lifetimeYears ?? 10) + 1) }} />Replace on the sale date</label>
@@ -358,7 +361,7 @@ export default function LifeEventsPlanner({
                         {money('replacementCostM', 'Replacement price (0 = original price)')}
                       </div>
                     </details>}
-                    <details className="rounded border border-cs-border p-3"><summary className="cursor-pointer">Buying used?</summary>
+                    <details className="rounded border border-cs-border p-3"><DisclosureSummary className="cursor-pointer">Buying used?</DisclosureSummary>
                       <label className="mt-3 flex flex-col gap-1">Car age at each purchase (years; 0 = new)
                         <input type="number" min="0" max="50" value={draft.vehicleAgeYears ?? 0} onChange={e => set('vehicleAgeYears', Number(e.target.value))}
                           className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
@@ -401,18 +404,18 @@ export default function LifeEventsPlanner({
                       </label>
 
                     </>}
-                    <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">{draft.kind === 'vehicle' ? 'Existing car trade-in · first purchase only' : 'Existing home sale and future sale'}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <details className="col-span-2 rounded-lg border border-cs-border p-3"><DisclosureSummary className="text-xs font-semibold text-cs-text">{draft.kind === 'vehicle' ? 'Existing car trade-in · first purchase only' : 'Existing home sale and future sale'}</DisclosureSummary><div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {money('saleOffsetM', draft.kind === 'vehicle' ? 'Existing car proceeds after loan payoff (first purchase only)' : 'Existing home proceeds after mortgage payoff (first purchase only)')}
                       <p className="text-cs-muted">Credits the first purchase only. Future sales follow the ownership schedule; do not enter those proceeds here.</p>
                       {!draft.lifetimeYears && <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Resale date (optional)
-                        <input type="date" value={draft.resaleDate ?? ''} onChange={e => set('resaleDate', e.target.value || undefined)}
+                        <DateInput value={draft.resaleDate ?? ''} onChange={e => set('resaleDate', e.target.value || undefined)}
                           className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                       </label>}
                       {draft.resaleDate && money('resaleValueM', 'Future resale value before remaining debt')}
                     </div></details>
                   </>
                 )}
-                {!(draft.kind === 'vehicle' && draft.lifetimeYears != null) && <details className="col-span-2 rounded border border-cs-border p-3"><summary className="cursor-pointer text-xs text-cs-text-2">Repeat this expense · {draft.replacementEveryYears ? `every ${draft.replacementEveryYears} years` : 'once'}</summary>
+                {!(draft.kind === 'vehicle' && draft.lifetimeYears != null) && <details className="col-span-2 rounded border border-cs-border p-3"><DisclosureSummary className="cursor-pointer text-xs text-cs-text-2">Repeat this expense · {draft.replacementEveryYears ? `every ${draft.replacementEveryYears} years` : 'once'}</DisclosureSummary>
                   <label className="mt-3 min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Repeat every N years (0 = once)
                     <input type="number" min="0" max="50" value={draft.replacementEveryYears ?? 0}
                       onChange={e => set('replacementEveryYears', Math.max(0, Math.min(50, Math.floor(Number(e.target.value)))))}
@@ -420,10 +423,10 @@ export default function LifeEventsPlanner({
                   </label>
                   {!!draft.replacementEveryYears && money('replacementCostM', 'Repeat cost (0 = same as first purchase)')}
                 </details>}
-                <details className="col-span-2 rounded-lg border border-cs-border p-3"><summary className="text-xs font-semibold text-cs-text">Advanced cost overrides</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <details className="col-span-2 rounded-lg border border-cs-border p-3"><DisclosureSummary className="text-xs font-semibold text-cs-text">Advanced cost overrides</DisclosureSummary><div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {recurringType && money('amountM', 'One-time setup cost (optional)')}
                   <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Specific recurring cost end date (optional)
-                    <input type="date" value={draft.endDate ?? ''} onChange={e => setDraft(prev => ({ ...prev, endDate: e.target.value || undefined, durationYears: undefined }))} className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
+                    <DateInput value={draft.endDate ?? ''} onChange={e => setDraft(prev => ({ ...prev, endDate: e.target.value || undefined, durationYears: undefined }))} className="rounded border border-cs-border-strong bg-cs-surface px-3 py-2.5 min-h-11 w-full min-w-0 text-cs-text" />
                   </label>
                   <label className="min-w-0 flex flex-col gap-1 text-xs text-cs-text-2">Assumed inflation (%)
                     <PercentInput min="0" max="100" step="0.1" value={draft.inflationRate ?? 0.025}
@@ -444,13 +447,15 @@ export default function LifeEventsPlanner({
           {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button type="button" className="min-h-11 flex-1 rounded-lg bg-cs-text px-3 py-2 text-sm font-semibold text-cs-surface"
-              onClick={save}>{editing ? 'Update event' : 'Add event'}</button>
+              onClick={event => {
+                if (!reportDateErrors(event.currentTarget.closest('section'))) save()
+              }}>{editing ? 'Update event' : 'Add event'}</button>
             <button type="button" className="min-h-11 rounded-lg border border-cs-border px-3 py-2 text-sm text-cs-text"
               onClick={() => { setOpen(false); setError('') }}>Cancel</button>
           </div>
         </div>
       )}
-      <p className="text-[11px] leading-relaxed text-cs-muted">Planned expenses and tentative sales are estimates.</p>
+      <p className="text-xs leading-relaxed text-cs-text-2">Planned expenses and tentative sales are estimates.</p>
       {hypotheticalEpicTargetM > 0 && (
         <p className="rounded-lg border border-cs-border p-3 text-xs text-cs-text" role="note">
           <strong>Hypothetical Epic sale cash target: {dollar(hypotheticalEpicTargetM * 1_000_000)} net.</strong>

@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { api } from '../../api.ts'
@@ -288,9 +289,9 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
           <form onSubmit={e => { e.preventDefault(); handleSave() }} className="space-y-3">
             <Field label="Year"><TextInput type="number" value={modal.draft.year} onChange={e => patch({ year: Number(e.target.value) })} required /></Field>
             <Field label="Type"><GrantTypeSelect value={modal.draft.type} onChange={v => patch({ type: v ?? '' })} /></Field>
-            <Field label="Vest start"><TextInput type="date" value={modal.draft.vest_start} onChange={e => patch({ vest_start: e.target.value })} required /></Field>
+            <Field label="Vest start"><DateInput value={modal.draft.vest_start} onChange={e => patch({ vest_start: e.target.value })} required /></Field>
             <Field label="Periods"><TextInput type="number" min={1} value={modal.draft.periods} onChange={e => patch({ periods: Number(e.target.value) })} required /></Field>
-            <Field label="Exercise date"><TextInput type="date" value={modal.draft.exercise_date} onChange={e => patch({ exercise_date: e.target.value })} required /></Field>
+            <Field label="Exercise date"><DateInput value={modal.draft.exercise_date} onChange={e => patch({ exercise_date: e.target.value })} required /></Field>
             <Field label="Display order"><TextInput type="number" value={modal.draft.display_order ?? 0} onChange={e => patch({ display_order: Number(e.target.value) })} /></Field>
             {modal.draft.type === 'Purchase' && (
               <>
@@ -310,8 +311,7 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
             )}
             {modal.draft.type === 'Purchase' && (
               <Field label="Purchase-loan due date (YYYY-MM-DD)">
-                <TextInput
-                  type="date"
+                <DateInput
                   value={modal.draft.default_purchase_due_date ?? ''}
                   onChange={e => patch({ default_purchase_due_date: e.target.value || null })}
                 />
@@ -322,8 +322,7 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
  time) or Purchase templates with a catch-up sub-schedule. */}
             {(modal.draft.type === 'Bonus' || modal.draft.type === 'Free' || modal.draft.default_catch_up) && (
               <Field label="Tax-loan due date (YYYY-MM-DD)">
-                <TextInput
-                  type="date"
+                <DateInput
                   value={modal.draft.default_tax_due_date ?? ''}
                   onChange={e => patch({ default_tax_due_date: e.target.value || null })}
                   placeholder="leave empty to inherit from purchase loan"
@@ -664,13 +663,13 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
               </Field>
             )}
             <Field label="Order"><TextInput type="number" min={0} value={modal.draft.order_idx} onChange={e => patch({ order_idx: Number(e.target.value) })} required /></Field>
-            <Field label="Refi date"><TextInput type="date" value={modal.draft.date} onChange={e => patch({ date: e.target.value })} required /></Field>
+            <Field label="Refi date"><DateInput value={modal.draft.date} onChange={e => patch({ date: e.target.value })} required /></Field>
             <Field label="Rate (%)"><TextInput type="number" step="0.01" value={+(modal.draft.rate * 100).toFixed(4)} onChange={e => patch({ rate: Number(e.target.value) / 100 })} required /></Field>
             <Field label="Loan year"><TextInput type="number" value={modal.draft.loan_year} onChange={e => patch({ loan_year: Number(e.target.value) })} required /></Field>
-            <Field label="Due date"><TextInput type="date" value={modal.draft.due_date} onChange={e => patch({ due_date: e.target.value })} required /></Field>
+            <Field label="Due date"><DateInput value={modal.draft.due_date} onChange={e => patch({ due_date: e.target.value })} required /></Field>
             {isTax && (
               <Field label="Original due date">
-                <TextInput type="date" value={modal.draft.orig_due_date ?? ''} onChange={e => patch({ orig_due_date: e.target.value === '' ? null : e.target.value })} />
+                <DateInput value={modal.draft.orig_due_date ?? ''} onChange={e => patch({ orig_due_date: e.target.value === '' ? null : e.target.value })} />
               </Field>
             )}
             <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />

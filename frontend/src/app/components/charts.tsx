@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { useMemo, useState } from 'react'
 import {
   LineChart, Line, AreaChart, Area,
@@ -36,8 +37,7 @@ export function RangeControls({ range, setRange, maxDate }: { range: DateRange; 
       </button>
       <label className="text-xs text-cs-text-2">
         From
-        <input
-          type="date"
+        <DateInput
           value={range.mode === 'custom' ? range.start : ''}
           onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
           className="mt-1 block h-8 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
@@ -45,8 +45,7 @@ export function RangeControls({ range, setRange, maxDate }: { range: DateRange; 
       </label>
       <label className="text-xs text-cs-text-2">
         To
-        <input
-          type="date"
+        <DateInput
           value={range.mode === 'custom' ? range.end : ''}
           onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
           className="mt-1 block h-8 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"

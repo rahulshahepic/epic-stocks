@@ -25,8 +25,13 @@ export const snapshots = {
   } },
 }
 export const importReviewSnapshot = {view:'import',data:{can_save:true,blocked:false,revision:'synthetic-review',review_token:'synthetic-token',files:[],payload:{grants:[{year:2025,type:'Retention Award',shares:500,price:0,vest_start:'2026-03-01',periods:2,exercise_date:'2025-12-31',dp_shares:0,custom_schedule:true,schedule_confirmed:true,basis_confirmed:true,loans:[]}],prices:[],sales:[]},summary:{grants:1,loans:0,prices:0,sales:0},changes:{grants_added:['2025 Retention Award: 500 shares'],grants_kept:['2023 Purchase']},findings:[]}}
+async function openFixtureHost(page: Page) {
+  await page.goto('about:blank')
+  await page.setContent('<!doctype html><html lang="en"><head><title>Epic Stocks fixture host</title></head><body></body></html>')
+}
+
 export async function pluginHost(page: Page, options: { view?: keyof typeof snapshots; theme?: 'light' | 'dark'; initial?: object; failure?: boolean; importFailure?: boolean; fileHelpers?: boolean; savePermission?: boolean } = {}) {
-  await page.goto('/login')
+  await openFixtureHost(page)
   const initial = options.initial ?? snapshots[options.view ?? 'summary']
   await page.evaluate(({html, snapshots, initial, options}) => {
     document.body.innerHTML = ''
@@ -126,7 +131,7 @@ export const purchaseSnapshot = {
 }
 
 export async function retirementHost(page: Page, theme: 'light' | 'dark' = 'light', options: { initial?: object; refreshed?: object; refreshResponses?: object[]; comparisonFailure?: string; resourceHtml?: string; readyText?: string } = {}) {
-  await page.goto('/login')
+  await openFixtureHost(page)
   await page.evaluate(({html,initial,theme,refreshed,refreshResponses,comparisonFailure}) => {
     document.body.innerHTML=''
     const frame=document.createElement('iframe')

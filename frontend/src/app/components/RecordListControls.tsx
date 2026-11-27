@@ -4,7 +4,7 @@ export function RecordListControls({ name, controls }: {
   name: string
   controls: ReturnType<typeof useRecordList>
 }) {
-  const field = 'min-h-11 min-w-0 rounded-lg border border-cs-border-strong bg-cs-surface px-3 text-sm text-cs-text'
+  const field = 'h-11 min-h-11 min-w-0 rounded-lg border border-cs-border-strong bg-cs-surface px-3 text-base text-cs-text'
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:max-w-lg">
       <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-cs-text-2">

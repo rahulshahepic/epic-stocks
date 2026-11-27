@@ -507,3 +507,57 @@ main[data-campus-wing='workshop'] > :last-child > .rounded-xl {
   min-block-size: 2.75rem;
   min-inline-size: 2.75rem;
 }
+
+/* Keep the platform calendar and keyboard behavior while matching the app's fields. */
+.cs-date-input {
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid var(--cs-border-strong);
+  border-radius: .5rem;
+  background: var(--cs-surface);
+  color: var(--cs-text);
+  padding: .5rem .625rem;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-date-input::-webkit-date-and-time-value { text-align: start; }
+
+.cs-date-input:focus-visible,
+.cs-disclosure:focus-visible {
+  outline: 2px solid var(--cs-brand);
+  outline-offset: 2px;
+}
+
+.cs-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cs-disclosure::-webkit-details-marker { display: none; }
+
+.cs-disclosure::after {
+  content: '';
+  flex: none;
+  width: .45rem;
+  height: .45rem;
+  margin-inline-end: .25rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
+
+details[open] > .cs-disclosure::after,
+.cs-disclosure[aria-expanded='true']::after { transform: rotate(45deg); }
+
+
+/* Keep editable controls readable and avoid iOS focus zoom. */
+.campus-page-shell :is(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden]), select, textarea) {
+  font-size: 1rem;
+  min-height: 2.75rem;
+}

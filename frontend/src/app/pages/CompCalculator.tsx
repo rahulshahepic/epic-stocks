@@ -1,3 +1,5 @@
+import { DisclosureButton } from '../../scaffold/components/ui/Disclosure.tsx'
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { finishPlanningSave, type PlanningSave } from '../hooks/planningSave.ts'
 import { SectionNavigation } from '../../scaffold/components/SectionNavigation.tsx'
 import PlanningNavigation from '../components/PlanningNavigation.tsx'
@@ -356,7 +358,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-700 dark:bg-rose-950/30">
         <p className="text-xs font-semibold uppercase tracking-wide text-cs-brand">{row.year}</p>
         <p className="mt-1 text-3xl font-bold tabular-nums text-cs-text">{fmt$(row.totalComp)}</p>
-        <p className="mt-0.5 text-[11px] text-cs-muted">total cash comp in {row.year} (after exit)</p>
+        <p className="mt-0.5 text-xs text-cs-text-2">total cash comp in {row.year} (after exit)</p>
         <dl className="mt-4 space-y-1.5 text-xs">
           {row.salary > 0 && (
             <div className="flex justify-between gap-2">
@@ -395,7 +397,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       <p className="mt-1 text-3xl font-bold tabular-nums text-cs-text">
         {fmt$(hasCompEvents ? row.totalTaxEquiv : row.comp)}
       </p>
-      <p className="mt-0.5 text-[11px] text-cs-muted">
+      <p className="mt-0.5 text-xs text-cs-text-2">
         {hasCompEvents ? `pretax-equivalent total comp in ${row.year}` : `net Epic stock comp in ${row.year}`}
       </p>
 
@@ -486,7 +488,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
 
       {(row.comp3y != null || row.comp5y != null) && (
         <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
-          <p className="text-[10px] uppercase tracking-wide text-cs-muted">Smoothed across recent years</p>
+          <p className="text-xs uppercase tracking-wide text-cs-text-2">Smoothed across recent years</p>
           {row.comp3y != null && (
             <div className="space-y-0.5">
               <p className="font-medium text-cs-text-2">3-year rolling average</p>
@@ -648,10 +650,10 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
   return (
     <div className="rounded-xl border border-cs-border bg-cs-raised">
-      <button
-        type="button"
+      <DisclosureButton
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-cs-text-2"
+        className="w-full px-4 py-2.5 text-sm font-medium text-cs-text-2"
       >
         <span className="flex items-center gap-2">
           Salary & bonus
@@ -661,8 +663,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
             </span>
           )}
         </span>
-        <span className="text-cs-muted">{open ? '▲' : '▼'}</span>
-      </button>
+      </DisclosureButton>
 
       {open && (
         <div className="space-y-5 border-t border-cs-border px-4 pb-4 pt-3">
@@ -674,7 +675,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
           {/* Salary history */}
           <div>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cs-muted">Salary history</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cs-text-2">Salary history</p>
             {salaryEvents.length === 0 ? (
               <p className="text-xs text-cs-muted">No salary changes recorded yet.</p>
             ) : (
@@ -682,11 +683,10 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                 {salaryEvents.map(e => (
                   <div key={e.id}>
                     {editingId === e.id ? (
-                      <div className="flex flex-wrap items-end gap-2 py-0.5">
+                      <form className="flex flex-wrap items-end gap-2 py-0.5" onSubmit={event => { event.preventDefault(); saveEditSalary(e.id) }}>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-cs-muted">Effective date</span>
-                          <input
-                            type="date"
+                          <span className="text-xs text-cs-text-2">Effective date</span>
+                          <DateInput
                             value={editSalDate}
                             onChange={ev => setEditSalDate(ev.target.value)}
                             className={inputCls}
@@ -694,19 +694,17 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                           />
                         </label>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-cs-muted">Annual salary</span>
+                          <span className="text-xs text-cs-text-2">Annual salary</span>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={editSalAmt}
                             onChange={ev => setEditSalAmt(ev.target.value)}
-                            onKeyDown={ev => { if (ev.key === 'Enter') saveEditSalary(e.id) }}
                             className={`w-32 ${inputCls}`}
                           />
                         </label>
                         <button
-                          type="button"
-                          onClick={() => saveEditSalary(e.id)}
+                          type="submit"
                           className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
                         >
                           Save
@@ -718,7 +716,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                         >
                           Cancel
                         </button>
-                      </div>
+                      </form>
                     ) : (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs text-cs-text-2">
@@ -731,7 +729,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                             <button
                               type="button"
                               onClick={() => startEditSalary(e)}
-                              className="text-[11px] text-cs-muted hover:text-cs-text-2"
+                              className="text-xs text-cs-text-2 hover:text-cs-text-2"
                             >
                               Edit
                             </button>
@@ -753,11 +751,10 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
             )}
             {!readOnly && (
               addingSalary ? (
-                <div className="mt-3 flex flex-wrap items-end gap-2">
+                <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); submitSalary() }}>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-cs-muted">Effective date</span>
-                    <input
-                      type="date"
+                    <span className="text-xs text-cs-text-2">Effective date</span>
+                    <DateInput
                       value={newSalDate}
                       onChange={e => setNewSalDate(e.target.value)}
                       className={inputCls}
@@ -765,20 +762,18 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-cs-muted">Annual salary</span>
+                    <span className="text-xs text-cs-text-2">Annual salary</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       placeholder="$0"
                       value={newSalAmt}
                       onChange={e => setNewSalAmt(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') submitSalary() }}
                       className={`w-32 ${inputCls}`}
                     />
                   </label>
                   <button
-                    type="button"
-                    onClick={submitSalary}
+                    type="submit"
                     className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
                   >
                     Add
@@ -790,7 +785,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                   >
                     Cancel
                   </button>
-                </div>
+                </form>
               ) : (
                 <button
                   type="button"
@@ -805,7 +800,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
           {/* Bonuses */}
           <div>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cs-muted">Bonuses</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cs-text-2">Bonuses</p>
             {bonusEvents.length === 0 ? (
               <p className="text-xs text-cs-muted">No bonuses recorded yet.</p>
             ) : (
@@ -813,11 +808,10 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                 {bonusEvents.map(e => (
                   <div key={e.id}>
                     {editingId === e.id ? (
-                      <div className="mt-1 flex flex-wrap items-end gap-2 py-0.5">
+                      <form className="mt-1 flex flex-wrap items-end gap-2 py-0.5" onSubmit={event => { event.preventDefault(); saveEditBonus(e.id) }}>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-cs-muted">Date</span>
-                          <input
-                            type="date"
+                          <span className="text-xs text-cs-text-2">Date</span>
+                          <DateInput
                             value={editBonDate}
                             onChange={ev => setEditBonDate(ev.target.value)}
                             className={inputCls}
@@ -825,29 +819,26 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                           />
                         </label>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-cs-muted">Amount</span>
+                          <span className="text-xs text-cs-text-2">Amount</span>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={editBonAmt}
                             onChange={ev => setEditBonAmt(ev.target.value)}
-                            onKeyDown={ev => { if (ev.key === 'Enter') saveEditBonus(e.id) }}
                             className={`w-32 ${inputCls}`}
                           />
                         </label>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-cs-muted">Note (optional)</span>
+                          <span className="text-xs text-cs-text-2">Note (optional)</span>
                           <input
                             type="text"
                             value={editBonNote}
                             onChange={ev => setEditBonNote(ev.target.value)}
-                            onKeyDown={ev => { if (ev.key === 'Enter') saveEditBonus(e.id) }}
                             className={`w-36 ${inputCls}`}
                           />
                         </label>
                         <button
-                          type="button"
-                          onClick={() => saveEditBonus(e.id)}
+                          type="submit"
                           className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
                         >
                           Save
@@ -859,7 +850,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                         >
                           Cancel
                         </button>
-                      </div>
+                      </form>
                     ) : (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs text-cs-text-2">
@@ -873,7 +864,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                             <button
                               type="button"
                               onClick={() => startEditBonus(e)}
-                              className="text-[11px] text-cs-muted hover:text-cs-text-2"
+                              className="text-xs text-cs-text-2 hover:text-cs-text-2"
                             >
                               Edit
                             </button>
@@ -895,11 +886,10 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
             )}
             {!readOnly && (
               addingBonus ? (
-                <div className="mt-3 flex flex-wrap items-end gap-2">
+                <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); submitBonus() }}>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-cs-muted">Date</span>
-                    <input
-                      type="date"
+                    <span className="text-xs text-cs-text-2">Date</span>
+                    <DateInput
                       value={newBonDate}
                       onChange={e => setNewBonDate(e.target.value)}
                       className={inputCls}
@@ -907,31 +897,28 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-cs-muted">Amount</span>
+                    <span className="text-xs text-cs-text-2">Amount</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       placeholder="$0"
                       value={newBonAmt}
                       onChange={e => setNewBonAmt(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') submitBonus() }}
                       className={`w-32 ${inputCls}`}
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-cs-muted">Note (optional)</span>
+                    <span className="text-xs text-cs-text-2">Note (optional)</span>
                     <input
                       type="text"
                       placeholder="e.g. performance"
                       value={newBonNote}
                       onChange={e => setNewBonNote(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') submitBonus() }}
                       className={`w-36 ${inputCls}`}
                     />
                   </label>
                   <button
-                    type="button"
-                    onClick={submitBonus}
+                    type="submit"
                     className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
                   >
                     Add
@@ -943,7 +930,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
                   >
                     Cancel
                   </button>
-                </div>
+                </form>
               ) : (
                 <button
                   type="button"
@@ -1175,7 +1162,7 @@ function CompCalculatorAccount() {
         <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax']} />
       </div>
 
-      <div role="region" aria-label="Selected year compensation" className="sticky top-14 z-20 rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-sm font-semibold text-cs-text shadow-card md:top-24">
+      <div role="region" aria-label="Selected year compensation" className="sticky top-[calc(var(--app-chrome-height,4rem)+.25rem)] z-20 rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-sm font-semibold text-cs-text shadow-card">
         {selectedRow ? <>{selectedRow.year} {metricLabel} · {fmt$(selectedRow[selectedMetric])}</> : 'Compensation available when price history is complete'}
       </div>
       <SectionNavigation title="Calculator sections" categories={COMP_SECTIONS} active={activeSection} compact>
@@ -1202,8 +1189,7 @@ function CompCalculatorAccount() {
           <Card pad="sm" className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
               <span>Planned exit date</span>
-              <input
-                type="date"
+              <DateInput
                 value={exitDate ?? ''}
                 onChange={e => handleExitDateChange(e.target.value || null)}
                 disabled={!!vid}
@@ -1220,7 +1206,7 @@ function CompCalculatorAccount() {
               </button>
             )}
             {exitSaveError && <p role="alert" className="text-xs text-red-600">Exit date not saved: {exitSaveError}</p>}
-            <p className="text-[10px] text-cs-muted">
+            <p className="text-xs text-cs-text-2">
               {exitDate
                 ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
                 : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
@@ -1237,7 +1223,7 @@ function CompCalculatorAccount() {
               />
               <div>
                 <p className="text-xs font-medium text-cs-text">Deduct loan interest as investment-interest expense</p>
-                <p className="mt-0.5 text-[10px] text-cs-muted">
+                <p className="mt-0.5 text-xs text-cs-text-2">
                   If you itemize and use Form 4952, your interest cost is reduced by your marginal ordinary income rate ({fmtPct(m, 1)}).
                 </p>
               </div>
@@ -1373,7 +1359,7 @@ function CompCalculatorAccount() {
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
-                <p className="mt-1 text-[10px] text-cs-muted">
+                <p className="mt-1 text-xs text-cs-text-2">
                   Pick a year above or click a bar to see its breakdown.
                   {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
                   {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
@@ -1416,7 +1402,7 @@ function CompCalculatorAccount() {
         </>}
       </SectionNavigation>
 
-      <footer className="pt-4 text-center text-[10px] text-cs-muted">
+      <footer className="pt-4 text-center text-xs text-cs-text-2">
         As of {today}. All calculations are local to your browser.
       </footer>
     </div>

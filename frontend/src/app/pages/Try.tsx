@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { useEffect, useMemo, useState } from 'react'
 import EurekaFileGuide from '../components/EurekaFileGuide.tsx'
 import StockFiles from '../components/StockFiles.tsx'
@@ -235,8 +236,8 @@ function AsOfControl({ asOf, setAsOf, lastEventDate }: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label htmlFor="trial-as-of" className="text-xs font-medium text-cs-text-2">As of</label>
-      <input
-        id="trial-as-of" type="date" value={asOf}
+      <DateInput
+        id="trial-as-of" value={asOf}
         onChange={e => e.target.value && setAsOf(e.target.value)}
         className="h-7 rounded-md border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
       />

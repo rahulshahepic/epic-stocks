@@ -80,7 +80,7 @@ it('compares on paired paths and advances both ages without changing the saved d
   const run = vi.spyOn(retirementMath, 'simulate')
   render(<MemoryRouter><Retirement /></MemoryRouter>)
   await userEvent.click(await screen.findByRole('button', {name: /Simulate 10 retirements/}))
-  await userEvent.click(await screen.findByRole('button', {name: 'Compare one year later'}))
+  await userEvent.click(await screen.findByRole('button', {name: 'Compare retiring one year later'}))
   expect(await screen.findByRole('columnheader', {name: 'Jan 1, 2033'})).toBeVisible()
   expect(run).toHaveBeenNthCalledWith(1, expect.objectContaining({
     currentAge: 55, spouseCurrentAge: 64, simulationStartDate: '2032-01-01',
@@ -364,7 +364,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    expect(await screen.findByText(/Set your date of birth above/)).toBeInTheDocument()
+    expect(await screen.findByText(/Add your date of birth in/)).toBeInTheDocument()
   })
 
   it('does not render the standalone "Current age" tile (derived from DOB only)', async () => {

@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { reportDateErrors } from '../../scaffold/components/ui/dateValidation.ts'
+import { useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../api.ts'
 import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -209,6 +211,20 @@ function PricesAccount() {
     }
   }
 
+  const { hash, key } = useLocation()
+  const announcementTarget = hash === '#announced-price' && config && prices && !readOnly && mode === 'list'
+    ? epicMode ? 'add-share-price' : 'announced-price'
+    : null
+  useEffect(() => {
+    if (!announcementTarget) return
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(announcementTarget)
+      target?.scrollIntoView?.({ block: 'start' })
+      target?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [announcementTarget, key])
+
   if (loading && !prices) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
   if (!prices) return <p className="p-6 text-center text-sm text-red-500">Failed to load prices</p>
 
@@ -271,7 +287,7 @@ function PricesAccount() {
 
         <div className="flex gap-2 pt-2">
           <button
-            onClick={() => handleSave(false)}
+            onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(false) }}
             disabled={saving}
             className="rounded-md bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900 disabled:opacity-50"
           >
@@ -279,7 +295,7 @@ function PricesAccount() {
           </button>
           {mode === 'add' && (
             <button
-              onClick={() => handleSave(true)}
+              onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave(true) }}
               disabled={saving}
               className="rounded-md bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60 disabled:opacity-50"
             >
@@ -407,8 +423,9 @@ function PricesAccount() {
         {!readOnly && (
           <div className="flex gap-2">
             <button
+              id="add-share-price"
               onClick={openAdd}
-              className="rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white hover:bg-amber-900"
+              className="scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white hover:bg-amber-900"
             >
               + Price
             </button>

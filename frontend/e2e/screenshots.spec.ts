@@ -174,7 +174,7 @@ test.describe('Screenshots', () => {
       expect(audit.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE.width)
       await outcomes.screenshot({ path: `${OUT}/retirement-purchase-outcomes-${theme}-mobile.png`, style: '.sticky,[aria-label="Mobile navigation"]{visibility:hidden!important}' })
-      await page.getByRole('button', { name: 'Compare one year later' }).click()
+      await page.getByRole('button', { name: 'Compare retiring one year later' }).click()
       const comparison = page.getByRole('table', { name: 'Comparison of retirement dates' })
       await expect(comparison.getByRole('rowheader', { name: 'Any optional purchase' })).toBeVisible()
       await expect(comparison.getByRole('rowheader', { name: 'Buy and fully fund retirement' })).toBeVisible()
@@ -792,7 +792,15 @@ test.describe('Screenshots', () => {
     await schedule.click()
     await expect(schedule.locator('..').getByRole('listitem').first()).toBeVisible()
     await schedule.click()
-    await page.getByLabel('Sort grants').selectOption('Largest first')
+    const filter = page.getByLabel('Filter grants')
+    const sort = page.getByLabel('Sort grants')
+    const controlStyle = (control: Element) => ({
+      fontSize: getComputedStyle(control).fontSize,
+      height: control.getBoundingClientRect().height,
+    })
+    expect(await filter.evaluate(controlStyle)).toEqual({ fontSize: '16px', height: 44 })
+    expect(await sort.evaluate(controlStyle)).toEqual({ fontSize: '16px', height: 44 })
+    await sort.selectOption('Largest first')
     await expect(page.locator('.record-list > div').first()).toContainText('15,000')
     await page.getByLabel('Filter grants').fill('no matching grant')
     await expect(page.getByRole('status').filter({ hasText: 'No grants match your filter.' })).toBeVisible()
@@ -1155,7 +1163,13 @@ test.describe('Screenshots', () => {
       const sections = page.getByRole('navigation', { name: 'Retirement assumptions categories' })
       const run = page.getByRole('region', { name: 'Retirement plan summary' }).getByRole('button', { name: /Simulate/ })
       await expect(run).toBeInViewport()
+      let previousScroll: number | undefined
+      if (size === 'mobile') {
+        previousScroll = await page.evaluate(() => { window.scrollTo(0, 150); return window.scrollY })
+        expect(previousScroll).toBeGreaterThan(0)
+      }
       await sections.getByRole('link', { name: /^Spending/ }).click()
+      if (previousScroll != null) expect(await page.evaluate(() => window.scrollY)).toBe(previousScroll)
       await expect(page.getByLabel(/^Default spend/)).toBeVisible()
       await expect(page.getByLabel(/^Retirement date/)).toBeHidden()
       await expect(run).toBeInViewport()
@@ -1166,6 +1180,10 @@ test.describe('Screenshots', () => {
       await page.getByRole('link', { name: /Advanced assumptions/ }).click()
       await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1000000')
       const advanced = page.getByRole('navigation', { name: 'Advanced assumption sections' })
+      await advanced.getByRole('link', { name: 'Timing & spouse', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Timing & spouse', exact: true })).toBeVisible()
+      await expect(page.getByRole('checkbox', { name: /Include spouse/ })).toBeVisible()
+      await expect(page.getByLabel(/^Retirement date/)).toBeHidden()
       await advanced.getByRole('link', { name: 'Market', exact: true }).click()
       await expect(page.getByText('Market outlook', { exact: true })).toBeVisible()
       await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toBeHidden()
@@ -1444,4 +1462,31 @@ test.describe('Public support screenshots', () => {
       await page.screenshot({ path: `${OUT}/public-setup-${theme}-mobile.png`, fullPage: true })
     })
   }
+})
+
+test('returning to a records page restores its scroll position', async ({ page }) => {
+  test.skip(!EMAIL, 'Requires the screenshot fixture')
+  await authedPage(page, MOBILE, 'light')
+  await navigateTo(page, 'Events')
+  await expect(page.locator('[data-event-type]').first()).toBeVisible()
+  const priorScroll = await page.evaluate(() => { window.scrollTo(0, 500); return window.scrollY })
+  expect(priorScroll).toBe(500)
+  await navigateTo(page, 'Settings')
+  await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
+  let release!: () => void
+  const delay = new Promise<void>(resolve => { release = resolve })
+  const eventsApi = /\/api\/events(?:\?.*)?$/
+  await page.route(eventsApi, async route => { await delay; await route.continue() })
+  try {
+    await Promise.all([
+      page.waitForRequest(eventsApi, { timeout: 5000 }),
+      page.evaluate(() => window.history.back()),
+    ])
+    await expect(page).toHaveURL(/\/events$/)
+    await expect(page.locator('[data-event-type]').first()).toBeHidden()
+  } finally {
+    release()
+  }
+  await expect(page.locator('[data-event-type]').first()).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(priorScroll)
 })

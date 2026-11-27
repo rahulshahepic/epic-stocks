@@ -612,7 +612,13 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
     db.commit()
     minutes = int(APPROVAL_CODE_TTL.total_seconds() // 60)
     from scaffold.email_sender import app_url
-    link = f"{app_url()}/admin#ai-connections" if app_url() else "Site Admin → AI Connections"
+    # One deep link for both surfaces (#825): the push tap and the email
+    # link land on this exact request in Admin → AI Connections, which
+    # scrolls it into view and highlights it. The path is also what the
+    # login flow preserves through sign-in (`next`), so an expired
+    # session still ends up here after logging in.
+    request_path = f"/admin?request={row.id}#ai-connections"
+    link = f"{app_url()}{request_path}" if app_url() else "Site Admin → AI Connections"
     try:
         channels = deliver(
             db, admin, "Epic Stocks admin approval",
@@ -623,7 +629,8 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
             email_body=(f"An assistant asked to: {describe(row)}.\n"
                         "For your safety the approval code is sent only to your push devices, never "
                         "by email, because an assistant that can read your mail could approve "
-                        f"itself. To approve or reject it here instead, open {link} → AI Connections."),
+                        f"itself. To approve or reject it here instead, open {link}."),
+            url=request_path,
         )
     except Exception:
         logger.exception("Could not deliver an approval code")

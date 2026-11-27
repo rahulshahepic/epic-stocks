@@ -21,12 +21,25 @@ const MATCH_LABELS: Record<McpMatchType, string> = {
   host: 'any path on host',
   loopback: 'any port',
 }
+/** The request a notification deep link (?request=<id>) points at, or null. */
+export function targetRequestId(search: string): number | null {
+  const raw = new URLSearchParams(search).get('request')
+  if (!raw) return null
+  const id = Number(raw)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
 export function AiConnections({ onError }: { onError: (message: string) => void }) {
   const [settings, setSettings] = useState<McpSettings | null>(null)
   const [usage, setUsage] = useState<McpUsageReport | null>(null)
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState('')
   const [host, setHost] = useState('')
+  // Approval pushes and emails link to /admin?request=<id>#ai-connections
+  // (#825): when this page is arrived at that way, scroll the request into
+  // view and highlight it instead of leaving the admin to hunt for it.
+  const [deepLinkId] = useState(() => targetRequestId(window.location.search))
+  const [highlightId, setHighlightId] = useState<number | null>(null)
   const [matchType, setMatchType] = useState<McpMatchType | ''>('')
 
   useEffect(() => {
@@ -40,6 +53,15 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       ))
       .catch(() => setUsage(null))
   }, [onError])
+
+  useEffect(() => {
+    if (deepLinkId === null || !settings) return
+    const el = document.getElementById(`admin-request-${deepLinkId}`)
+    if (el) {
+      el.scrollIntoView({ block: 'center' })
+      setHighlightId(deepLinkId)
+    }
+  }, [settings, deepLinkId])
 
   async function run(action: () => Promise<McpSettings>, failure: string) {
     setBusy(true)
@@ -217,7 +239,8 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           </p>
           <ul className="mt-2 space-y-2" aria-label="Pending requests from AI assistants">
             {requests.map((entry) => (
-              <li key={entry.id} className="rounded-md border border-cs-border p-2.5">
+              <li key={entry.id} id={`admin-request-${entry.id}`}
+                className={`rounded-md border p-2.5 ${highlightId === entry.id ? 'border-cs-brand ring-2 ring-cs-brand' : 'border-cs-border'}`}>
                 <p className="text-xs font-medium text-cs-text">
                   {REQUEST_TITLES[entry.action] ?? entry.description}
                 </p>

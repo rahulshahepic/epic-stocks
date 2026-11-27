@@ -47,9 +47,11 @@ class Inbox:
         self.messages: list[str] = []
         self.emails: list[str] = []
 
-    def __call__(self, db, user, title, body, email_body=None):
+    def __call__(self, db, user, title, body, email_body=None, url=None):
         self.messages.append(body)
         self.emails.append(body if email_body is None else email_body)
+        self.urls = getattr(self, "urls", [])
+        self.urls.append(url)
         return list(self.channels)
 
     @property

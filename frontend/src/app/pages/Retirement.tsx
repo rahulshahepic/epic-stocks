@@ -6,7 +6,7 @@ import PlanningNavigation from '../components/PlanningNavigation.tsx'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import financialTerms from '../../../../backend/app/financial_terms.json'
-import { InlineTerm } from '../components/EquityTerms.tsx'
+import EquityTerms from '../components/EquityTerms.tsx'
 
 function moneyParamsValid(params: object) {
   return [
@@ -1970,7 +1970,7 @@ function RetirementAccount() {
               </div>}
             </Card>}
             {showingResults && <button type="button" onClick={() => changeAssumptionsView(true)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">Edit plan assumptions</button>}
-            <div className="grid gap-2 sm:grid-cols-3"><InlineTerm term="percentiles" /><InlineTerm term="funding_shortfall" /><InlineTerm term="exhausted" /></div>
+            <EquityTerms terms={['percentiles', 'funding_shortfall', 'exhausted']} />
             <div className="grid grid-cols-2 gap-3">
               <StatCard
                 label="Ended richer than you started"

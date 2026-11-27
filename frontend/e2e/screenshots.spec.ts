@@ -1464,31 +1464,29 @@ test.describe('Public support screenshots', () => {
   }
 })
 
-test.describe('Scroll restoration with slow records', () => {
-  test.use({ serviceWorkers: 'block' })
-
-  test('returning to a records page restores scroll after its rows load', async ({ page }) => {
-    test.skip(!EMAIL, 'Requires the screenshot fixture')
-    await authedPage(page, MOBILE, 'light')
-    await page.goto('/events')
-    await expect(page.locator('[data-event-type]').first()).toBeVisible()
-    const priorScroll = await page.evaluate(() => { window.scrollTo(0, 500); return window.scrollY })
-    expect(priorScroll).toBe(500)
-    await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link', { name: 'Settings' }).click()
-    await expect(page).toHaveURL(/\/settings$/)
-    let release!: () => void
-    const delay = new Promise<void>(resolve => { release = resolve })
-    const eventsApi = /\/api\/events(?:\?.*)?$/
-    await page.route(eventsApi, async route => { await delay; await route.continue() })
-    try {
-      const requested = page.waitForRequest(eventsApi)
-      await page.evaluate(() => window.history.back())
-      await requested
-      await expect(page.locator('[data-event-type]').first()).toBeHidden()
-    } finally {
-      release()
-    }
-    await expect(page.locator('[data-event-type]').first()).toBeVisible()
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(priorScroll)
-  })
+test('returning to a records page restores its scroll position', async ({ page }) => {
+  test.skip(!EMAIL, 'Requires the screenshot fixture')
+  await authedPage(page, MOBILE, 'light')
+  await navigateTo(page, 'Events')
+  await expect(page.locator('[data-event-type]').first()).toBeVisible()
+  const priorScroll = await page.evaluate(() => { window.scrollTo(0, 500); return window.scrollY })
+  expect(priorScroll).toBe(500)
+  await navigateTo(page, 'Settings')
+  await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
+  let release!: () => void
+  const delay = new Promise<void>(resolve => { release = resolve })
+  const eventsApi = /\/api\/events(?:\?.*)?$/
+  await page.route(eventsApi, async route => { await delay; await route.continue() })
+  try {
+    await Promise.all([
+      page.waitForRequest(eventsApi, { timeout: 5000 }),
+      page.evaluate(() => window.history.back()),
+    ])
+    await expect(page).toHaveURL(/\/events$/)
+    await expect(page.locator('[data-event-type]').first()).toBeHidden()
+  } finally {
+    release()
+  }
+  await expect(page.locator('[data-event-type]').first()).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(priorScroll)
 })

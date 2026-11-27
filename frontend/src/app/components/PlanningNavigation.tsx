@@ -2,9 +2,9 @@ import { useLayoutEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 const tabs = [
-  { view: 'expenses', label: 'Planned Expenses', to: '/planning?view=expenses' },
-  { view: 'retirement', label: 'Retirement', to: '/planning' },
-  { view: 'compensation', label: 'Compensation Calculator', to: '/comp-calculator' },
+  { view: 'expenses', label: 'Planned Expenses', shortLabel: 'Expenses', to: '/planning?view=expenses' },
+  { view: 'retirement', label: 'Retirement', shortLabel: 'Retirement', to: '/planning' },
+  { view: 'compensation', label: 'Compensation Calculator', shortLabel: 'Comp Calc', to: '/comp-calculator' },
 ] as const
 
 type PlanningView = typeof tabs[number]['view']
@@ -19,15 +19,16 @@ export default function PlanningNavigation({ view, onViewChange, beforeNavigate 
   const navigating = useRef<symbol | null>(null)
   useLayoutEffect(() => () => { navigating.current = null }, [key])
   return (
-    <div role="group" aria-label="Planning" className="grid grid-cols-3 gap-2">
+    <div role="group" aria-label="Planning" className="grid grid-cols-3 gap-1 rounded-xl border border-cs-border bg-cs-raised p-1">
       {tabs.map(tab => {
         const selected = tab.view === view
-        const className = `flex min-h-11 items-center justify-center rounded-lg border px-2 py-2 text-center text-xs font-semibold sm:text-sm ${selected
+        const className = `flex min-h-11 items-center justify-center rounded-lg border px-1 py-2 text-center text-xs font-semibold sm:text-sm ${selected
           ? 'border-cs-brand bg-cs-brand-subtle text-cs-brand dark:text-rose-300'
-          : 'border-cs-border-strong text-cs-text hover:bg-cs-raised'}`
+          : 'border-transparent text-cs-text hover:bg-cs-surface'}`
+        const label = <><span className="sm:hidden">{tab.shortLabel}</span><span className="hidden sm:inline">{tab.label}</span></>
         return tab.view !== 'compensation' && onViewChange
-          ? <button key={tab.view} type="button" aria-pressed={selected} className={className} onClick={() => onViewChange(tab.view === 'expenses')}>{tab.label}</button>
-          : <Link key={tab.view} to={tab.to} aria-current={selected ? 'page' : undefined} className={className} onClick={async event => {
+          ? <button key={tab.view} type="button" aria-label={tab.label} aria-pressed={selected} className={className} onClick={() => onViewChange(tab.view === 'expenses')}>{label}</button>
+          : <Link key={tab.view} to={tab.to} aria-label={tab.label} aria-current={selected ? 'page' : undefined} className={className} onClick={async event => {
             if (!beforeNavigate || selected || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
             event.preventDefault()
             if (navigating.current) return
@@ -38,7 +39,7 @@ export default function PlanningNavigation({ view, onViewChange, beforeNavigate 
             } finally {
               if (navigating.current === attempt) navigating.current = null
             }
-          }}>{tab.label}</Link>
+          }}>{label}</Link>
       })}
     </div>
   )

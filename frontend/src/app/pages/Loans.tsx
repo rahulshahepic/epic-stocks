@@ -390,8 +390,7 @@ export default function Loans() {
         }
       </div>
 
-      {loans.length > 0 && <RecordListControls name="loans" controls={records} />}
-      {loans.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No loans match your filter.</p>}
+      {loans.length > 0 && <RecordListControls name="loans" controls={records} count={visibleRows.length} total={loans.length} />}
 
       {/* Mobile card layout */}
       {isMobile ? <div className="record-list space-y-2">

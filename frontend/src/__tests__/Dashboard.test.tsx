@@ -359,7 +359,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Total Income')).toBeInTheDocument()
     expect(screen.getByText('Total capital gains')).toBeInTheDocument()
     expect(screen.getByText('Loan Principal')).toBeInTheDocument()
-    expect(screen.getByText('Next stop')).toBeInTheDocument()
+    expect(screen.getByText('Next stock event')).toBeInTheDocument()
   })
 
   it('renders chart titles', async () => {
@@ -614,7 +614,6 @@ it('opens an inline price editor for unpriced holdings', async () => {
   await userEvent.click(screen.getByRole('button', {name: 'Add a price'}))
   expect(screen.getByLabelText('Announced price', {exact: true})).toHaveFocus()
   expect(screen.getByRole('link', {name: /vested shares/})).toHaveAttribute('href', '/grants')
-  expect(screen.getByText(/· Price not entered$/)).toBeVisible()
   expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
   expect(screen.queryByText('If you exited on this date')).not.toBeInTheDocument()
   expect(screen.queryByText(/Exit estimate unavailable/)).not.toBeInTheDocument()

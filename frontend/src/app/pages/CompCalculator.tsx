@@ -1270,7 +1270,7 @@ function CompCalculatorAccount() {
                       ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
                       : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
                   >
-                    Tax equiv $
+                    Pretax salary equivalent
                   </button>
                   {compEvents.length > 0 && (
                     <button

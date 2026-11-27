@@ -1108,7 +1108,7 @@ function RetirementAccount() {
             onClick={() => setExplainerOpen(o => !o)}
             className="w-full px-4 py-2.5 text-sm font-medium text-cs-text-2"
           >
-            What is this?
+            How the simulation works
           </DisclosureButton>
           {explainerOpen && (
             <div className="border-t border-cs-border px-4 py-3 text-xs leading-relaxed text-cs-text-2 ">
@@ -1922,14 +1922,19 @@ function RetirementAccount() {
               {completedRun?.exitQuote?.price_effective_date && <p className="mt-1 text-xs text-white">{sharePriceBasis(completedRun.exitQuote.price_effective_date, completedRun.exitQuote.price_is_estimate)} for the Epic cash in this plan.</p>}
               <p className="mt-2 text-xs text-white">Through age {resultEndAge} · {result.finalWealth.length.toLocaleString()} simulations · amounts in {resultDollarYear} dollars</p>
             </HeroCard>
-            {!resultsStale && completedRun && <Card pad="md">
-              <button type="button" onClick={() => void compareOneYearLater()}
-                disabled={running || !!comparison && !comparison.result && !comparison.error}
-                className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text disabled:opacity-50">
-                {comparison && !comparison.result && !comparison.error ? 'Comparing…' : 'Compare retiring one year later'}
-              </button>
-              {comparison?.error && <p role="alert" className="mt-2 text-sm text-cs-brand">{comparison.error}</p>}
-              {comparison?.result && <div className="mt-3" role="status">
+            {(showingResults || (!resultsStale && completedRun)) && <Card pad="md">
+              <div className="flex flex-wrap gap-2">
+                {showingResults && <button type="button" onClick={() => changeAssumptionsView(true)} className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text">Edit plan assumptions</button>}
+                {!resultsStale && completedRun && (
+                  <button type="button" onClick={() => void compareOneYearLater()}
+                    disabled={running || !!comparison && !comparison.result && !comparison.error}
+                    className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2 text-sm font-semibold text-cs-text disabled:opacity-50">
+                    {comparison && !comparison.result && !comparison.error ? 'Comparing…' : 'Compare retiring one year later'}
+                  </button>
+                )}
+              </div>
+              {!resultsStale && completedRun && comparison?.error && <p role="alert" className="mt-2 text-sm text-cs-brand">{comparison.error}</p>}
+              {!resultsStale && completedRun && comparison?.result && <div className="mt-3" role="status">
                 {comparison.result.preRetirementFundingGapM > 1e-9
                   ? <p className="text-sm text-cs-text">The later plan has a pre-retirement funding gap of {fmt$M(comparison.result.preRetirementFundingGapM)}. Fund the gap to compare retirement outcomes.</p>
                   : <>
@@ -1969,7 +1974,6 @@ function RetirementAccount() {
                 <p className="mt-2 text-xs text-cs-muted">Same market samples, spending and savings inputs. {completedRun.exitMode === 'auto' && !emptyEquity && 'Projected Epic cash includes earlier sale cash and modeled tax savings from investment interest. '}Amounts use each retirement year’s purchasing power. Your saved plan stays as entered.</p>
               </div>}
             </Card>}
-            {showingResults && <button type="button" onClick={() => changeAssumptionsView(true)} className="min-h-11 rounded-lg border border-cs-border-strong px-4 py-2 text-sm font-semibold text-cs-text">Edit plan assumptions</button>}
             <EquityTerms terms={['percentiles', 'funding_shortfall', 'exhausted']} />
             <div className="grid grid-cols-2 gap-3">
               <StatCard

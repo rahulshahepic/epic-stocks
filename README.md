@@ -448,7 +448,18 @@ proceeds fixed; each result shows the amount used. Other starting account balanc
 stay fixed, and pre-retirement purchases reduce the later starting portfolio;
 working-life savings and investment returns are not modeled.
 
-**Reading retirement results:** The main result shows the chance of fully funding
+**Navigating your stock records:** Dashboard leads with stock value, estimated
+cash if you leave, and the next stock event. Open **Stock records** there or under
+**More** to reach Grants, Loans, Sales, and Import / Export. Filter Grants and
+Loans by year or type and Sales by date, type, or notes. The active filter shows
+the matching count and has a clear action. [See a filtered grants list](screenshots/grants-filter-light-mobile.png).
+
+**Planning sections:** Use the tabs to switch sections of the Retirement editor
+and Compensation Calculator. With a keyboard, use the arrow keys to move between
+sections and Enter or Space to open one.
+
+**Reading retirement results:** Edit your assumptions or compare retiring one
+year later from the result. The main result shows the chance of fully funding
 retirement once, followed by starting and ending wealth. Expand **What do these
 terms mean?** for definitions of percentiles, funding shortfall, and portfolio
 exhaustion. Expand **Funding risk details** for shortfalls and the difference

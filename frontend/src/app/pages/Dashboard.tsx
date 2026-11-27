@@ -28,7 +28,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import GetStarted from '../components/GetStarted.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
-import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
+import { HeroCard, IconTile } from '../../scaffold/components/ui/Card.tsx'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
@@ -391,30 +391,48 @@ export default function Dashboard() {
   const showExitFigure = hasExitSection && (datedExit !== null || exitPreview === 'loading')
 
   const headline = cv && grantHoldings && (
-    <HeroCard
-      className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
-    >
-      <img
-        aria-hidden="true"
-        src={campusWatercolor}
-        className="campus-watercolor"
-        alt=""
-      />
-      <span className="campus-sticker" lang="la" title="Through hardship to the stars">Ad astra per aspera</span>
-      <div className="relative z-10 mt-7 grid gap-6 sm:mt-5 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
-        <div>
-          <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
-          <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight sm:text-6xl">
-            {!hasPrice ? `${fmtNum(cv.total_shares)} shares` : showExitFigure ? (datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)) : (totalValue === null ? '—' : fmt$(totalValue))}
-          </p>
-          <p className="mt-2 text-sm font-semibold text-white">{!hasPrice ? 'Vested shares' : showExitFigure ? exitCashLabel(cardDate === today) : stockValueLabel}</p>
-          {showExitFigure && <p className="mt-2 text-xs text-white">{exitPreview === 'loading' ? 'Calculating exit…' : 'Excludes cash from earlier sales. Unvested purchased shares are modeled at cost. Expand the exit breakdown for obligations and taxes.'}</p>}
-
-          {hasPrice && <p className="mt-2 text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
+    <section aria-labelledby="dashboard-summary" className="space-y-2">
+      <HeroCard className="campus-hero p-4 sm:p-6">
+        <img aria-hidden="true" src={campusWatercolor} className="campus-watercolor opacity-20!" alt="" />
+        <div className="relative z-10 space-y-3">
+          <h2 id="dashboard-summary" className="text-base font-semibold text-white">Your stock at a glance</h2>
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:gap-6">
+            <div>
+              <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">
+                {totalValue === null ? 'Vested shares' : cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
+              </h3>
+              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
+                {totalValue === null ? <Link to="/grants" className="underline underline-offset-2" aria-label={`${fmtNum(cv.total_shares)} vested shares`}>{fmtNum(cv.total_shares)}</Link> : fmt$(totalValue)}
+              </p>
+              {totalValue !== null && <p className="mt-1 text-xs text-white">{stockValueLabel}</p>}
+            </div>
+            {showExitFigure && <div>
+              <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">{exitCashLabel(cardDate === today)}</h3>
+              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
+                {datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)}
+              </p>
+              <p className="mt-1 text-xs text-white">
+                {exitPreview === 'loading' ? 'Calculating exit…' : 'After estimated taxes and loan repayment. Excludes earlier sales.'}
+              </p>
+              {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-xs font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
+            </div>}
+          </div>
+          {hasPrice && <p className="text-xs text-white">{sharePriceBasis(datedExit?.price_effective_date ?? snapshot?.price_effective_date,
             datedExit?.price_is_estimate ?? cv.price_is_estimate)}</p>}
-          {!!datedExit?.liquidation_shortfall && <p className="mt-2 text-sm font-semibold text-white">Additional cash needed to settle: {fmt$(datedExit.liquidation_shortfall)}</p>}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 border-t border-white/35 text-sm">
+            {cv.next_event && <Link to={`/events?date=${cv.next_event.date}`} className="inline-flex min-h-11 flex-wrap items-center gap-x-1">
+              <span className="font-semibold">Next stock event</span>
+              <span>{fmtFullDate(cv.next_event.date)} · {cv.next_event.event_type}</span>
+              {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && <span>· estimated price change</span>}
+            </Link>}
+            <Link to="/events" className="inline-flex min-h-11 items-center underline underline-offset-2">Stock Records</Link>
+          </div>
         </div>
-        <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+      </HeroCard>
+      <details className="rounded-xl border border-cs-border bg-cs-surface px-3 text-sm text-cs-text">
+        <DisclosureSummary className="font-semibold">How these values are calculated</DisclosureSummary>
+        <div className="space-y-2 pb-3">
+          {totalValue !== null && <p>Stock value includes vested shares at the applicable share price and unvested purchased shares at their cost.</p>}
           <p className="font-bold tabular-nums">
             {showExitPreview && datedExit ? <>
               {fmt$(datedExit.gross_vested)} vested shares
@@ -429,7 +447,7 @@ export default function Dashboard() {
             </>}
           </p>
           {!(showExitPreview && datedExit) && (outstandingPrincipal > 0 || cv.accrued_unbooked_interest > 0) && (
-            <dl className="space-y-1 text-xs text-white">
+            <dl className="space-y-1 text-xs text-cs-text-2">
               {outstandingPrincipal > 0 && <div className="flex justify-between gap-3">
                 <dt>Outstanding loan principal</dt>
                 <dd className="font-semibold tabular-nums"><Link to="/loans" className="underline underline-offset-2" aria-label={`View outstanding loans, ${fmt$(outstandingPrincipal)} principal`}>{fmt$(outstandingPrincipal)}</Link></dd>
@@ -439,24 +457,10 @@ export default function Dashboard() {
               </div>}
             </dl>
           )}
-          {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
-          <p className="font-semibold tabular-nums">
-            <Link to="/grants" className="underline underline-offset-2">{fmtNum(cv.total_shares)} vested shares</Link> · {cv.current_price === null ? 'Price not entered' : <Link to="/prices" className="underline underline-offset-2">{fmtPrice(cv.current_price)}/share</Link>}
-            {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
-          </p>
-          {cv.next_event && (
-            <Link to={`/events?date=${cv.next_event.date}`} aria-label="Open next event" className="block w-full border-t border-white/35 pt-3 text-left">
-              <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
-              <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
-              <span className="text-xs"> · {cv.next_event.event_type}</span>
-              {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && (
-                <span className="text-xs"> · estimated price change</span>
-              )}
-            </Link>
-          )}
+          {(activeLoans?.length ?? 0) > 0 && cv.interest_status && <p className="text-sm text-cs-text-2">Interest: {cv.interest_status}</p>}
         </div>
-      </div>
-    </HeroCard>
+      </details>
+    </section>
   )
 
   const deductionControl = showDeductionCard && !readOnly && (() => {
@@ -541,6 +545,14 @@ export default function Dashboard() {
       {carryover === 'matched' && <p role="status" className="text-sm text-cs-text">Your preview already matches your saved records. Here’s your position.</p>}
       {carryover === 'expired' && <p role="status" className="text-sm text-cs-text">Your preview expired after 30 minutes. <Link to="/import" className="underline">Import the files again</Link> to review and save them.</p>}
       {carryover === 'failed' && <p role="alert" className="text-sm text-cs-text">We couldn’t save your preview automatically. <Link to="/import" className="underline">Import your files again</Link> to review and save it.</p>}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {cv && grantHoldings && <>
+          {fmtFullDate(cardDate)}. {totalValue === null ? `${fmtNum(cv.total_shares)} vested shares. Stock value needs a share price.` : `Stock value ${fmt$(totalValue)}.`}
+          {datedExit?.liquidation_net_cash != null && ` Estimated exit cash ${fmt$(datedExit.liquidation_net_cash)}.`}
+          {!!datedExit?.liquidation_shortfall && ` Additional cash needed to settle ${fmt$(datedExit.liquidation_shortfall)}.`}
+        </>}
+      </p>
+      {headline}
       {cv && cv.current_price === null && grantHoldings && grantHoldings.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Price not entered for this date. Add a share price to value your shares and project your exit.</p>
@@ -571,7 +583,7 @@ export default function Dashboard() {
               key={label}
               onClick={() => setDateMode(mode)}
               title={title}
-              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+              className={`min-h-11 rounded px-2 py-1 text-xs font-medium transition-colors ${
                 dateMode === mode
                   ? 'bg-cs-brand text-white'
                   : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
@@ -584,7 +596,7 @@ export default function Dashboard() {
             onClick={downloadReport}
             disabled={downloading}
             title="Download holdings report as Excel"
-            className="ml-auto text-xs text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
+            className="ml-auto min-h-11 px-2 text-xs text-cs-muted hover:text-cs-text-2 disabled:opacity-50"
           >
             {downloading ? '…' : 'Export'}
           </button>
@@ -598,10 +610,9 @@ export default function Dashboard() {
       {importSaved && !readOnly && <OwnerPositionTour />}
       {cv && <section aria-labelledby="dashboard-position" className="space-y-3">
         <h2 id="dashboard-position" className="text-xl font-semibold text-cs-text">Your position</h2>
-        {!showExitFigure && headline}
         <div aria-live="polite" aria-atomic="true">
           <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
-            totalValue={totalValue} headingAs="h3" hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
+            totalValue={totalValue} headingAs="h3" showValue={false} hideNextEvent openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
         </div>
 
         {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <div className="relative rounded-xl border border-cs-border bg-cs-surface">
@@ -631,7 +642,7 @@ export default function Dashboard() {
 
       {hasExitSection && <section aria-labelledby="dashboard-exit" className="space-y-3">
         <h2 id="dashboard-exit" className="text-xl font-semibold text-cs-text">If you leave</h2>
-        {showExitFigure ? headline : <p role="status" className="text-sm text-cs-muted">Estimated exit cash is unavailable for this date.</p>}
+        {!showExitFigure && <p role="status" className="text-sm text-cs-muted">Estimated exit cash is unavailable for this date.</p>}
         <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 divide-y divide-cs-border rounded-xl border border-cs-border bg-cs-surface">
           <details>
             <DisclosureSummary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</DisclosureSummary>
@@ -689,7 +700,7 @@ export default function Dashboard() {
           rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}
           maxDate={maxDate} hasFuturePrices={hasFuturePrices} />}
       </section>}
-      {recordLinks}
+      {!headline && recordLinks}
       {!readOnly && snapshot && <div className="flex flex-wrap gap-3 text-sm font-semibold text-cs-brand dark:text-rose-300">
         <Link to="/retirement" className="min-h-11 rounded-lg border border-cs-border-strong px-3 py-2">Will it fund retirement? →</Link>
       </div>}

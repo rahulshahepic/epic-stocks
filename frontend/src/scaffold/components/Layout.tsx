@@ -196,9 +196,9 @@ export default function Layout() {
             ? (me ? <StagingSeedPanel /> : <p role="status">Loading staging workspace…</p>)
             : <>
               {!viewing && <TaskOutcome />}
-              {isRecords && <nav aria-label="Stock records" className="mb-4 flex items-center gap-2 overflow-x-auto border-b border-cs-border pb-2">
+              {isRecords && <nav aria-label="Stock records" className="mb-4 flex flex-wrap items-center gap-1 border-b border-cs-border pb-2 sm:gap-2">
                 {navItems.filter(item => recordsRoutes.includes(item.to)).map(({ to, label }) => (
-                  <NavLink key={to} to={to} className={({ isActive }) => `inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-sm ${isActive ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}>
+                  <NavLink key={to} to={to} className={({ isActive }) => `inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg px-2 text-sm sm:px-3 ${isActive ? 'bg-cs-brand-subtle font-semibold text-cs-brand dark:text-rose-300' : 'text-cs-text-2 hover:bg-cs-raised'}`}>
                     {to === '/import' ? 'Import / Export' : label}
                   </NavLink>
                 ))}

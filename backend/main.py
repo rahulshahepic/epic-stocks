@@ -446,6 +446,71 @@ class MutationRateLimitMiddleware:
         await self.app(scope, receive, send)
 
 
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _scope_header(scope, name: bytes) -> str | None:
+    for key, value in scope.get("headers", []):
+        if key == name:
+            return value.decode("latin-1")
+    return None
+
+
+def _origin_allowed(origin: str, scope) -> bool:
+    """An Origin is ours when it is a native shell origin, or when its
+    host is the host this request arrived on. The scheme is not compared:
+    TLS terminates at Caddy/Cloudflare, so the scope's scheme is not the
+    public one, while the Host header is."""
+    origin = origin.strip().rstrip("/")
+    if origin in NATIVE_APP_ORIGINS:
+        return True
+    from urllib.parse import urlsplit
+    parts = urlsplit(origin)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        return False
+    host = _scope_header(scope, b"host") or ""
+    return parts.netloc.lower() == host.strip().lower()
+
+
+class OriginCheckMiddleware:
+    """Reject cross-origin writes that ride the session cookie (#821).
+
+    SameSite=Lax keeps most browsers from sending the cookie cross-site,
+    but the server never checked for itself: the pen test drove a grant
+    POST with the session cookie and an `Origin: https://evil.example`
+    straight through (201). Bearer-token callers (native shells, MCP
+    connectors) are not cookie auth and are untouched, as are requests
+    with no Origin/Referer at all (non-browser clients do not send one).
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method") in _WRITE_METHODS:
+            cookie = _scope_header(scope, b"cookie") or ""
+            has_session_cookie = any(
+                part.strip().partition("=")[0] == "session" and part.strip().partition("=")[2]
+                for part in cookie.split(";")
+            )
+            if has_session_cookie:
+                origin = _scope_header(scope, b"origin")
+                if origin is None:
+                    referer = _scope_header(scope, b"referer")
+                    if referer:
+                        from urllib.parse import urlsplit
+                        parts = urlsplit(referer)
+                        origin = f"{parts.scheme}://{parts.netloc}" if parts.netloc else None
+                if origin is not None and not _origin_allowed(origin, scope):
+                    response = JSONResponse(
+                        {"detail": "Cross-origin request rejected"},
+                        status_code=403,
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
 def _user_id_from_scope(scope) -> int | None:
     """The signed-in user's id from the request's token, or None."""
     token = EncryptionMiddleware._token_from_scope(scope)
@@ -906,8 +971,9 @@ NATIVE_APP_ORIGINS = [
 # reach even the early responses from the body-size, maintenance and epic-mode
 # guards — without them a native client sees an opaque network error instead of
 # the actual status. Then the body ceiling, which has to come before anything
-# that reads the body, then maintenance, epic-mode guard, the per-account
-# write limit, and encryption.
+# that reads the body, then maintenance, epic-mode guard, the cross-origin
+# check on cookie-authenticated writes, the per-account write limit, and
+# encryption.
 #
 # allow_credentials stays False: native clients authenticate with a Bearer
 # token, never a cookie, so there is no reason to let a cross-origin caller
@@ -915,7 +981,9 @@ NATIVE_APP_ORIGINS = [
 app = CORSMiddleware(
     BodyLimitMiddleware(
         MaintenanceMiddleware(
-            EpicModeMiddleware(MutationRateLimitMiddleware(EncryptionMiddleware(_fastapi_app)))
+            EpicModeMiddleware(
+                OriginCheckMiddleware(MutationRateLimitMiddleware(EncryptionMiddleware(_fastapi_app)))
+            )
         ),
         limits=_BODY_LIMITS,
         default=_DEFAULT_BODY_LIMIT,

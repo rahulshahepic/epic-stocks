@@ -449,10 +449,12 @@ stay fixed, and pre-retirement purchases reduce the later starting portfolio;
 working-life savings and investment returns are not modeled.
 
 **Reading retirement results:** The main result shows the chance of fully funding
-retirement once, followed by starting and ending wealth. Expand **Funding risk
-details** for shortfalls and the difference between depleted and inaccessible
-assets. Planned purchases show one headline probability, a count chart including
-replacements, and each optional purchase's timing. **Calculation details** holds
+retirement once, followed by starting and ending wealth. Expand **What do these
+terms mean?** for definitions of percentiles, funding shortfall, and portfolio
+exhaustion. Expand **Funding risk details** for shortfalls and the difference
+between depleted and inaccessible assets. Planned purchases show one headline
+probability, a count chart including replacements, and each optional purchase's
+timing. **Calculation details** holds
 sample counts, the separate *buy + fully fund retirement* measure and its
 definition. **Required expenses** are scheduled in every simulation. Dates and
 price basis are shown with the relevant inputs; entering today's prices converts

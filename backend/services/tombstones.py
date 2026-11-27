@@ -70,7 +70,11 @@ def record_deletion(provider_name, subject, account_created_at, deleted_at=None)
         entries = [e for e in entries if e["subject_hash"] != entry["subject_hash"]]
         entries.append(entry)
         if _backups_running():
-            entries = protocol.prune_entries(entries, datetime.now(timezone.utc), _retention_days())
+            # The window never drops below the keep-newest count: the host
+            # keeps that many backup runs (about that many days at a daily
+            # cadence) even when the configured window is shorter.
+            window = max(_retention_days(), protocol.KEEP_NEWEST)
+            entries = protocol.prune_entries(entries, datetime.now(timezone.utc), window)
         write_json(path, {"version": protocol.VERSION, "entries": entries})
     return True
 

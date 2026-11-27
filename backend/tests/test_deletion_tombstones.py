@@ -188,6 +188,34 @@ def test_corrupt_store_fails_loudly_instead_of_being_overwritten(db_session, tmp
     assert "nope" in path.read_text()
 
 
+def test_entries_survive_while_backups_are_unverified(tmp_path, monkeypatch):
+    """Pruning assumes the host prunes its archives on the same rule, so
+    it only runs while backups verifiably succeed on schedule. While the
+    host status cannot be verified, old entries are kept, not pruned."""
+    path = _handoff(tmp_path, monkeypatch)
+    from services import backup_admin
+    import services.tombstones as tombstones_module
+    old = [protocol.entry_for("google", f"sub-old-{index}",
+                              datetime(2025, 1, 1, tzinfo=timezone.utc),
+                              datetime(2025, 1, 2, tzinfo=timezone.utc))
+           for index in range(10)]
+    with backup_admin.locked() as folder:
+        backup_admin.write_json(folder / protocol.FILE_NAME,
+                                {"version": protocol.VERSION, "entries": old})
+
+    monkeypatch.setattr(tombstones_module, "_backups_running", lambda: False)
+    assert record_deletion("google", "sub-new", datetime.now(timezone.utc)) is True
+    assert len(_entries(path)) == 11
+
+    monkeypatch.setattr(tombstones_module, "_backups_running", lambda: True)
+    assert record_deletion("google", "sub-newer", datetime.now(timezone.utc)) is True
+    kept = _entries(path)
+    kept_subjects = {e["subject_hash"] for e in kept}
+    assert len(kept) == 7
+    assert protocol.subject_hash("google", "sub-new") in kept_subjects
+    assert protocol.subject_hash("google", "sub-newer") in kept_subjects
+
+
 def test_pruning_keeps_the_window_plus_the_newest_seven():
     now = datetime(2026, 12, 1, tzinfo=timezone.utc)
     entries = []

@@ -623,10 +623,14 @@ def send_code(db: Session, request_id: int, admin, *, grant_id: int | None = Non
         channels = deliver(
             db, admin, "Epic Stocks admin approval",
             f"An assistant asked to: {describe(row)}.\n"
+            f"Asked by: {row.client_name or 'an assistant'} "
+            "(the name the app chose for itself — unverified).\n"
             f"Code: {code[:4]} {code[4:]}\n"
             f"It expires in {minutes} minutes and approves only this change. "
             "Give it to the assistant only if you asked for this yourself.",
             email_body=(f"An assistant asked to: {describe(row)}.\n"
+                        f"Asked by: {row.client_name or 'an assistant'} "
+                        "(the name the app chose for itself — unverified).\n"
                         "For your safety the approval code is sent only to your push devices, never "
                         "by email, because an assistant that can read your mail could approve "
                         f"itself. To approve or reject it here instead, open {link}."),

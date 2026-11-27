@@ -18,7 +18,12 @@ from scaffold.oauth import admin_actions
 from scaffold.rate_limit import check_rate_ip_shared, check_rate_shared
 
 router = APIRouter(tags=['Directory reviewers'])
-NO_STORE = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'}
+# Referrer-Policy is same-origin, not no-referrer: under no-referrer a
+# browser sends `Origin: null` on this page's own POST, which the
+# cross-origin write check (#821) cannot validate. same-origin still
+# sends nothing to other sites, and same-origin POSTs carry the real
+# Origin.
+NO_STORE = {'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin'}
 
 
 def safe_next(value):

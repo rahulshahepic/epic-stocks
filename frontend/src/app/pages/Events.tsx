@@ -275,7 +275,7 @@ export default function Events() {
   const hasInterestDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
 
   return (
-    <div className="space-y-4">
+    <div className="record-list space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The archive</p>
@@ -409,19 +409,29 @@ export default function Events() {
                   'campus-event-card rounded-lg border border-cs-border p-3 text-xs bg-cs-surface',
                   highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
                 ].join(' ')}
-                onClick={() => setExpandedMobileRows(prev => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next })}
               >
                 {/* Line 1: Date + Type badge */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-expanded={isMobileExpanded}
+                  aria-label={`Event details: ${e.event_type} on ${fmtFullDate(e.date)}`}
+                  onClick={() => setExpandedMobileRows(prev => {
+                    const next = new Set(prev)
+                    if (next.has(i)) next.delete(i)
+                    else next.add(i)
+                    return next
+                  })}
+                  className="flex min-h-11 w-full items-center justify-between gap-2 text-left"
+                >
+                  <span className="flex items-center gap-2">
                     <span className="text-cs-text-2">{fmtFullDate(e.date)}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
                       {e.event_type}
                     </span>
                     {(e.is_estimate || e.price_is_estimate) && <span className="text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">tentative</span>}
-                  </div>
-                  <span className="text-cs-muted">{isMobileExpanded ? '\u25B2' : '\u25BC'}</span>
-                </div>
+                  </span>
+                  <span aria-hidden="true" className="text-cs-muted">{isMobileExpanded ? '▴' : '▾'}</span>
+                </button>
                 {/* Line 2: Grant + Shares */}
                 <div className="mt-1 flex items-center justify-between text-cs-muted">
                   <span>{e.grant_year ? `${e.grant_year} ${e.grant_type}` : ''}</span>

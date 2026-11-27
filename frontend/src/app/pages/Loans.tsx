@@ -1,4 +1,6 @@
-import { useCallback, useState } from 'react'
+import { RecordListControls } from '../components/RecordListControls.tsx'
+import { useRecordList } from '../hooks/useRecordList.ts'
+import { Fragment, useCallback, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
@@ -43,6 +45,7 @@ function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
 
 export default function Loans() {
+  const records = useRecordList()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
@@ -360,6 +363,8 @@ export default function Loans() {
     )
   }
 
+  const visibleRows = records.select(loans, row => String(row.loan_year), row => row.amount, row => [row.loan_year, row.grant_year, row.grant_type, row.loan_type, row.loan_number, row.due_date])
+
   return (
     <div className="space-y-4">
       <EquityTerms terms={['loan', 'accrued_interest', 'capitalised_interest', 'lot_selection']} title="Understand loan balances and repayment" />
@@ -383,9 +388,12 @@ export default function Loans() {
         }
       </div>
 
+      {loans.length > 0 && <RecordListControls name="loans" controls={records} />}
+      {loans.length > 0 && visibleRows.length === 0 && <p role="status" className="text-sm text-cs-text-2">No loans match your filter.</p>}
+
       {/* Mobile card layout */}
-      {isMobile ? <div className="space-y-2">
-        {loans.map(l => {
+      {isMobile ? <div className="record-list space-y-2">
+        {visibleRows.map(l => {
           const linkedSale = sales?.find(s => s.loan_id === l.id)
           const hasSale = !!linkedSale
           const isExpanded = expandedLoanId === l.id
@@ -419,13 +427,14 @@ export default function Loans() {
                 <span className="tabular-nums">{fmt$(l.amount)}</span> @ <span className="tabular-nums">{(l.interest_rate * 100).toFixed(2)}%</span>
               </div>
               {/* Line 3: Due + Sale + Expand */}
-              <div className="mt-1 flex items-center justify-between text-cs-muted">
+              <div className="mt-1 space-y-2 text-cs-muted">
                 <span>Due: {fmtFullDate(l.due_date)} <span className="text-cs-muted">&middot;</span> Loan year: {l.loan_year}</span>
                 <button
                   onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
-                  className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
+                  aria-expanded={isExpanded}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg bg-cs-raised px-3 text-left text-cs-text"
                 >
-                  {hasSale ? (linkedSale?.is_generated && linkedSale.date > today ? 'Planned repayment sale' : 'Recorded repayment sale') : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
+                  {hasSale ? (linkedSale?.is_generated && linkedSale.date > today ? 'Planned repayment sale' : 'Recorded repayment sale') : 'Loan details'} <span aria-hidden="true">{isExpanded ? '▴' : '▾'}</span>
                 </button>
               </div>
               {/* Expanded detail */}
@@ -451,7 +460,7 @@ export default function Loans() {
           )
         })}
       </div> : /* Desktop table layout */
-        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
+        <Card pad="none" className="record-list overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">
@@ -466,14 +475,14 @@ export default function Loans() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {loans.map(l => {
+              {visibleRows.map(l => {
                 const linkedSale = sales?.find(s => s.loan_id === l.id)
                 const hasSale = !!linkedSale
                 const isExpanded = expandedLoanId === l.id
                 const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
                 return (
-                  <>
-                    <tr key={l.id} className="bg-cs-surface">
+                  <Fragment key={l.id}>
+                    <tr className="bg-cs-surface">
                       <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">
                         {l.grant_year} {l.grant_type}
                         {refinancedByLoan && (
@@ -534,7 +543,7 @@ export default function Loans() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

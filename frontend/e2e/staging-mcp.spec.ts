@@ -83,7 +83,7 @@ test('mobile fictional workspace persists edits and confirms profile changes', a
   await page.getByRole('button', { name: /Load Early career/ }).tap()
   await expect(page.getByRole('heading', { name: 'Set up a fictional staging account' })).toHaveCount(0)
   expect((await (await page.request.get('/api/grants')).json()).length).toBe(6)
-  await page.goto('/retirement')
+  await page.goto('/retirement#spending')
   const spending = page.getByLabel(/^Default spend/)
   await expect(spending).toHaveValue('40000')
   let busyInjected = false

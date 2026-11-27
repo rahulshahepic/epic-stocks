@@ -125,11 +125,11 @@ def test_staging_mcp_is_explicitly_test_data(client):
         result = init.json()['result']
         assert result['serverInfo']['name'] == 'epic-stocks-staging-test'
         assert 'Never sync' in result['instructions']
-        assert 'More → Compensation Calculator' in result['instructions']
+        assert 'Planning → Compensation Calculator' in result['instructions']
         assert '/llms.txt' in result['instructions']
         compensation = next(tool for tool in mcp.list_tools() if tool['name'] == 'get_compensation')
         assert compensation['title'] == 'Salary and bonus history'
-        assert 'More → Compensation Calculator' in compensation['description']
+        assert 'Planning → Compensation Calculator' in compensation['description']
 
         assert 'setup_test_account' in mcp.error('get_dashboard')
         mcp.call('setup_test_account', scenario='early')
@@ -201,7 +201,7 @@ def test_public_website_guide_describes_compensation_and_navigation(client):
         '- **Dashboard**', '  - Under **Earnings and borrowing costs**, select **See total compensation**',
         '- **Planning**', '  - **Planned Expenses**', '  - **Retirement**',
         '- **Settings**', '  - **AI Connections**', '- **More**',
-        '  - **Compensation Calculator** is the standalone shortcut at the top.',
+        '  - **Compensation Calculator** for annual stock and cash compensation estimates.',
         '  - **Admin** includes **Site Admin** and **Content Admin** as permitted by your role.',
     ):
         assert path in guide

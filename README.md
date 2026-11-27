@@ -252,7 +252,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
 
 8. **Share your data** — invite a financial advisor or family member by email from **Settings → Sharing**. They see your data read-only; you can revoke access at any time.
 
-9. **Compare to a salary offer** — choose **More → Compensation Calculator** or **See total compensation** under **Earnings and borrowing costs** on Dashboard to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
+9. **Compare to a salary offer** — choose **Planning → Compensation Calculator** or **See total compensation** under **Earnings and borrowing costs** on Dashboard to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
 
 10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path simulation of your retirement using your Epic exit value plus other assets. Each path samples real months of 1928–2023 U.S. stock + bond history (block bootstrap) so crash shapes and recoveries are realistic. See [Retirement Simulator](#retirement-simulator) below.
 
@@ -360,6 +360,8 @@ On the dashboard, open **Your position → Earnings and borrowing costs** for th
 | ![Comp Calc Mobile](screenshots/comp-calculator-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-light-desktop.png) |
 
 Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Compensation Calculator** gives you a single comparable number, year by year.
+
+Use **Pay** to enter salary and bonuses, **Stock assumptions** to set the exit date and interest treatment, and **Results** to compare years. The selected year’s compensation stays visible as you change sections.
 
 The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
 
@@ -1493,7 +1495,7 @@ Spins up a temporary backend + frontend with seeded sample data, runs all Playwr
 
 ### Project Structure
 
-`frontend/src/scaffold/components/SectionNavigation.tsx` provides the category list, desktop sidebar and hash navigation used by Settings, Site Admin and Content Admin.
+`frontend/src/scaffold/components/SectionNavigation.tsx` provides the category list, desktop sidebar and hash navigation used by Settings, Site Admin, Content Admin, Retirement assumptions and the Compensation Calculator.
 
 Problem reporting uses `frontend/src/scaffold/components/ReportProblem.tsx`, `backend/scaffold/routers/reports.py` and `backend/scaffold/sensitive_reports.py`. Browser Admin and the admin MCP share the support service. The [architecture notes](docs/problem-reporting.md) cover encryption, permissions, audit and lifecycle.
 
@@ -1618,7 +1620,7 @@ epic-stocks/
 │   │   │   ├── format.ts    # The one set of money / number / percent / date formatters
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
-│   │   │   ├── hooks/       # useApiData, useDataSync, useContent
+│   │   │   ├── hooks/       # useApiData, useDataSync, useContent, useRecordList
 │   │   │   └── AppProvider.tsx  # Injects app name + unofficial badge, affiliation disclaimer, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
@@ -2158,8 +2160,8 @@ already-matching, review-needed or failed status. Existing rows are preserved;
 corrections require the normal reviewed import. Preview carryover expires after
 30 minutes. Choosing Connect AI, Import, Retirement or Comp before sign-in returns
 to that page. Dashboard, Planning and Settings are the three primary tabs on phones
-and desktop. **Planning** contains Planned Expenses and Retirement.
-**More** begins with Compensation Calculator, followed by Stock Records and the Admin tools available to your account.
+and desktop.
+**Planning** includes Planned Expenses, Retirement, and the Compensation Calculator. In Retirement, edit assumptions by section and run the simulation from the summary while you work. **More** contains Stock Records and the Admin tools available to your account. Filter or sort Grants, Loans, and Sales from each list. Open a grant’s vesting summary to see the individual dates and share counts. The stock-record tabs scroll horizontally on small screens.
 Stock Records includes Events, Grants, Sales, Loans, Prices and Import / Export. The Dashboard also links directly to the holdings,
 price, loan or upcoming event behind a figure. Connect an assistant from **Settings → AI Connections** or from the Import page. Successful record
 edits show a result with links to the updated position and retirement.

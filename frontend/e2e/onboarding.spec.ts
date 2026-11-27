@@ -29,12 +29,23 @@ test.describe('Getting started', () => {
     await page.getByLabel('Exercise Date').fill('2024-12-31')
     await page.getByRole('button', { name: /^Save$/ }).click()
     // Each part rounded down, the rest on the last date.
-    await expect(page.getByText(/250 on Mar 1, 2025, 250 on Mar 1, 2026, 250 on Mar 1, 2027, 251 on Mar 1, 2028/).first()).toBeVisible()
+    const vestingSummary = page.locator('summary').filter({ hasText: /^4 (?:annual )?vests/ })
+    const vestingDates = vestingSummary.locator('..').getByRole('listitem')
+    await expect(vestingSummary).toHaveText('4 annual vests · Mar 2025 to Mar 2028')
+    await vestingSummary.click()
+    await expect(vestingDates).toHaveText([
+      '250 shares on Mar 1, 2025',
+      '250 shares on Mar 1, 2026',
+      '250 shares on Mar 1, 2027',
+      '251 shares on Mar 1, 2028',
+    ])
 
     await page.getByRole('button', { name: 'Edit' }).first().click()
     await page.getByLabel('Vesting date 2', { exact: true }).fill('2026-09-15')
     await page.getByRole('button', { name: /^Save$/ }).click()
-    await expect(page.getByText(/250 on Sep 15, 2026/).first()).toBeVisible()
+    await expect(vestingSummary).toHaveText('4 vests · Mar 2025 to Mar 2028')
+    await vestingSummary.click()
+    await expect(vestingDates.nth(1)).toHaveText('250 shares on Sep 15, 2026')
 
     await navigateTo(page, 'Dashboard')
     await expect(page.getByText('Events Timeline').or(page.getByText('Shares Over Time'))).toBeVisible({ timeout: 10000 })

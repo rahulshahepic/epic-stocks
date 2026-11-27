@@ -332,15 +332,20 @@ body {
   text-transform: uppercase;
 }
 
-.campus-wing-marker::after {
-  content: '';
-  height: 2px;
-  flex: 1;
-  background: linear-gradient(90deg, var(--cs-border-strong), transparent);
+.campus-wing-art {
+  flex: none;
+  width: 3rem;
+  height: 2rem;
+  color: var(--cs-text);
 }
 
-.campus-wing-marker span:nth-child(2) {
-  order: 3;
+.campus-wing-marker:not(:has(.campus-wing-motto)) {
+  justify-content: flex-end;
+  margin-bottom: .25rem;
+}
+
+.campus-wing-motto {
+  margin-inline-start: auto;
   padding: .3rem .55rem;
   border: 1px solid var(--cs-border-strong);
   border-radius: .25rem;
@@ -349,15 +354,13 @@ body {
   font-family: var(--font-serif);
   font-size: .65rem;
   letter-spacing: .06em;
-  transform: rotate(1deg);
 }
 
-main[data-campus-wing='records'] .campus-wing-marker::after {
-  background: linear-gradient(90deg, #B25B00, transparent);
-}
-
-main[data-campus-wing='workshop'] .campus-wing-marker::after {
-  background: linear-gradient(90deg, #71358A, transparent);
+@media (min-width: 768px) {
+  .campus-wing-art {
+    width: 4rem;
+    height: 2.75rem;
+  }
 }
 
 main[data-campus-wing] > :last-child > .rounded-2xl,
@@ -416,18 +419,6 @@ main[data-campus-wing='workshop'] > :last-child > .rounded-xl {
   font-weight: 800;
   letter-spacing: .08em;
   text-transform: uppercase;
-}
-
-@media (max-width: 420px) {
-  .campus-wing-marker {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .campus-wing-marker::after {
-    min-width: 3rem;
-    margin-top: .45rem;
-  }
 }
 
 @media (min-width: 640px) {
@@ -510,4 +501,9 @@ main[data-campus-wing='workshop'] > :last-child > .rounded-xl {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+.record-list :is(button, summary) {
+  min-block-size: 2.75rem;
+  min-inline-size: 2.75rem;
 }

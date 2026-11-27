@@ -1395,6 +1395,25 @@ test.describe('Screenshots', () => {
   })
 })
 
+test.describe('Internal test user screenshots', () => {
+  test.skip(!EMAIL, 'Run through screenshots/run.sh')
+
+  test('internal test user login - light - mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/test-user-login')
+    await expect(page.getByRole('heading', { name: 'Internal test user sign-in' })).toBeVisible()
+    await page.screenshot({ path: `${OUT}/internal-test-user-login-light-mobile.png`, fullPage: true })
+  })
+
+  test('internal test user admin - light - mobile', async ({ page }) => {
+    await authedPage(page, { width: 390, height: 844 }, 'light')
+    await page.goto('/admin#ai-connections')
+    const panel = page.getByRole('heading', { name: 'Internal test users', exact: true }).locator('..')
+    await expect(panel).toBeVisible()
+    await panel.screenshot({ path: `${OUT}/internal-test-user-admin-light-mobile.png` })
+  })
+})
+
 test.describe('Directory reviewer screenshots', () => {
   test.skip(!EMAIL, 'Run through screenshots/run.sh')
 

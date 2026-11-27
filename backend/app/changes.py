@@ -162,10 +162,11 @@ def confirmation(user, db, changes, account_state, confirm: str | None = None) -
     issued = int(match["issued"]) if match else now
     generation = user.session_version
     if user.is_synthetic:
-        from scaffold.models import MCPTestAccount, ReviewerAccount
+        from scaffold.models import InternalTestAccount, MCPTestAccount, ReviewerAccount
         reviewer = db.query(ReviewerAccount.generation).filter(ReviewerAccount.user_id == user.id).scalar()
         fixture = db.query(MCPTestAccount.generation).filter(MCPTestAccount.synthetic_id == user.id).scalar()
-        fixture = reviewer or fixture
+        test_user = db.query(InternalTestAccount.generation).filter(InternalTestAccount.user_id == user.id).scalar()
+        fixture = reviewer or fixture or test_user
         if fixture is None:
             raise ChangeError("Synthetic fixture is unavailable; preview again after setup")
         generation = fixture

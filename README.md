@@ -2213,6 +2213,26 @@ Vite's proxy target; use port 8100 where port 8000 is reserved. Optional
 `E2E_BACKEND_PORT` changes the Docker E2E host binding (default 8000).
 
 ![Fictional reviewer sign-in](screenshots/directory-reviewer-login-light-mobile.png)
+
+## Internal test users
+
+Reviewer accounts belong to external directory reviewers; they are the
+wrong vehicle for the operator's own validation. Admins can provision a
+separate kind of fictional account in **Admin → Internal test users**: an
+operator signs in at `/test-user-login` under a stated purpose label and
+runs production-shaped workflows — export, import, AI-connection
+authorize/revoke, account deletion — against fictional data only, then
+retires the account. Test users live in their own tables
+(`internal_test_accounts`, `internal_test_login_audit`), their own sign-in
+page and their own admin list, are excluded from user lists and metrics,
+cannot administer, share, or receive notifications or email, and expire
+and revoke like reviewer accounts; provisioning, rotation, reset,
+revocation and deletion are journaled through the admin action journal.
+Implementation: `scaffold/test_users.py`,
+`scaffold/routers/test_users.py`, the `InternalTestAccount` model and its
+Alembic migration. No new production environment variables.
+
+![Internal test user sign-in](screenshots/internal-test-user-login-light-mobile.png)
 ![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
 
 ## Publication packages

@@ -3,7 +3,7 @@
  * - Admin can enable/disable Epic Mode via the Danger Zone toggle
  * - When active, grant/price/loan writes are blocked (403) and the UI hides
  *   add/edit buttons, showing "Data provided by Epic — view only" instead
- * - Sell button appears on each grant row (replaces Edit)
+ * - A personal sale can be recorded against an Epic-managed grant
  * - Request Payoff button appears on each loan row
  * - Sales and payoff execution remain writable
  *
@@ -89,7 +89,7 @@ test.describe('Epic Mode', () => {
     await expect(page.getByRole('button', { name: '+ Bonus' })).not.toBeVisible()
   })
 
-  test('grants page shows Sell button (not Edit) per row when Epic Mode is on', async ({ page }) => {
+  test('Epic Mode lets you record personal sales against read-only grants', async ({ page }) => {
     const userEmail = 'epic-sell-btn@e2e.test'
     await importFixtureAs(page, userEmail)
 
@@ -98,8 +98,7 @@ test.describe('Epic Mode', () => {
     await loginAs(page, userEmail, 'Epic User')
     await navigateTo(page, 'Grants')
 
-    // Sell buttons appear; Edit buttons do not
-    await expect(page.getByRole('button', { name: 'Sell' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Record a sale' }).first()).toBeVisible()
     await expect(page.getByRole('button', { name: 'Edit' }).first()).not.toBeVisible()
   })
 

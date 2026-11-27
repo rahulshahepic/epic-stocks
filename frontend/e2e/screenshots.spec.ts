@@ -61,6 +61,19 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean } = {}
   await page.screenshot({ path: `${OUT}/${name}.png`, ...opts, ...(opts.fullPage ? { style: '[aria-label="Mobile navigation"]{visibility:hidden!important}' } : {}) })
 }
 
+async function expectClearWingMarker(page: Page) {
+  const marker = page.locator('.campus-wing-marker')
+  const art = marker.locator('.campus-wing-art')
+  const motto = marker.locator('.campus-wing-motto')
+  await expect(art).toBeVisible()
+  await expect(art).toHaveAttribute('fill', 'none')
+  const artBounds = await art.boundingBox()
+  const mottoBounds = await motto.boundingBox()
+  expect(artBounds!.x + artBounds!.width).toBeLessThanOrEqual(mottoBounds!.x)
+  const audit = await new AxeBuilder({ page }).include('.campus-wing-marker').withRules(['color-contrast']).analyze()
+  expect(audit.violations).toEqual([])
+}
+
 test.describe('Screenshots', () => {
   for (const theme of ['light', 'dark'] as const) {
     test('MCP purchase results - ' + theme + ' - mobile', async ({ page }) => {
@@ -334,7 +347,17 @@ test.describe('Screenshots', () => {
   test('dashboard - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await expect(page.getByRole('contentinfo').getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', '/terms')
+    const stalePrice = page.getByRole('region', { name: 'Stale share price' })
+    const notice = stalePrice.locator('summary')
+    await expect(notice).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Your position' }).getByRole('button', { name: /^Value Today/ })).toBeInViewport()
     await shoot(page, 'dashboard-light-mobile')
+    await notice.click()
+    await expect(page.getByText(/Any applicable growth estimate remains tentative/)).toBeVisible()
+    await expect(stalePrice.getByRole('button', { name: 'Add a price' })).toBeVisible()
+    await stalePrice.getByRole('button', { name: 'Dismiss', exact: true }).click()
+    await page.reload()
+    await expect(notice).toBeHidden()
   })
 
   test('dashboard - dark - mobile', async ({ page }) => {
@@ -344,6 +367,8 @@ test.describe('Screenshots', () => {
 
   test('dashboard - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
+    const date = await page.getByLabel('As of', { exact: true }).boundingBox()
+    expect(date?.width).toBeLessThan(180)
     await shoot(page, 'dashboard-light-desktop')
   })
 
@@ -396,6 +421,7 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
+    await expectClearWingMarker(page)
     await shoot(page, 'admin-light-mobile')
   })
 
@@ -404,6 +430,7 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Site Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
+    await expectClearWingMarker(page)
     await shoot(page, 'admin-dark-mobile')
   })
 
@@ -454,6 +481,10 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'events-light-mobile')
+    const eventDetails = page.getByRole('button', { name: /^Event details:/ }).first()
+    await eventDetails.focus()
+    await page.keyboard.press('Enter')
+    await expect(eventDetails).toHaveAttribute('aria-expanded', 'true')
   })
 
   test('events page - dark - mobile', async ({ page }) => {
@@ -579,6 +610,7 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
+    await expectClearWingMarker(page)
     await shoot(page, 'settings-light-mobile')
   })
 
@@ -587,6 +619,7 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
+    await expectClearWingMarker(page)
     await shoot(page, 'settings-dark-mobile')
   })
 
@@ -753,7 +786,16 @@ test.describe('Screenshots', () => {
     await navigateTo(page, 'Grants')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
+    const schedule = page.locator('summary').filter({ hasText: /vests? · / }).first()
+    await expect(schedule).toBeVisible()
     await shoot(page, 'grants-epic-mode-light-mobile', { fullPage: true })
+    await schedule.click()
+    await expect(schedule.locator('..').getByRole('listitem').first()).toBeVisible()
+    await schedule.click()
+    await page.getByLabel('Sort grants').selectOption('Largest first')
+    await expect(page.locator('.record-list > div').first()).toContainText('15,000')
+    await page.getByLabel('Filter grants').fill('no matching grant')
+    await expect(page.getByRole('status').filter({ hasText: 'No grants match your filter.' })).toBeVisible()
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 
@@ -1035,6 +1077,18 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'comp-calculator-light-mobile', { fullPage: true })
+    const selectedComp = page.getByRole('region', { name: 'Selected year compensation' })
+    await page.getByRole('button', { name: 'Tax equiv $', exact: true }).click()
+    await expect(selectedComp).toContainText('pretax-equivalent stock compensation')
+    await page.evaluate(() => window.scrollTo(0, 720))
+    await expect(selectedComp).toBeInViewport()
+    const calculatorSections = page.getByRole('navigation', { name: 'Calculator sections categories' })
+    await calculatorSections.getByRole('link', { name: 'Pay', exact: true }).click()
+    await expect(page.getByLabel('Selected year compensation')).toBeInViewport()
+    await expect(page.getByLabel('Planned exit date')).toBeHidden()
+    await calculatorSections.getByRole('link', { name: 'Stock assumptions', exact: true }).click()
+    await expect(page.getByLabel('Planned exit date')).toBeVisible()
+    await expect(page.getByLabel('Selected year compensation')).toBeInViewport()
   })
 
   test('comp calculator - light - desktop', async ({ page }) => {
@@ -1098,16 +1152,30 @@ test.describe('Screenshots', () => {
       } } })
       await page.goto(`${BASE}/retirement`)
       await expect(page.getByLabel(/^Retirement date/)).toHaveValue('2032-01-01')
-      await expect(page.getByRole('button', { name: 'Show advanced assumptions' })).toBeVisible()
+      const sections = page.getByRole('navigation', { name: 'Retirement assumptions categories' })
+      const run = page.getByRole('region', { name: 'Retirement plan summary' }).getByRole('button', { name: /Simulate/ })
+      await expect(run).toBeInViewport()
+      await sections.getByRole('link', { name: /^Spending/ }).click()
+      await expect(page.getByLabel(/^Default spend/)).toBeVisible()
+      await expect(page.getByLabel(/^Retirement date/)).toBeHidden()
+      await expect(run).toBeInViewport()
+      await sections.getByRole('link', { name: /^Who & when/ }).click()
+      await expect(page.getByRole('link', { name: /Advanced assumptions/ })).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await shoot(page, `retirement-basic-${theme}-${size}`, { fullPage: true })
-      await page.getByRole('button', { name: 'Show advanced assumptions' }).click()
+      await page.getByRole('link', { name: /Advanced assumptions/ }).click()
       await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toHaveValue('1000000')
+      const advanced = page.getByRole('navigation', { name: 'Advanced assumption sections' })
+      await advanced.getByRole('link', { name: 'Market', exact: true }).click()
+      await expect(page.getByText('Market outlook', { exact: true })).toBeVisible()
+      await expect(page.getByLabel(/^401\(k\) \/ Traditional IRA/)).toBeHidden()
+      await advanced.getByRole('link', { name: 'Accounts & allocation', exact: true }).click()
+      await expect(run).toBeInViewport()
       const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
       expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
       await shoot(page, `retirement-advanced-${theme}-${size}`, { fullPage: true })
       await page.getByRole('button', { name: 'Hide account breakdown' }).click()
-      await page.getByRole('button', { name: 'Show basic view' }).click()
+      await page.getByRole('link', { name: /Your money/ }).click()
       await expect.poll(async () => (await (await page.request.get(`${BASE}/api/retirement/params`)).json()).params.traditional).toBe(1)
     })
   }
@@ -1142,7 +1210,6 @@ test.describe('Screenshots', () => {
       })
       await page.goto(`${BASE}/retirement`)
       await page.waitForLoadState('networkidle')
-      await page.getByRole('button', { name: 'Show advanced assumptions', exact: true }).click()
       await page.getByLabel('Retirement date').fill('2032-01-02')
       await page.getByRole('button', { name: 'Planned Expenses', exact: true }).click()
       await page.getByRole('button', { name: /Add planned expense/ }).click()

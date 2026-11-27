@@ -1,4 +1,7 @@
-import { Link } from 'react-router-dom'
+import { finishPlanningSave, type PlanningSave } from '../hooks/planningSave.ts'
+import { SectionNavigation } from '../../scaffold/components/SectionNavigation.tsx'
+import PlanningNavigation from '../components/PlanningNavigation.tsx'
+import { Link, useLocation } from 'react-router-dom'
 import EquityTerms from '../components/EquityTerms.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -29,6 +32,13 @@ import { fmt$, fmtPct } from '../format.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { localToday, useToday } from '../dateUtils.ts'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
+
+const COMP_SECTIONS = [
+  { hash: '#results', label: 'Results', description: 'Compare annual compensation and see each year’s breakdown.' },
+  { hash: '#pay', label: 'Pay', description: 'Record salary changes and cash bonuses.' },
+  { hash: '#stock', label: 'Stock assumptions', description: 'Set the exit date and interest deduction.' },
+  { hash: '#guide', label: 'How to read this', description: 'Understand stock compensation and pretax equivalents.' },
+] as const
 
 interface AllData {
   loans: LoanEntry[]
@@ -328,7 +338,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
   if (!row) {
     return (
       <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
-        Not enough price history to compute comp for {year}. Pick a different year on the chart, or add a Dec 31 price for {year - 1} and {year} in <em>Settings → Prices</em>.
+        Not enough price history to compute comp for {year}. Pick a different year on the chart, or add a Dec 31 price for {year - 1} and {year} in <em>More → Prices</em>.
       </div>
     )
   }
@@ -959,6 +969,7 @@ export default function CompCalculator() {
 }
 
 function CompCalculatorAccount() {
+  const { hash } = useLocation()
   const today = useToday()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
@@ -985,9 +996,11 @@ function CompCalculatorAccount() {
   const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
   const [showTotal, setShowTotal] = useState<boolean>(false)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
-  const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
   const [exitDate, setExitDate] = useState<string | null>(null)
   const [exitSaveError, setExitSaveError] = useState('')
+  const [compSaveError, setCompSaveError] = useState('')
+  const pendingPlanningSave = useRef<PlanningSave | null>(null)
+  const pendingExitSave = useRef<PlanningSave | null>(null)
   const [compEvents, setCompEvents] = useState<CompEvent[]>([])
   const compEventsDirtyRef = useRef(false)
   const retirementParamsRef = useRef<Record<string, unknown>>({})
@@ -1029,14 +1042,33 @@ function CompCalculatorAccount() {
   }, [vid])
 
   useEffect(() => {
-    if (vid) return
+    if (vid || !compEventsDirtyRef.current) return
     const controller = new AbortController()
-    const t = setTimeout(() => {
-      if (!compEventsDirtyRef.current) return
-      // Save as array using the same field via the existing endpoint
-      api.saveCompEntries(compEvents, controller.signal).catch(() => {})
-    }, 500)
-    return () => { clearTimeout(t); controller.abort() }
+    let pending: Promise<boolean> | undefined
+    function save() {
+      clearTimeout(timer)
+      if (pending) return pending
+      setCompSaveError('')
+      pending = api.saveCompEntries(compEvents, controller.signal).then(() => {
+        if (controller.signal.aborted) return false
+        compEventsDirtyRef.current = false
+        return true
+      }).catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setCompSaveError(error instanceof Error ? error.message : 'Unable to save pay entries')
+          pending = undefined
+        }
+        return false
+      })
+      return pending
+    }
+    const timer = setTimeout(save, 500)
+    pendingPlanningSave.current = save
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+      pendingPlanningSave.current = null
+    }
   }, [compEvents, vid])
 
   function handleExitDateChange(date: string | null) {
@@ -1053,10 +1085,21 @@ function CompCalculatorAccount() {
       exitSaveController.current?.abort()
       const controller = new AbortController()
       exitSaveController.current = controller
-      api.saveRetirementParams(merged, controller.signal).catch((err: unknown) => {
-        if (controller.signal.aborted) return
-        setExitSaveError(err instanceof Error ? err.message : 'Unable to save planned exit date')
-      })
+      let pending: Promise<boolean> | undefined
+      function save() {
+        if (pending) return pending
+        setExitSaveError('')
+        pending = api.saveRetirementParams(merged, controller.signal).then(() => !controller.signal.aborted).catch((error: unknown) => {
+          if (!controller.signal.aborted) {
+            setExitSaveError(error instanceof Error ? error.message : 'Unable to save planned exit date')
+            pending = undefined
+          }
+          return false
+        })
+        return pending
+      }
+      pendingExitSave.current = save
+      void save()
     }
   }
 
@@ -1114,28 +1157,242 @@ function CompCalculatorAccount() {
   if (error) return <p className="text-xs text-red-600 dark:text-red-400">Error: {error}</p>
   if (!data) return null
 
+  const activeSection = COMP_SECTIONS.find(section => section.hash === hash) ?? COMP_SECTIONS[0]
   const selectedRow = shownYear != null ? rows.find(r => r.year === shownYear) ?? null : null
+  const selectedMetric = showTotal ? (taxEquivView ? 'totalTaxEquiv' : 'totalComp') : (taxEquivView ? 'taxEquiv' : 'comp')
+  const metricLabel = showTotal
+    ? (taxEquivView ? 'total pretax-equivalent compensation' : 'total compensation')
+    : (taxEquivView ? 'pretax-equivalent stock compensation' : 'stock compensation')
   const hasProjected = rows.some(r => r.isProjected)
 
   return (
     <div className="campus-study space-y-5">
+      <PlanningNavigation view="compensation" beforeNavigate={() => finishPlanningSave(pendingPlanningSave, pendingExitSave)} />
+      {compSaveError && <p role="alert" className="text-sm text-cs-text">Pay entries not saved. {compSaveError}</p>}
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The arithmetic study</p>
         <h1 className="mt-1 font-serif text-2xl font-semibold text-cs-text">Total Comp Calculator</h1>
         <EquityTerms terms={['vesting', 'grant', 'basis', 'loan', 'tax']} />
       </div>
 
-      <div className="rounded-xl border border-cs-border bg-cs-raised ">
-        <button
-          type="button"
-          onClick={() => setExplainerOpen(o => !o)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-cs-text-2"
-        >
-          <span>What is this?</span>
-          <span className="text-cs-muted">{explainerOpen ? '▲' : '▼'}</span>
-        </button>
-        {explainerOpen && (
-          <div className="border-t border-cs-border px-4 py-3 text-xs leading-relaxed text-cs-text-2 ">
+      <div role="region" aria-label="Selected year compensation" className="sticky top-14 z-20 rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-sm font-semibold text-cs-text shadow-card md:top-24">
+        {selectedRow ? <>{selectedRow.year} {metricLabel} · {fmt$(selectedRow[selectedMetric])}</> : 'Compensation available when price history is complete'}
+      </div>
+      <SectionNavigation title="Calculator sections" categories={COMP_SECTIONS} active={activeSection} compact>
+        <div className="space-y-3" hidden={activeSection.hash !== '#pay'}>
+          <CompEventsEditor
+            events={compEvents}
+            readOnly={!!vid}
+            onAdd={event => {
+              setCompEvents(prev => [...prev, event])
+              compEventsDirtyRef.current = true
+            }}
+            onEdit={(id, updated) => {
+              setCompEvents(prev => prev.map(e => e.id === id ? updated : e))
+              compEventsDirtyRef.current = true
+            }}
+            onDelete={id => {
+              setCompEvents(prev => prev.filter(e => e.id !== id))
+              compEventsDirtyRef.current = true
+            }}
+          />
+
+        </div>
+        <div className="space-y-3" hidden={activeSection.hash !== '#stock'}>
+          <Card pad="sm" className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
+              <span>Planned exit date</span>
+              <input
+                type="date"
+                value={exitDate ?? ''}
+                onChange={e => handleExitDateChange(e.target.value || null)}
+                disabled={!!vid}
+                className="rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 text-xs tabular-nums text-cs-text-2 disabled:opacity-50"
+              />
+            </label>
+            {exitDate && !vid && (
+              <button
+                type="button"
+                onClick={() => handleExitDateChange(null)}
+                className="text-xs text-cs-muted hover:text-cs-text-2 "
+              >
+                Clear
+              </button>
+            )}
+            {exitSaveError && <p role="alert" className="text-xs text-red-600">Exit date not saved: {exitSaveError}</p>}
+            <p className="text-[10px] text-cs-muted">
+              {exitDate
+                ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
+                : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
+            </p>
+          </Card>
+
+          {rows.length > 0 && (
+            <label className={cardClass('sm', 'flex cursor-pointer items-center gap-2')}>
+              <input
+                type="checkbox"
+                checked={deductOn}
+                onChange={e => setDeductOverride(e.target.checked)}
+                className="rounded"
+              />
+              <div>
+                <p className="text-xs font-medium text-cs-text">Deduct loan interest as investment-interest expense</p>
+                <p className="mt-0.5 text-[10px] text-cs-muted">
+                  If you itemize and use Form 4952, your interest cost is reduced by your marginal ordinary income rate ({fmtPct(m, 1)}).
+                </p>
+              </div>
+            </label>
+
+          )}
+        </div>
+        {activeSection.hash === '#results' && (
+          rows.length === 0 ? (
+            <Card pad="md" className="text-xs text-cs-muted">
+              Not enough price history yet. Add Dec 31 prices for at least two consecutive years in <em>More → Prices</em> to see comp by year.
+            </Card>
+          ) : (
+            <>
+              <Card pad="md" className="campus-graph-paper">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-medium text-cs-text-2">
+                    {showTotal
+                      ? (taxEquivView ? 'Total pretax-equivalent salary by year' : 'Total comp by year')
+                      : (taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year')}
+                  </p>
+                  <label className="ml-auto flex items-center gap-1.5 text-[11px] text-cs-text-2">
+                    <span>Year</span>
+                    <select
+                      value={shownYear ?? ''}
+                      onChange={e => {
+                        const y = parseInt(e.target.value)
+                        if (!isNaN(y)) setSelectedYear(y)
+                      }}
+                      className="rounded border border-cs-border-strong bg-cs-surface px-1.5 py-0.5 text-[11px] tabular-nums text-cs-text-2 "
+                    >
+                      {rows.map(r => (
+                        <option key={r.year} value={r.year}>
+                          {r.year}{r.isProjected ? ' (projected)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setTaxEquivView(s => !s)}
+                    title="Show tax-equivalent salary"
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${taxEquivView
+                      ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
+                  >
+                    Tax equiv $
+                  </button>
+                  {compEvents.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTotal(s => !s)}
+                      title="Include salary and bonuses in chart"
+                      className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${showTotal
+                        ? 'border-rose-400 bg-rose-100 text-rose-800 dark:border-rose-600 dark:bg-rose-950/40 dark:text-rose-300'
+                        : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
+                    >
+                      Incl. salary
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShow3y(s => !s)}
+                    title="Toggle 3-year rolling average"
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${show3y
+                      ? 'border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-300'
+                      : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
+                  >
+                    3-year average
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShow5y(s => !s)}
+                    title="Toggle 5-year rolling average"
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${show5y
+                      ? 'border-purple-400 bg-purple-100 text-purple-800 dark:border-purple-600 dark:bg-purple-950/40 dark:text-purple-300'
+                      : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
+                  >
+                    5-year average
+                  </button>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <ComposedChart
+                    data={rows}
+                    margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
+                    onClick={(state: { activeLabel?: string | number }) => {
+                      if (state?.activeLabel != null) {
+                        const y = typeof state.activeLabel === 'number' ? state.activeLabel : parseInt(String(state.activeLabel))
+                        if (!isNaN(y)) setSelectedYear(y)
+                      }
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                    <XAxis dataKey="year" tick={{ fontSize: 10, fill: chartColors.axis }} />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: chartColors.axis }}
+                      tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
+                    />
+                    <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} showTotal={showTotal} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
+                    <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
+                    {rows.some(r => r.year === currentYear()) && (
+                      <ReferenceLine x={currentYear()} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
+                    )}
+                    {exitDate && (
+                      <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
+                    )}
+                    <Bar
+                      dataKey={selectedMetric}
+                      name={showTotal ? (taxEquivView ? 'Total pretax equiv' : 'Total comp') : (taxEquivView ? 'Tax equiv salary' : 'Net comp')}
+                      radius={[2, 2, 0, 0]}
+                    >
+                      {rows.map(r => {
+                        const selected = r.year === shownYear
+                        const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
+                        const faded = r.isProjected || r.afterExit
+                        return (
+                          <Cell
+                            key={r.year}
+                            fill={baseFill}
+                            fillOpacity={faded ? 0.4 : 1}
+                            stroke={faded ? baseFill : 'none'}
+                            strokeDasharray={faded ? '3 2' : undefined}
+                            strokeWidth={faded ? 1 : 0}
+                          />
+                        )
+                      })}
+                    </Bar>
+                    {show3y && (
+                      <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv3y' : 'totalComp3y') : (taxEquivView ? 'taxEquiv3y' : 'comp3y')} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
+                    )}
+                    {show5y && (
+                      <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv5y' : 'totalComp5y') : (taxEquivView ? 'taxEquiv5y' : 'comp5y')} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <p className="mt-1 text-[10px] text-cs-muted">
+                  Pick a year above or click a bar to see its breakdown.
+                  {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
+                  {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
+                </p>
+              </Card>
+
+              <YearDetailPanel
+                row={selectedRow}
+                m={m}
+                c={c}
+                useDeduction={deductOn}
+                year={shownYear ?? currentYear()}
+              />
+
+            </>
+          )
+        )}
+        {activeSection.hash === '#guide' && <>
+          <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
             <p className="mb-2">
               Epic's stock purchase program isn't a salary or a free stock grant — it's a low-rate <strong>loan</strong>{' '}
               Epic gives you to buy company stock. That makes it hard to compare with offers structured as cash + RSUs.
@@ -1143,215 +1400,10 @@ function CompCalculatorAccount() {
             <p className="mb-2">In one number, your annual comp from the program is:</p>
             <p className="font-mono text-[11px]">net comp = (stock appreciation %) × (loan principal) − (interest paid)</p>
             <p className="mt-2">
-              The chart below shows that figure for every year we have price data for. Pick a year (or click a bar) to see the breakdown.
+              The Results chart shows that figure for every year we have price data for. Pick a year (or click a bar) to see the breakdown.
               Toggle the rolling-average overlays to smooth out spikes from Epic's annual repricing.
             </p>
           </div>
-        )}
-      </div>
-
-      <Card pad="sm" className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
-          <span>Planned exit date</span>
-          <input
-            type="date"
-            value={exitDate ?? ''}
-            onChange={e => handleExitDateChange(e.target.value || null)}
-            disabled={!!vid}
-            className="rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 text-xs tabular-nums text-cs-text-2 disabled:opacity-50"
-          />
-        </label>
-        {exitDate && !vid && (
-          <button
-            type="button"
-            onClick={() => handleExitDateChange(null)}
-            className="text-xs text-cs-muted hover:text-cs-text-2 "
-          >
-            Clear
-          </button>
-        )}
-        {exitSaveError && <p role="alert" className="text-xs text-red-600">Exit date not saved: {exitSaveError}</p>}
-        <p className="text-[10px] text-cs-muted">
-          {exitDate
-            ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
-            : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
-        </p>
-      </Card>
-
-      <CompEventsEditor
-        events={compEvents}
-        readOnly={!!vid}
-        onAdd={event => {
-          setCompEvents(prev => [...prev, event])
-          compEventsDirtyRef.current = true
-        }}
-        onEdit={(id, updated) => {
-          setCompEvents(prev => prev.map(e => e.id === id ? updated : e))
-          compEventsDirtyRef.current = true
-        }}
-        onDelete={id => {
-          setCompEvents(prev => prev.filter(e => e.id !== id))
-          compEventsDirtyRef.current = true
-        }}
-      />
-
-      {rows.length === 0 ? (
-        <Card pad="md" className="text-xs text-cs-muted">
-          Not enough price history yet. Add Dec 31 prices for at least two consecutive years in <em>Settings → Prices</em> to see comp by year.
-        </Card>
-      ) : (
-        <>
-          <Card pad="md" className="campus-graph-paper">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <p className="text-xs font-medium text-cs-text-2">
-                {showTotal
-                  ? (taxEquivView ? 'Total pretax-equivalent salary by year' : 'Total comp by year')
-                  : (taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year')}
-              </p>
-              <label className="ml-auto flex items-center gap-1.5 text-[11px] text-cs-text-2">
-                <span>Year</span>
-                <select
-                  value={shownYear ?? ''}
-                  onChange={e => {
-                    const y = parseInt(e.target.value)
-                    if (!isNaN(y)) setSelectedYear(y)
-                  }}
-                  className="rounded border border-cs-border-strong bg-cs-surface px-1.5 py-0.5 text-[11px] tabular-nums text-cs-text-2 "
-                >
-                  {rows.map(r => (
-                    <option key={r.year} value={r.year}>
-                      {r.year}{r.isProjected ? ' (projected)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                onClick={() => setTaxEquivView(s => !s)}
-                title="Show tax-equivalent salary"
-                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${taxEquivView
-                  ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
-                  : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
-              >
-                Tax equiv $
-              </button>
-              {compEvents.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowTotal(s => !s)}
-                  title="Include salary and bonuses in chart"
-                  className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${showTotal
-                    ? 'border-rose-400 bg-rose-100 text-rose-800 dark:border-rose-600 dark:bg-rose-950/40 dark:text-rose-300'
-                    : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
-                >
-                  Incl. salary
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShow3y(s => !s)}
-                title="Toggle 3-year rolling average"
-                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${show3y
-                  ? 'border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-300'
-                  : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
-              >
-                3-year average
-              </button>
-              <button
-                type="button"
-                onClick={() => setShow5y(s => !s)}
-                title="Toggle 5-year rolling average"
-                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${show5y
-                  ? 'border-purple-400 bg-purple-100 text-purple-800 dark:border-purple-600 dark:bg-purple-950/40 dark:text-purple-300'
-                  : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
-              >
-                5-year average
-              </button>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={rows}
-                margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-                onClick={(state: { activeLabel?: string | number }) => {
-                  if (state?.activeLabel != null) {
-                    const y = typeof state.activeLabel === 'number' ? state.activeLabel : parseInt(String(state.activeLabel))
-                    if (!isNaN(y)) setSelectedYear(y)
-                  }
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
-                <XAxis dataKey="year" tick={{ fontSize: 10, fill: chartColors.axis }} />
-                <YAxis
-                  tick={{ fontSize: 10, fill: chartColors.axis }}
-                  tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
-                />
-                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} showTotal={showTotal} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
-                <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
-                {rows.some(r => r.year === currentYear()) && (
-                  <ReferenceLine x={currentYear()} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
-                )}
-                {exitDate && (
-                  <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
-                )}
-                <Bar
-                  dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv' : 'totalComp') : (taxEquivView ? 'taxEquiv' : 'comp')}
-                  name={showTotal ? (taxEquivView ? 'Total pretax equiv' : 'Total comp') : (taxEquivView ? 'Tax equiv salary' : 'Net comp')}
-                  radius={[2, 2, 0, 0]}
-                >
-                  {rows.map(r => {
-                    const selected = r.year === shownYear
-                    const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
-                    const faded = r.isProjected || r.afterExit
-                    return (
-                      <Cell
-                        key={r.year}
-                        fill={baseFill}
-                        fillOpacity={faded ? 0.4 : 1}
-                        stroke={faded ? baseFill : 'none'}
-                        strokeDasharray={faded ? '3 2' : undefined}
-                        strokeWidth={faded ? 1 : 0}
-                      />
-                    )
-                  })}
-                </Bar>
-                {show3y && (
-                  <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv3y' : 'totalComp3y') : (taxEquivView ? 'taxEquiv3y' : 'comp3y')} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
-                )}
-                {show5y && (
-                  <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv5y' : 'totalComp5y') : (taxEquivView ? 'taxEquiv5y' : 'comp5y')} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-            <p className="mt-1 text-[10px] text-cs-muted">
-              Pick a year above or click a bar to see its breakdown.
-              {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
-              {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
-            </p>
-          </Card>
-
-          <YearDetailPanel
-            row={selectedRow}
-            m={m}
-            c={c}
-            useDeduction={deductOn}
-            year={shownYear ?? currentYear()}
-          />
-
-          <label className={cardClass('sm', 'flex cursor-pointer items-center gap-2')}>
-            <input
-              type="checkbox"
-              checked={deductOn}
-              onChange={e => setDeductOverride(e.target.checked)}
-              className="rounded"
-            />
-            <div>
-              <p className="text-xs font-medium text-cs-text">Deduct loan interest as investment-interest expense</p>
-              <p className="mt-0.5 text-[10px] text-cs-muted">
-                If you itemize and use Form 4952, your interest cost is reduced by your marginal ordinary income rate ({fmtPct(m, 1)}).
-              </p>
-            </div>
-          </label>
-
           <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
             <p>
               <strong>Equivalent pretax salary</strong> is what you'd need in pretax salary (taxed at your ordinary income rate of{' '}
@@ -1361,8 +1413,8 @@ function CompCalculatorAccount() {
               Estimates only — actual outcomes depend on AMT, state rules, and how your investment-interest deduction interacts with the rest of your return.
             </p>
           </div>
-        </>
-      )}
+        </>}
+      </SectionNavigation>
 
       <footer className="pt-4 text-center text-[10px] text-cs-muted">
         As of {today}. All calculations are local to your browser.

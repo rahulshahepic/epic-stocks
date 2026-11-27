@@ -213,7 +213,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                 "tools for analysis without opening a card.\n\n"
                 "Use get_compensation for saved salary and bonus entries and get_dashboard for equity context, "
                 "when those tools are available. For an equivalent salary or an offer comparison, direct the user "
-                "to More → Compensation Calculator on the website. For a tour of website features and navigation, "
+                "to Planning → Compensation Calculator on the website. For a tour of website features and navigation, "
                 "see the same site's public /llms.txt.\n\n"
                 "Equity vesting, loans, sales and tax figures for the signed-in "
                 "account.\n\n"

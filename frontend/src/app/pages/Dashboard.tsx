@@ -39,43 +39,49 @@ import campusWatercolor from '../../assets/campus-watercolor.webp'
  * Epic announces a price each spring, and every figure on this page is computed
  * from the newest one on file. Between announcements — or if someone simply has
  * not added this year's yet — the whole position is valued at a price that can
- * be a year or more old, with nothing on screen to say so. Dismissal is keyed to
- * the stale year, so it stays gone until a new year makes it true again.
+ * be a year or more old, with nothing on screen to say so. Dismissal is keyed to the year of the missing announcement.
  */
-function StalePriceBanner({ latest, readOnly, onAddPrice }: { latest: PriceEntry; readOnly: boolean; onAddPrice?: () => void }) {
-  const key = `stale-price-dismissed-${latest.effective_date.slice(0, 4)}`
+function StalePriceBanner({ latest, priceYear, readOnly, onAddPrice }: {
+  latest: PriceEntry
+  priceYear: string
+  readOnly: boolean
+  onAddPrice?: () => void
+}) {
+  const key = `stale-price-announcement-dismissed-${priceYear}`
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(key) === '1' } catch { return false }
   })
   if (dismissed) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
-      <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
-        <span className="font-semibold">
-          Your last recorded share price is from {latest.effective_date.slice(0, 4)} ({fmtPrice(latest.price)}).
-        </span>{' '}
-        This year's announced price has not been recorded. Any applicable growth estimate remains tentative.
-        {!readOnly && ' Record this year\'s announcement to confirm the price.'}
-      </p>
-      {!readOnly && (
-        onAddPrice ? <button type="button" onClick={onAddPrice} className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link
-          to="/prices#announced-price"
-          className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover"
+    <div role="region" aria-label="Stale share price" className="rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+      <details className="group">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden">
+          <span aria-hidden="true" className="group-open:rotate-90">›</span>
+          Last recorded share price: {latest.effective_date.slice(0, 4)}
+        </summary>
+        <p className="pb-2 leading-relaxed">
+          The last recorded price was {fmtPrice(latest.price)}. This year’s announced price has not been recorded.
+          Any applicable growth estimate remains tentative.
+        </p>
+      </details>
+      <div className="-mt-1 flex flex-wrap gap-x-4">
+        {!readOnly && (
+          onAddPrice
+            ? <button type="button" onClick={onAddPrice} className="min-h-11 font-semibold underline">Add a price</button>
+            : <Link to="/prices#announced-price" className="inline-flex min-h-11 items-center font-semibold underline">Add a price</Link>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setDismissed(true)
+            try { localStorage.setItem(key, '1') } catch { /* private mode */ }
+          }}
+          className="min-h-11 font-medium hover:underline"
         >
-          Add a price
-        </Link>
-      )}
-      <button
-        type="button"
-        onClick={() => {
-          setDismissed(true)
-          try { localStorage.setItem(key, '1') } catch { /* private mode */ }
-        }}
-        className="text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
-      >
-        Dismiss
-      </button>
+          Dismiss
+        </button>
+      </div>
     </div>
   )
 }
@@ -540,11 +546,11 @@ export default function Dashboard() {
           {!readOnly && (!config?.epic_mode && cardDate.startsWith(today.slice(0, 4)) ? <button type="button" onClick={openPriceEditor} className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</button> : <Link to="/prices" className="rounded-lg bg-cs-brand px-3 py-2 text-xs font-semibold text-white hover:bg-cs-brand-hover">Add a price</Link>)}
         </div>
       )}
-      {cardDate === today && hasPrice && stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
+      {cardDate === today && hasPrice && stalePrice && <StalePriceBanner key={today.slice(0, 4)} priceYear={today.slice(0, 4)} latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
       {!readOnly && !config?.epic_mode && priceEditorActive && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Update the announced price</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
       {/* Date selector for card values */}
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <label htmlFor="dashboard-date" className="shrink-0 text-xs font-medium text-cs-muted">As of</label>
           <input
             id="dashboard-date"
@@ -552,7 +558,7 @@ export default function Dashboard() {
             value={cardDate}
             max={maxDate}
             onChange={e => { if (e.target.value) { setDateMode('custom'); setCustomCardDate(e.target.value) } }}
-            className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
+            className="h-8 w-36 max-w-full rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
           />
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-0">

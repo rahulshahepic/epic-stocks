@@ -400,7 +400,7 @@ function PricesAccount() {
   // ── List view ─────────────────────────────────────────────────────────────
   const estimateCount = prices.filter(p => p.is_estimate).length
   return (
-    <div className="space-y-4">
+    <div className="record-list space-y-4">
       {!readOnly && !epicMode && <AnnouncedPrice onSaved={reload} />}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-cs-text">Share Prices</h2>

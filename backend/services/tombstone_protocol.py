@@ -7,10 +7,14 @@ an exact key set, hashed identifiers only, bounded size. Nothing here may
 grow a path, a command or a plaintext identifier.
 
 An entry records that an account was deleted, so a restore that resurrects
-the account can re-delete it. It carries no financial data: two SHA-256
-hashes (of the IdP subject and of the email), the account's creation time
-and the deletion time. The creation time is the guard that keeps a person
-who re-registers after deleting from ever matching their own tombstone.
+the account can re-delete it. It carries no financial data: one SHA-256
+hash (of the IdP subject — the stable sign-in identifier), the account's
+creation time and the deletion time. The email is deliberately NOT
+recorded: it is mutable (sign-in rewrites it from the IdP profile), so an
+email match could condemn a different live account that later holds the
+deleted account's old address. The creation time is the guard that keeps
+a person who re-registers after deleting from ever matching their own
+tombstone.
 """
 import hashlib
 import json
@@ -25,15 +29,11 @@ MAX_BYTES = 262144
 KEEP_NEWEST = 7
 DEFAULT_RETENTION_DAYS = 30
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
-_ENTRY_KEYS = {"subject_hash", "email_hash", "account_created_at", "deleted_at"}
+_ENTRY_KEYS = {"subject_hash", "account_created_at", "deleted_at"}
 
 
 def subject_hash(provider_name, subject):
     return hashlib.sha256(f"{provider_name}\0{subject}".encode()).hexdigest()
-
-
-def email_hash(email):
-    return hashlib.sha256(email.strip().lower().encode()).hexdigest()
 
 
 def _timestamp(value):
@@ -58,9 +58,8 @@ def validate_document(value):
     for entry in value["entries"]:
         if not isinstance(entry, dict) or set(entry) != _ENTRY_KEYS:
             raise ValueError("Invalid tombstone entry")
-        for key in ("subject_hash", "email_hash"):
-            if not isinstance(entry[key], str) or not _HASH_RE.fullmatch(entry[key]):
-                raise ValueError("Invalid tombstone identifier hash")
+        if not isinstance(entry["subject_hash"], str) or not _HASH_RE.fullmatch(entry["subject_hash"]):
+            raise ValueError("Invalid tombstone identifier hash")
         for key in ("account_created_at", "deleted_at"):
             if _timestamp(entry[key]) is None:
                 raise ValueError("Invalid tombstone timestamp")
@@ -87,7 +86,7 @@ def read_entries(path):
     return validate_document(value)
 
 
-def entry_for(provider_name, subject, email, account_created_at, deleted_at):
+def entry_for(provider_name, subject, account_created_at, deleted_at):
     def iso(value):
         # A raw-SQL read on SQLite hands back the stored string, not a
         # datetime; both mean UTC here.
@@ -98,7 +97,6 @@ def entry_for(provider_name, subject, email, account_created_at, deleted_at):
         return value.astimezone(timezone.utc).isoformat()
     return {
         "subject_hash": subject_hash(provider_name, subject),
-        "email_hash": email_hash(email),
         "account_created_at": iso(account_created_at),
         "deleted_at": iso(deleted_at),
     }

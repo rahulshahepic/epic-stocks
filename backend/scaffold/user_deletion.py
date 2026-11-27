@@ -93,7 +93,7 @@ def delete_financial_data(db, user_id: int) -> None:
         db.execute(text(f"DELETE FROM {table} WHERE {col} = :uid"), {"uid": user_id})
 
 
-def _record_tombstone_on_commit(db, user_id, provider_name, subject, email, created_at) -> None:
+def _record_tombstone_on_commit(db, user_id, provider_name, subject, created_at) -> None:
     """Write the restore-time tombstone once this deletion commits (#819).
 
     A session event, because delete_user does not own the transaction: a
@@ -120,7 +120,7 @@ def _record_tombstone_on_commit(db, user_id, provider_name, subject, email, crea
             if not gone:
                 return
             from services.tombstones import record_deletion
-            record_deletion(provider_name, subject, email, created_at)
+            record_deletion(provider_name, subject, created_at)
         except Exception:
             logging.getLogger(__name__).exception(
                 "Could not record the deletion tombstone for a deleted account")
@@ -131,12 +131,12 @@ def _record_tombstone_on_commit(db, user_id, provider_name, subject, email, crea
 def delete_user(db, user_id: int) -> None:
     from scaffold.synthetic_accounts import deletion_lock
     identity = db.execute(
-        text("SELECT is_synthetic, provider_name, google_id, email, created_at FROM users WHERE id=:uid"),
+        text("SELECT is_synthetic, provider_name, google_id, created_at FROM users WHERE id=:uid"),
         {"uid": user_id},
     ).first()
     synthetic = identity[0] if identity else None
     if identity and not identity[0]:
-        _record_tombstone_on_commit(db, user_id, identity[1], identity[2], identity[3], identity[4])
+        _record_tombstone_on_commit(db, user_id, identity[1], identity[2], identity[3])
     if synthetic:
         row = db.execute(text("SELECT user_id FROM mcp_test_accounts WHERE synthetic_id=:uid"), {"uid": user_id}).first()
         if row:

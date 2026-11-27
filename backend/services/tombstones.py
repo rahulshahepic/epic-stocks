@@ -1,12 +1,15 @@
 """Restore-time deletion tombstones (#819, option 1).
 
 When an account is deleted, the one deletion service records a minimal
-marker — hashes of the IdP subject and the email, no financial data, no
-plaintext identifiers — in the backup settings handoff directory. That
-directory is host-side and outside the pg_dump set, so a database restore
-cannot lose the markers. After a restore, apply_tombstones re-deletes any
+marker — a hash of the IdP subject, no financial data, no plaintext
+identifiers — in the backup settings handoff directory. That directory
+is host-side and outside the pg_dump set, so a database restore cannot
+lose the markers. After a restore, apply_tombstones re-deletes any
 resurrected account through the same deletion service; it also runs from
 the app startup bootstrap, so the check happens before the service opens.
+Matching is by subject hash only: email is mutable, so an email match
+could condemn a different live account that later holds the deleted
+account's old address.
 """
 import logging
 from datetime import datetime, timezone
@@ -35,7 +38,23 @@ def _retention_days():
     return protocol.DEFAULT_RETENTION_DAYS
 
 
-def record_deletion(provider_name, subject, email, account_created_at, deleted_at=None):
+def _backups_running():
+    """Pruning is only safe while backups verifiably run on schedule: the
+    window + keep-newest arithmetic assumes the host prunes its archives
+    the same way. When the host's status cannot be verified — diagnostics
+    stale, backups overdue or stopped — entries are kept, not pruned, so
+    a kept archive can never outlive its marker. The store's size cap
+    still bounds growth and fails loudly long before it matters."""
+    try:
+        from services import backup_admin
+        from services.backup_protocol import backup_state
+        observed, _ = backup_admin.snapshot()
+        return backup_state(observed, datetime.now(timezone.utc)) == "succeeded"
+    except Exception:
+        return False
+
+
+def record_deletion(provider_name, subject, account_created_at, deleted_at=None):
     """Append one marker. Returns False when the host handoff is not
     installed (local development); raises when it is installed but the
     store cannot be read or written — a broken store must be repaired,
@@ -43,15 +62,15 @@ def record_deletion(provider_name, subject, email, account_created_at, deleted_a
     from services.backup_admin import locked, settings_dir, write_json
     if settings_dir() is None:
         return False
-    entry = protocol.entry_for(provider_name, subject, email, account_created_at,
+    entry = protocol.entry_for(provider_name, subject, account_created_at,
                                deleted_at or datetime.now(timezone.utc))
     with locked() as folder:
         path = folder / protocol.FILE_NAME
         entries = protocol.read_entries(path)
-        entries = [e for e in entries
-                   if (e["subject_hash"], e["email_hash"]) != (entry["subject_hash"], entry["email_hash"])]
+        entries = [e for e in entries if e["subject_hash"] != entry["subject_hash"]]
         entries.append(entry)
-        entries = protocol.prune_entries(entries, datetime.now(timezone.utc), _retention_days())
+        if _backups_running():
+            entries = protocol.prune_entries(entries, datetime.now(timezone.utc), _retention_days())
         write_json(path, {"version": protocol.VERSION, "entries": entries})
     return True
 
@@ -59,9 +78,9 @@ def record_deletion(provider_name, subject, email, account_created_at, deleted_a
 def apply_tombstones(db):
     """Re-delete restored accounts a tombstone names. Returns how many.
 
-    A live account matches only when its subject or email hash matches an
-    entry AND the account was created no later than the recorded deletion:
-    an account the person re-registered after deleting is a new account
+    A live account matches only when its subject hash matches an entry
+    AND the account was created no later than the recorded deletion: an
+    account the person re-registered after deleting is a new account
     and is never touched. Does not commit — the caller owns the
     transaction, like the deletion service itself.
     """
@@ -79,10 +98,9 @@ def apply_tombstones(db):
         if user.is_synthetic:
             continue
         subject = protocol.subject_hash(user.provider_name, user.google_id)
-        email = protocol.email_hash(user.email)
         created = _aware(user.created_at)
         for entry in entries:
-            if subject != entry["subject_hash"] and email != entry["email_hash"]:
+            if subject != entry["subject_hash"]:
                 continue
             deleted = protocol._timestamp(entry["deleted_at"])
             if deleted is not None and created <= deleted:

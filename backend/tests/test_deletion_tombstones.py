@@ -51,8 +51,8 @@ def test_delete_writes_a_hashed_tombstone(client, db_session, tmp_path, monkeypa
     entries = _entries(path)
     assert len(entries) == 1
     entry = entries[0]
+    assert set(entry) == {"subject_hash", "account_created_at", "deleted_at"}
     assert entry["subject_hash"] == protocol.subject_hash(provider, subject)
-    assert entry["email_hash"] == protocol.email_hash("gone@example.com")
     raw = path.read_text()
     assert "gone@example.com" not in raw
     assert subject not in raw
@@ -146,10 +146,33 @@ def test_reregistered_account_is_never_matched(client, db_session, tmp_path, mon
     assert db_session.get(User, clone.id) is not None
 
 
+def test_account_that_later_holds_the_deleted_accounts_email_is_untouched(client, db_session, tmp_path, monkeypatch):
+    """The review repro: email is mutable. An older live account whose
+    address is rewritten at sign-in to a deleted account's address must
+    not be re-deleted — matching is by subject hash only."""
+    _handoff(tmp_path, monkeypatch)
+    register_user(client, "first@example.com")
+    register_user(client, "second@example.com")
+    first = db_session.query(User).filter_by(email="first@example.com").one()
+    second = db_session.query(User).filter_by(email="second@example.com").one()
+
+    delete_user(db_session, second.id)
+    db_session.commit()
+
+    # The surviving account's IdP profile now carries the deleted
+    # account's address; sign-in rewrites users.email from the profile.
+    first.email = "second@example.com"
+    db_session.commit()
+
+    assert apply_tombstones(db_session) == 0
+    db_session.commit()
+    assert db_session.get(User, first.id) is not None
+
+
 def test_apply_without_handoff_or_entries_is_a_noop(db_session, tmp_path, monkeypatch):
     monkeypatch.delenv("BACKUP_SETTINGS_DIR", raising=False)
     assert apply_tombstones(db_session) == 0
-    assert record_deletion("google", "sub-x", "x@example.com", datetime.now(timezone.utc)) is False
+    assert record_deletion("google", "sub-x", datetime.now(timezone.utc)) is False
     _handoff(tmp_path, monkeypatch)
     assert apply_tombstones(db_session) == 0
 
@@ -158,7 +181,7 @@ def test_corrupt_store_fails_loudly_instead_of_being_overwritten(db_session, tmp
     path = _handoff(tmp_path, monkeypatch)
     path.write_text('{"version": 1, "entries": [{"plaintext": "nope"}]}')
     try:
-        record_deletion("google", "sub-y", "y@example.com", datetime.now(timezone.utc))
+        record_deletion("google", "sub-y", datetime.now(timezone.utc))
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
@@ -170,9 +193,9 @@ def test_pruning_keeps_the_window_plus_the_newest_seven():
     entries = []
     for index in range(12):
         deleted = now - timedelta(days=100 - index)
-        entries.append(protocol.entry_for("google", f"sub-{index}", f"u{index}@example.com",
+        entries.append(protocol.entry_for("google", f"sub-{index}",
                                           deleted - timedelta(days=30), deleted))
-    fresh = protocol.entry_for("google", "sub-fresh", "fresh@example.com",
+    fresh = protocol.entry_for("google", "sub-fresh",
                                now - timedelta(days=40), now - timedelta(days=5))
     kept = protocol.prune_entries(entries + [fresh], now, retention_days=30)
     kept_subjects = {e["subject_hash"] for e in kept}

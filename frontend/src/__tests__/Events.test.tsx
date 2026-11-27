@@ -136,8 +136,7 @@ describe('Events', () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView
     renderEvents()
     await screen.findByText('Mar 1, 2021')
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
-    scrollIntoView.mockClear()
+    expect(scrollIntoView).not.toHaveBeenCalled()
     const first = screen.getByText('Mar 1, 2021').closest('tr')!
     const last = screen.getByText('Jun 1, 2021').closest('tr')!
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
@@ -181,8 +180,7 @@ describe('Events', () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView
     renderEvents('/?types=Exercise')
     await screen.findByText('Jun 1, 2021')
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
-    scrollIntoView.mockClear()
+    expect(scrollIntoView).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
     await waitFor(() => expect(screen.getByText('Jun 1, 2021').closest('tr')).toHaveClass('ring-blue-400'))
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))

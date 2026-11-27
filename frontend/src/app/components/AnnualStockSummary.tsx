@@ -1,3 +1,4 @@
+import { DisclosureSummary } from '../../scaffold/components/ui/Disclosure.tsx'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApiData } from '../hooks/useApiData.ts'
 import { apiFetch } from '../../api.ts'
@@ -21,8 +22,8 @@ export default function AnnualStockSummary({ openFromLink = false }: { openFromL
   const { data, error, loading, reload } = useApiData<Summary | null>(fetcher)
   const year = data?.year ?? new Date().getFullYear() - 1
   return (
-    <details ref={details} id="annual-summary" open={open} onToggle={e => setOpen(e.currentTarget.open)} className="scroll-mt-28 rounded-xl border border-cs-border bg-cs-surface p-4">
-      <summary className="cursor-pointer py-1 text-sm font-semibold text-cs-text">Your {year} stock summary</summary>
+    <details ref={details} id="annual-summary" open={open} onToggle={e => setOpen(e.currentTarget.open)} className="scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] rounded-xl border border-cs-border bg-cs-surface p-4">
+      <DisclosureSummary className="py-1 text-sm font-semibold text-cs-text">Your {year} stock summary</DisclosureSummary>
       {open && (error ? <p role="alert" className="mt-3 text-xs text-cs-text-2">Could not load the annual summary. <button type="button" onClick={reload} className="underline">Retry summary</button></p> : loading || !data ? <p role="status" className="mt-3 text-xs text-cs-muted">Loading summary…</p> : <>
         <p className="mt-3 text-xs leading-relaxed text-cs-text-2">{data.note}{data.price_is_estimate && ' At least one endpoint uses a tentative share price.'}</p>
         <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Annual stock changes">

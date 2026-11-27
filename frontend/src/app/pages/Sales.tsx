@@ -1,3 +1,4 @@
+import { reportDateErrors } from '../../scaffold/components/ui/dateValidation.ts'
 import { RecordListControls } from '../components/RecordListControls.tsx'
 import { useRecordList } from '../hooks/useRecordList.ts'
 import { Link } from 'react-router-dom'
@@ -709,7 +710,7 @@ export default function Sales() {
 
         <div className="flex items-center justify-between pt-2">
           <button
-            onClick={handleSave}
+            onClick={event => { if (!reportDateErrors(event.currentTarget.closest('[role="dialog"], main'))) void handleSave() }}
             disabled={saving || form.shares <= 0}
             className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
           >

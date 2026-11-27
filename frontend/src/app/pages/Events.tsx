@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import AnnualStockSummary from '../components/AnnualStockSummary.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
@@ -156,7 +157,7 @@ export default function Events() {
   )
   const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
   const today = useToday()
-  const highlightDate = searchParams.get('date') ?? today
+  const highlightDate = searchParams.get('date')
   const [jumpDate, setJumpDate] = useState<string | null>(null)
   const isMobile = useIsMobile()
   const highlightRefs = useRef<Map<number, HTMLElement>>(new Map())
@@ -326,9 +327,8 @@ export default function Events() {
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <label htmlFor="events-jump-date" className="shrink-0 text-xs font-medium text-cs-muted">Go to date</label>
-          <input
+          <DateInput
             id="events-jump-date"
-            type="date"
             value={jumpDate ?? today}
             onChange={e => { if (e.target.value) jumpToDate(e.target.value) }}
             className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"

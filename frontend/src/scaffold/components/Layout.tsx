@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
@@ -38,7 +38,86 @@ export default function Layout() {
 
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  useEffect(() => { mainRef.current?.focus() }, [location.pathname])
+  const shellRef = useRef<HTMLDivElement>(null)
+  const chromeRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const chrome = chromeRef.current
+    const shell = shellRef.current
+    if (!chrome || !shell) return
+    const measure = () => shell.style.setProperty('--app-chrome-height', `${chrome.getBoundingClientRect().height}px`)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(chrome)
+    return () => observer.disconnect()
+  }, [])
+  const navigationType = useNavigationType()
+  const currentLocation = useRef(location)
+  const scrollPositions = useRef(new Map<string, number>())
+  const restoringHistory = useRef(false)
+
+  useLayoutEffect(() => {
+    const previous = currentLocation.current
+    currentLocation.current = location
+    if (previous.pathname !== location.pathname || previous === location) {
+      if (!location.hash) mainRef.current?.focus({ preventScroll: true })
+    }
+    if (previous.key === location.key) return
+    const saved = navigationType === 'POP' ? scrollPositions.current.get(location.key) : undefined
+    if (saved != null) {
+      const restore = () => {
+        if (window.scrollY !== saved) window.scrollTo(0, saved)
+      }
+      const canRestore = () => document.documentElement.scrollHeight - window.innerHeight >= saved
+      if (saved > 0 && !canRestore() && typeof ResizeObserver !== 'undefined') {
+        restoringHistory.current = true
+        const cancel = () => {
+          restoringHistory.current = false
+          observer.disconnect()
+          clearTimeout(timeout)
+          window.removeEventListener('wheel', cancel)
+          window.removeEventListener('touchstart', cancel)
+          window.removeEventListener('keydown', cancel)
+        }
+        const observer = new ResizeObserver(() => {
+          if (!canRestore()) return
+          cancel()
+          restore()
+        })
+        // The route may initially contain only a loading placeholder.
+        observer.observe(document.body)
+        const timeout = setTimeout(cancel, 8000)
+        window.addEventListener('wheel', cancel, { passive: true })
+        window.addEventListener('touchstart', cancel, { passive: true })
+        window.addEventListener('keydown', cancel)
+        return cancel
+      }
+      restore()
+    } else if (previous.pathname !== location.pathname && window.scrollY > 0) {
+      window.scrollTo(0, 0)
+    }
+    const positions = scrollPositions.current
+    positions.set(location.key, window.scrollY)
+    if (positions.size > 100) positions.delete(positions.keys().next().value!)
+  }, [location, navigationType])
+
+  useEffect(() => {
+    const previousRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    const savePosition = () => {
+      if (restoringHistory.current) return
+      const positions = scrollPositions.current
+      positions.set(currentLocation.current.key, window.scrollY)
+      if (positions.size > 100) positions.delete(positions.keys().next().value!)
+    }
+    savePosition()
+    window.addEventListener('scroll', savePosition, { passive: true })
+    return () => {
+      window.history.scrollRestoration = previousRestoration
+      window.removeEventListener('scroll', savePosition)
+    }
+  }, [])
 
   const primaryItems = navItems.filter(item => ['/', '/planning', '/settings'].includes(item.to))
   const recordsRoutes = ['/events', '/grants', '/sales', '/loans', '/prices', '/import']
@@ -72,7 +151,7 @@ export default function Layout() {
   const motif = isRecords ? 'records' : isWorkshop ? 'workshop' : isPlanning ? 'observatory' : 'garden'
 
   return (
-    <div className="flex min-h-screen flex-col bg-cs-base">
+    <div ref={shellRef} className="flex min-h-screen flex-col bg-cs-base">
       <a href="#main-content" className="skip-nav" onClick={event => {
         const main = mainRef.current
         if (!main) return
@@ -80,7 +159,7 @@ export default function Layout() {
         main.focus({ preventScroll: true })
         main.scrollIntoView({ block: 'start' })
       }}>Skip to main content</a>
-      <div className="sticky top-0 z-40 bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
+      <div ref={chromeRef} className="sticky top-0 z-40 bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
         {staging && <div role="status" className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100">Staging environment — fictional test data</div>}
         {maintenance && <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />Maintenance in progress — financial data is temporarily unavailable</div>}
         {viewing && <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">Viewing {viewing.name}&rsquo;s data (read-only)<button onClick={clearViewing} className="ml-2 rounded bg-blue-200 px-2 py-0.5 text-xs font-medium hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700">Back to my data</button></div>}

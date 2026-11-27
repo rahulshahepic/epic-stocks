@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import MeasurementChoice from '../../scaffold/components/MeasurementChoice.tsx'
 import StockFiles from './StockFiles.tsx'
 import { claimMeasurement, measurementEvent } from '../../scaffold/onboarding.ts'
@@ -149,7 +150,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
       <div hidden={reviewing}>
-        <h2 ref={uploadHeading} tabIndex={-1} className="scroll-mt-28 text-base font-semibold text-cs-text">Import from Eureka</h2>
+        <h2 ref={uploadHeading} tabIndex={-1} className="scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] text-base font-semibold text-cs-text">Import from Eureka</h2>
         <div className="mt-2"><EurekaFileGuide allowAssistant={allowAssistant} /></div>
         <span className="mt-2 text-xs text-cs-muted">
           Vesting dates start from the company grant schedule; you can change any
@@ -210,7 +211,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
         <div hidden={!reviewing} className="space-y-3">
           <header className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 ref={reviewHeading} tabIndex={-1} className="scroll-mt-28 font-serif text-xl font-semibold text-cs-text">What we found</h2>
+              <h2 ref={reviewHeading} tabIndex={-1} className="scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] font-serif text-xl font-semibold text-cs-text">What we found</h2>
               <p className="mt-1 text-sm text-cs-text">{result.summary.grants} {result.summary.grants === 1 ? 'grant' : 'grants'}{hasStatement ? ` and ${result.summary.loans} ${result.summary.loans === 1 ? 'loan' : 'loans'}` : ''}</p>
             </div>
             <button type="button" disabled={busy} onClick={() => setReplacing(true)} className="min-h-11 px-1 text-sm font-semibold text-cs-brand underline disabled:opacity-50">Replace files</button>
@@ -278,7 +279,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
           )}
 
           {!result.blocked && result.unanswered_sales.length > 0 && (
-            <div id="import-unmatched-shares" className="mt-3 scroll-mt-28 rounded-md border border-cs-border p-2.5">
+            <div id="import-unmatched-shares" className="mt-3 scroll-mt-[calc(var(--app-chrome-height,6rem)+.75rem)] rounded-md border border-cs-border p-2.5">
               <p className="text-xs font-semibold text-cs-text">Shares that left a grant</p>
               <p className="mt-1 text-xs text-cs-muted">
                 Your files show these shares gone but not when or for how much. Fill in a
@@ -288,7 +289,7 @@ export default function EpicFileImport({ allowAssistant = false, onApplied }: { 
                 <div key={i} className="mt-2 grid grid-cols-[1fr_1fr_1fr] items-end gap-2 text-xs">
                   <span className="text-cs-text">{sale.shares.toLocaleString()} shares</span>
                   <label className="text-cs-muted">Date
-                    <input type="date" disabled={busy} value={answers[i]?.date ?? ''}
+                    <DateInput disabled={busy} value={answers[i]?.date ?? ''}
                       onChange={e => setAnswers(a => ({ ...a, [i]: { date: e.target.value, price: a[i]?.price ?? '' } }))}
                       className="mt-0.5 block w-full rounded border border-cs-border bg-cs-surface px-1.5 py-1 text-cs-text" />
                   </label>

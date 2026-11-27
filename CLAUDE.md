@@ -126,6 +126,7 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 ## UI Change Checklist
 > **⚠️ MANDATORY AFTER EVERY UI CHANGE: Run `./screenshots/run.sh` and commit the updated screenshots. DO NOT skip this. DO NOT forget. This is not optional.**
 
+- **Use consistent data-entry controls.** Keep native date pickers with the shared date-field styling. Use sliders for bounded estimates where a rough setting is useful, such as ages, and typed numeric fields for dollars and precise percentages. Match the control type for shared inputs in the web and MCP retirement editors. Use at least 12px and the secondary text color for instructional help. Use the shared chevron disclosure for expandable data and explanations.
 - **Reserve space for campus artwork.** Place decorative motifs in the in-flow wing marker or an isolated decorative panel. Keep headings, motto plaques, status text, tab rows, and controls on clean backgrounds at every breakpoint.
 - **ALWAYS update README screenshots after any UI change** — login page, dashboard, import, settings, any page.
 - **How:** Run `./screenshots/run.sh` from the repo root. **You can and should run this in your current environment** — it works in Claude Code web sessions. It spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`. The script is self-contained — do not try to start servers manually or run `npx playwright test` directly.

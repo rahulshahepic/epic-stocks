@@ -361,6 +361,8 @@ On the dashboard, open **Your position → Earnings and borrowing costs** for th
 
 Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Compensation Calculator** gives you a single comparable number, year by year.
 
+Date fields use your browser’s calendar and keyboard controls. Browsers without a date picker accept dates as YYYY-MM-DD. Sliders are reserved for bounded estimates such as ages. Use numeric fields to enter specific dollar amounts and percentages.
+
 Use **Pay** to enter salary and bonuses, **Stock assumptions** to set the exit date and interest treatment, and **Results** to compare years. The selected year’s compensation stays visible as you change sections.
 
 The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.

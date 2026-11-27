@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import type { VestingDate } from '../../api.ts'
 import { addCalendarYears } from '../dateUtils.ts'
 import { equalParts, scheduleProblem } from '../vesting.ts'
@@ -22,7 +23,7 @@ export default function VestingEditor({ rows, shares, onChange }: {
       {rows.map((r, i) => (
         <div key={i} className="mb-1.5 grid grid-cols-[1fr_1fr_auto] items-center gap-2">
           <label className="sr-only" htmlFor={`vest-date-${i}`}>Vesting date {i + 1}</label>
-          <input id={`vest-date-${i}`} type="date" value={r.date}
+          <DateInput id={`vest-date-${i}`} value={r.date}
             onChange={e => set(i, { date: e.target.value })} className={FIELD_INPUT_CLASS} />
           <label className="sr-only" htmlFor={`vest-shares-${i}`}>Shares on vesting date {i + 1}</label>
           <input id={`vest-shares-${i}`} type="number" min="0" value={r.shares}

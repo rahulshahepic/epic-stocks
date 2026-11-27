@@ -1,3 +1,4 @@
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -55,7 +56,6 @@ export default function Demo() {
   const [simulation, setSimulation] = useState<DemoSimulation | null>(null)
   const [simulating, setSimulating] = useState(false)
   const worker = useRef<Worker | null>(null)
-  const content = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const abort = new AbortController()
@@ -201,11 +201,11 @@ export default function Demo() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1 text-xs font-semibold">
           {tab === 'Retirement' ? 'Retirement date' : 'Explore as of'}
-          <input
+          <DateInput
             className={input}
-            type="date"
             min={DEMO_DATE}
             max="2042-12-31"
+            aria-label={tab === 'Retirement' ? 'Retirement date' : 'Explore as of'}
             value={viewDate}
             onChange={(e) => {
               const value = e.target.value
@@ -231,14 +231,13 @@ export default function Demo() {
               key={t}
               aria-pressed={tab === t}
               className={`${button} ${tab === t ? 'bg-cs-brand-subtle border-cs-brand' : ''}`}
-              onClick={() => { if ((tab === 'Retirement') !== (t === 'Retirement')) invalidate(); setTab(t); requestAnimationFrame(() => content.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })) }}
+              onClick={() => { if ((tab === 'Retirement') !== (t === 'Retirement')) invalidate(); setTab(t) }}
             >
               {t}
             </button>
           )
         )}
       </nav>
-      <div ref={content} className="scroll-mt-4" />
       {loading && (
         <p role="status" className="text-sm text-cs-text-2">
           Loading fictional profile…

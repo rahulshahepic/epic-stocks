@@ -1,3 +1,5 @@
+import { DisclosureSummary } from '../../scaffold/components/ui/Disclosure.tsx'
+import { DateInput } from '../../scaffold/components/ui/DateInput.tsx'
 import ExitDateComparison from '../components/ExitDateComparison.tsx'
 import AnnouncedPrice from '../components/AnnouncedPrice.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
@@ -56,10 +58,9 @@ function StalePriceBanner({ latest, priceYear, readOnly, onAddPrice }: {
   return (
     <div role="region" aria-label="Stale share price" className="rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
       <details className="group">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden">
-          <span aria-hidden="true" className="group-open:rotate-90">›</span>
+        <DisclosureSummary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden">
           Last recorded share price: {latest.effective_date.slice(0, 4)}
-        </summary>
+        </DisclosureSummary>
         <p className="pb-2 leading-relaxed">
           The last recorded price was {fmtPrice(latest.price)}. This year’s announced price has not been recorded.
           Any applicable growth estimate remains tentative.
@@ -520,7 +521,7 @@ export default function Dashboard() {
           <p className="mt-1 text-cs-muted">Interest booked on statements {fmt$(breakdowns.interest.booked)}</p>
         )}
         {savedDeduction && !pendingDeductionChanged && (
-          <p className="mt-1 text-[10px] text-cs-muted">
+          <p className="mt-1 text-xs text-cs-text-2">
             {appliedLabel}{' '}
             <a href="/settings" className="underline hover:text-cs-text">
               Customize years
@@ -547,14 +548,13 @@ export default function Dashboard() {
         </div>
       )}
       {cardDate === today && hasPrice && stalePrice && <StalePriceBanner key={today.slice(0, 4)} priceYear={today.slice(0, 4)} latest={stalePrice} readOnly={readOnly} onAddPrice={!config?.epic_mode ? openPriceEditor : undefined} />}
-      {!readOnly && !config?.epic_mode && priceEditorActive && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><summary className="cursor-pointer text-sm font-semibold text-cs-brand">Update the announced price</summary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
+      {!readOnly && !config?.epic_mode && priceEditorActive && <details ref={priceEditor} className="scroll-mt-24 rounded-xl border border-cs-border p-4"><DisclosureSummary className="cursor-pointer text-sm font-semibold text-cs-brand">Update the announced price</DisclosureSummary><div className="mt-3"><AnnouncedPrice onSaved={() => { reloadPrices(); reloadEvents(); reloadDash(); reloadCharts(); reloadTaxSettings() }} /></div></details>}
       {/* Date selector for card values */}
       <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <label htmlFor="dashboard-date" className="shrink-0 text-xs font-medium text-cs-muted">As of</label>
-          <input
+          <DateInput
             id="dashboard-date"
-            type="date"
             value={cardDate}
             max={maxDate}
             onChange={e => { if (e.target.value) { setDateMode('custom'); setCustomCardDate(e.target.value) } }}
@@ -606,7 +606,7 @@ export default function Dashboard() {
 
         {(cv.total_income !== 0 || cv.total_cap_gains !== 0 || cv.cash_received !== 0 || cv.total_tax_paid !== 0 || cv.total_loan_principal !== 0 || cv.total_interest !== 0 || deductionControl) && <div className="relative rounded-xl border border-cs-border bg-cs-surface">
           <details>
-            <summary className="cursor-pointer px-4 pt-3 pb-11 text-sm font-semibold text-cs-text sm:py-3 sm:pr-48">Earnings and borrowing costs</summary>
+            <DisclosureSummary className="cursor-pointer px-4 pt-3 pb-11 text-sm font-semibold text-cs-text sm:py-3 sm:pr-48">Earnings and borrowing costs</DisclosureSummary>
             <div className="space-y-3 px-4 pb-4">
               <EarningsCards cv={cv} breakdowns={breakdowns}
                 openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
@@ -623,7 +623,7 @@ export default function Dashboard() {
         </div>}
 
         {snapshot?.summary_sentences?.length ? <details key={`${vid ?? 0}-${importSaved}`} open={importSaved} className="rounded-xl border border-cs-border bg-cs-surface">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">In plain words</summary>
+          <DisclosureSummary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">In plain words</DisclosureSummary>
           <ul className="space-y-2 px-4 pb-4 text-sm leading-relaxed text-cs-text-2">{snapshot.summary_sentences.map(s => <li key={s}>{s}</li>)}</ul>
         </details> : null}
         <EquityTerms terms={['basis', 'loan', 'tax', 'exit', 'price']} />
@@ -634,7 +634,7 @@ export default function Dashboard() {
         {showExitFigure ? headline : <p role="status" className="text-sm text-cs-muted">Estimated exit cash is unavailable for this date.</p>}
         <div id="exit-details" aria-live="polite" aria-atomic="true" className="scroll-mt-28 divide-y divide-cs-border rounded-xl border border-cs-border bg-cs-surface">
           <details>
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</summary>
+            <DisclosureSummary className="cursor-pointer px-4 py-3 text-sm font-semibold text-cs-text">Exit breakdown and earlier cash</DisclosureSummary>
             <div className="space-y-3 px-4 pb-4">
               {exitPreview === 'loading' ? (
                 <p className="text-xs text-cs-muted">Calculating…</p>

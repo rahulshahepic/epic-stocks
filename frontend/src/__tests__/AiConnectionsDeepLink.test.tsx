@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { AiConnections, targetRequestId } from '../scaffold/pages/admin/AiConnections.tsx'
+import { AiConnections } from '../scaffold/pages/admin/AiConnections.tsx'
+import { targetRequestId } from '../scaffold/pages/admin/deepLink.ts'
 import { api, type McpActionRequest } from '../api.ts'
 
 const REQUEST: McpActionRequest = {
@@ -73,6 +74,13 @@ describe('AiConnections deep link (#825)', () => {
     })
     await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled())
     expect(el.className).toContain('ring-2')
+  })
+
+  it('says so when the linked request is no longer pending', async () => {
+    window.history.pushState({}, '', '/admin?request=99#ai-connections')
+    render(<AiConnections onError={() => {}} />)
+    expect(await screen.findByText(/no longer pending/)).toBeTruthy()
+    expect(document.getElementById('admin-request-99')).toBeNull()
   })
 
   it('does not highlight when arrived at without a request id', async () => {

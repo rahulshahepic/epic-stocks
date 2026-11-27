@@ -6,8 +6,6 @@ not at the app home or the section in general.
 import os
 from unittest.mock import patch
 
-import pytest
-
 from scaffold.models import BlockedEmail, PushSubscription, User
 from tests.conftest import register_user
 from tests.test_mcp_admin import WRITE, _admin_session

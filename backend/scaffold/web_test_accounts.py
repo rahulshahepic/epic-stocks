@@ -81,6 +81,19 @@ def request_workspace(db, token, path, method):
         else:
             yield None
         return
+    from scaffold.test_users import identity as test_user_identity, restrict_request as restrict_test_user
+    if test_user_identity(reviewer) and (protected or path.startswith('/oauth/authorize')):
+        # Same perimeter and serialization as reviewers, with the
+        # test-user restriction set (its /api/me stays writable: account
+        # workflows, including self-deletion, are the validation target).
+        if protected:
+            restrict_test_user(db, reviewer, path, method)
+        if financial_path(path) or path.startswith('/oauth/authorize') or path.startswith('/api/report') or path in ('/api/auth/refresh', '/api/auth/logout-everywhere'):
+            with account_lock(db, reviewer.id, shared=method in ('GET', 'HEAD', 'OPTIONS')):
+                yield None
+        else:
+            yield None
+        return
     if not requires_synthetic() or not financial_path(path):
         yield None
         return

@@ -81,7 +81,8 @@ def require_connector(request: Request, db: Session = Depends(get_db)) -> Connec
 
     user = db.get(User, int(payload["sub"]))
     from scaffold.reviewers import allowed_identity, identity
-    if not allowed_identity(db, user) or grant.user_id != user.id or (admin and identity(user)):
+    from scaffold.test_users import identity as test_user_identity
+    if not allowed_identity(db, user) or grant.user_id != user.id or (admin and (identity(user) or test_user_identity(user))):
         raise _unauthorized(request, "Invalid token")
     if int(payload.get("sv", 0)) != int(user.session_version):
         raise _unauthorized(request, "This connection was signed out")

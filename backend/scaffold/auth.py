@@ -223,6 +223,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if identity(user):
         restrict_request(db, user, request.url.path, request.method)
         return user
+    from scaffold.test_users import identity as test_user_identity, restrict_request as restrict_test_user
+    if test_user_identity(user):
+        restrict_test_user(db, user, request.url.path, request.method)
+        return user
     # Refresh admin flag on every request so env changes take effect immediately
     is_admin = user.email.lower() in get_admin_emails()
     if bool(user.is_admin) != is_admin:

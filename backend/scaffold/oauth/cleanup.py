@@ -56,6 +56,8 @@ def prune(db: Session) -> dict[str, int]:
 
     from scaffold.reviewers import prune_login_audit
     reviewer_auth = prune_login_audit(db)
+    from scaffold.test_users import prune_login_audit as prune_test_user_login_audit
+    test_user_auth = prune_test_user_login_audit(db)
     db.commit()
 
     from scaffold.synthetic_accounts import prune_test_accounts
@@ -68,7 +70,8 @@ def prune(db: Session) -> dict[str, int]:
     journal = admin_journal.prune(db)
 
     result = {"synthetic_accounts": synthetic, "auth_codes": codes, "clients": clients, "audit_entries": entries,
-              "admin_journal_entries": journal, "reviewer_auth_buckets": reviewer_auth}
+              "admin_journal_entries": journal, "reviewer_auth_buckets": reviewer_auth,
+              "test_user_auth_buckets": test_user_auth}
     if any(result.values()):
         logger.info("Connector cleanup removed %s", result)
     return result

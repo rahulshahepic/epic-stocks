@@ -109,7 +109,7 @@ export function SharesChart({ events, c, range, hasFuturePrices }: { events: Tim
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#e11d48" strokeWidth={1.5} zIndex={600} />
@@ -196,7 +196,7 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{' '}
@@ -291,7 +291,7 @@ export function PriceChart({ prices, c, range, hasFuturePrices }: { prices: Pric
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#e11d48" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#e11d48', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />

@@ -36,7 +36,7 @@ function TaxChart({ rows, c, range }: {
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
             <tspan fill="#fb923c">&#9632;</tspan> Est. Tax{' '}
             {hasProjections && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{' '}</>}
@@ -92,7 +92,7 @@ function InterestChart({ rows, c, range }: { rows: DashboardChartsData['charts']
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(displayed.length)} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={displayed[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < displayed.length && (
             <ReferenceLine x={displayed[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
@@ -138,7 +138,7 @@ function LoanChart({ loanPaymentByYear, c, range, setRange, maxDate }: {
         <BarChart data={displayed}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis width="auto" tick={{ fontSize: 10, fill: c.axis }} />
           <Bar dataKey="payoff_sale" stackId="a" fill="#4ade80" name="Payoff sale" radius={[0, 0, 0, 0]} />
           <Bar dataKey="cash_in" stackId="a" fill="#fb923c" name="Cash in" radius={[4, 4, 0, 0]} />
         </BarChart>

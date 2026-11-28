@@ -13,7 +13,7 @@ export function EarningsCards({ cv, breakdowns, openBreakdowns, toggleBreakdown 
   return (
     <section className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Earnings</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 md:grid-cols-3">
         <Card
           label="Total Income"
           value={fmt$(cv.total_income)}

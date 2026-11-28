@@ -15,9 +15,10 @@ from tests.test_oauth_server import code_from, pkce_pair
 
 
 ADMIN_TOOLS = {
-    "admin_list_reviewers","admin_onboarding_funnel", "admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
+    "admin_list_reviewers", "admin_list_test_users", "admin_onboarding_funnel", "admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
 ADMIN_WRITE_TOOLS = {
     "admin_request_reviewer_access", "admin_reset_reviewer", "admin_revoke_reviewer", "admin_delete_reviewer",
+    "admin_request_test_user_access", "admin_reset_test_user", "admin_revoke_test_user", "admin_delete_test_user",
     "admin_pause_onboarding", "admin_cleanup_onboarding", "admin_request_resume_onboarding",
     "admin_resolve_errors", "admin_set_report_status", "admin_dismiss_refused_redirect",
     "admin_prune_connector_tables", "admin_recompute_account", "admin_send_test_notification",

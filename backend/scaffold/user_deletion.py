@@ -15,6 +15,10 @@ right user key being in context.
 USER_OWNED_TABLES is the contract. A test walks the SQLAlchemy metadata and
 fails if a table with a user_id column is missing from it, so a table added
 later cannot be silently left behind on deletion.
+
+Deleting a real (non-synthetic) account also leaves a restore-time
+tombstone outside the database — see services/tombstones.py — so a backup
+restore cannot quietly resurrect the account (#819).
 """
 from sqlalchemy import text
 
@@ -91,9 +95,50 @@ def delete_financial_data(db, user_id: int) -> None:
         db.execute(text(f"DELETE FROM {table} WHERE {col} = :uid"), {"uid": user_id})
 
 
+def _record_tombstone_on_commit(db, user_id, provider_name, subject, created_at) -> None:
+    """Write the restore-time tombstone once this deletion commits (#819).
+
+    A session event, because delete_user does not own the transaction: a
+    deletion that rolls back must leave no tombstone behind. A stale firing
+    is disarmed by re-checking that the account is actually gone, and a
+    failed write is logged rather than failing a deletion that already
+    committed.
+    """
+    import logging
+    from sqlalchemy import event
+
+    def _write(session):
+        try:
+            # The committing session cannot emit SQL in this state, and the
+            # question — is the account actually gone? — is about the
+            # database, so ask it on a fresh session.
+            import database
+            check = database.SessionLocal()
+            try:
+                gone = check.execute(
+                    text("SELECT id FROM users WHERE id = :uid"), {"uid": user_id}).scalar() is None
+            finally:
+                check.close()
+            if not gone:
+                return
+            from services.tombstones import record_deletion
+            record_deletion(provider_name, subject, created_at)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Could not record the deletion tombstone for a deleted account")
+
+    event.listen(db, "after_commit", _write, once=True)
+
+
 def delete_user(db, user_id: int) -> None:
     from scaffold.synthetic_accounts import deletion_lock
-    synthetic = db.execute(text("SELECT is_synthetic FROM users WHERE id=:uid"), {"uid": user_id}).scalar()
+    identity = db.execute(
+        text("SELECT is_synthetic, provider_name, google_id, created_at FROM users WHERE id=:uid"),
+        {"uid": user_id},
+    ).first()
+    synthetic = identity[0] if identity else None
+    if identity and not identity[0]:
+        _record_tombstone_on_commit(db, user_id, identity[1], identity[2], identity[3])
     if synthetic:
         row = db.execute(text("SELECT user_id FROM mcp_test_accounts WHERE synthetic_id=:uid"), {"uid": user_id}).first()
         if row:

@@ -110,6 +110,18 @@ def _bootstrap_system():
         seed_mcp_defaults(db)
     except Exception:
         logger.exception("Failed to seed AI connection settings")
+    try:
+        # A restore replaces the database wholesale; the deletion tombstones
+        # live outside it (#819). Re-applying them here means a resurrected
+        # account is re-deleted before the service opens, not discovered
+        # later. OPERATIONS.md's restore procedure runs the same check
+        # explicitly via `python -m tombstone_reapply`.
+        from services.tombstones import apply_tombstones
+        if apply_tombstones(db):
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to apply deletion tombstones")
     finally:
         db.close()
 

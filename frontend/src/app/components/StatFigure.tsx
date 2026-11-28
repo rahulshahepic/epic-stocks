@@ -9,7 +9,7 @@ export function StatFigure({ value, minLength = 0 }: { value: string; minLength?
   const length = Math.max(figure.length, minLength)
   const size = length > 15 ? 'text-[min(1em,9.5cqi)]'
     : length > 12 ? 'text-[min(1em,11.5cqi)]'
-    : length > 10 ? 'text-[min(1em,13cqi)]'
-    : 'text-[min(1em,15cqi)]'
+      : length > 10 ? 'text-[min(1em,13cqi)]'
+        : 'text-[min(1em,15cqi)]'
   return <><span className={`whitespace-nowrap ${size}`}>{figure}</span>{suffix}</>
 }

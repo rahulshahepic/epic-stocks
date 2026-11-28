@@ -1092,6 +1092,8 @@ Admin → **Backups** shows the last attempt and successful upload, backup age, 
 
 Upload success and restore testing are separate. After following the [test-restore procedure](OPERATIONS.md#test-restore-in-a-codespace-phone-friendly), explicitly confirm the restored run in Admin. This is an admin-recorded test, not an automatic restore check; changing destination or encryption key invalidates the displayed confirmation.
 
+Deleting an account also writes a deletion tombstone — a hash of the account's sign-in subject only (email is mutable and deliberately not recorded) — to `deleted-accounts.json` in the same host handoff directory, outside the database backup set. The restore procedure re-applies the tombstones (`python -m tombstone_reapply`, also run at app startup) so a restored backup cannot reactivate an account its owner deleted. Entries are pruned on the same rule as the backups (the retention window plus the newest seven), and only while the host reports backups running on schedule; when backup status cannot be verified, entries are kept.
+
 ![Backup status and configuration on a phone](screenshots/admin-backups-light-mobile.png)
 ![Backup status and configuration in dark mode](screenshots/admin-backups-dark-mobile.png)
 
@@ -2214,6 +2216,24 @@ Vite's proxy target; use port 8100 where port 8000 is reserved. Optional
 
 ![Fictional reviewer sign-in](screenshots/directory-reviewer-login-light-mobile.png)
 ![Reviewer administration](screenshots/directory-reviewer-admin-light-mobile.png)
+
+## Internal test users
+
+Reviewer accounts belong to external directory reviewers; they are the
+wrong vehicle for the operator's own validation. Admins can provision a
+separate kind of fictional account in **Admin → Internal test users**: an
+operator signs in at `/test-user-login` under a stated purpose label and
+runs production-shaped workflows — export, import, AI-connection
+authorize/revoke, account deletion — against fictional data only, then
+retires the account. Test users live in their own tables
+(`internal_test_accounts`, `internal_test_login_audit`), their own sign-in
+page and their own admin list, are excluded from user lists and metrics,
+cannot administer, share, or receive notifications or email, and expire
+and revoke like reviewer accounts; provisioning, rotation, reset,
+revocation and deletion are journaled through the admin action journal.
+Implementation: `scaffold/test_users.py`,
+`scaffold/routers/test_users.py`, the `InternalTestAccount` model and its
+Alembic migration. No new production environment variables.
 
 ## Publication packages
 

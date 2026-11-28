@@ -8,6 +8,7 @@ import { ToolsSection } from './admin/ToolsSection.tsx'
 import { OverviewSection } from './admin/OverviewSection.tsx'
 import { SmartTips } from './admin/SmartTips.tsx'
 import { Reviewers } from './admin/Reviewers.tsx'
+import { TestUsers } from './admin/TestUsers.tsx'
 import { AiConnections } from './admin/AiConnections.tsx'
 import { TrialFunnel } from './admin/TrialFunnel.tsx'
 import { SystemHealth } from './admin/SystemHealth.tsx'
@@ -31,7 +32,7 @@ const categories = [
   { hash: '#health', label: 'System Health', description: 'Deployments, scheduled jobs, Cloudflare and database size' },
   { hash: '#support', label: 'Reports & Errors', description: 'Problem reports, error logs and import diagnostics' },
   { hash: '#users', label: 'Users & Access', description: 'Accounts, content admin roles and blocked emails' },
-  { hash: '#ai-connections', label: 'AI Connections', description: 'Connector settings, approval requests and directory reviewer accounts' },
+  { hash: '#ai-connections', label: 'AI Connections', description: 'Connector settings, approval requests, directory reviewer accounts and internal test users' },
   { hash: '#usage', label: 'Usage', description: 'Account totals, onboarding metrics and Smart Tips' },
   { hash: '#maintenance', label: 'Maintenance & Backups', description: 'Backups, maintenance mode, key rotation and site-wide switches' },
 ]
@@ -206,6 +207,7 @@ export default function Admin() {
         {active?.hash === '#ai-connections' && <>
           <AiConnections onError={setError} />
           <Reviewers />
+          <TestUsers />
         </>}
 
         {active?.hash === '#usage' && <>

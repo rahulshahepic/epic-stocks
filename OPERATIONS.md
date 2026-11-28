@@ -510,8 +510,11 @@ python3 ops/backup_database.py fetch --environment production --run latest --des
    `age -d -i epic-stocks-backup-key.txt restore/secrets.tar.age | ssh root@HOST 'tar -x -C /opt/epic-stocks/.secrets && chmod 600 /opt/epic-stocks/.secrets/*'`
 3. **Restore the database**, replacing what is there:
    `age -d -i epic-stocks-backup-key.txt restore/database.dump.age | ssh root@HOST 'cd /opt/epic-stocks && docker compose exec -T db pg_restore -U postgres -d vesting --clean --if-exists --no-owner --single-transaction'`
-4. **Re-run the Deploy workflow.** It keeps the restored `.secrets/` files, rewrites `.env` from them, runs `alembic upgrade head` (in case the backup predates a migration) and starts the app. The KEK comes from GitHub as always.
-5. **Verify:** `curl https://<domain>/api/health`, sign in, and check that a dashboard shows the expected figures (decryption works only if the KEK matches).
+4. **Re-apply deletion tombstones.** The backup predates any accounts deleted since it was taken, so the restored database contains them again. Deleting an account records a marker — a hash of the account's sign-in subject only, no email and no financial data — in `deleted-accounts.json` in the backup settings handoff directory (`/var/lib/epic-stocks-backup-config`), which lives outside the database and survives the restore. Run the check explicitly:
+   `ssh root@HOST 'cd /opt/epic-stocks && docker compose run --rm --no-deps app python -m tombstone_reapply'`
+   It re-deletes every restored account that was deleted after the backup was taken and prints how many; a non-zero exit means the marker file could not be read — fix that before opening the service, do not skip the step. (The app also applies the markers at startup, so step 5 is a backstop, not a substitute.)
+5. **Re-run the Deploy workflow.** It keeps the restored `.secrets/` files, rewrites `.env` from them, runs `alembic upgrade head` (in case the backup predates a migration) and starts the app. The KEK comes from GitHub as always.
+6. **Verify:** `curl https://<domain>/api/health`, sign in, and check that a dashboard shows the expected figures (decryption works only if the KEK matches).
 
 For a **scratch test restore**, restore into a separate database instead (`createdb -U postgres restore_test` inside the `db` container, then `-d restore_test` in step 3) and compare `select count(*) from users;` with production. Drop it afterwards.
 

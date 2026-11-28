@@ -45,8 +45,17 @@ def active(db, user):
 
 
 def allowed_identity(db, user):
-    # Other staging synthetic users still cannot authenticate.
-    return bool(user and (not user.is_synthetic and user.provider_name != PROVIDER or active(db, user)))
+    # Other staging synthetic users still cannot authenticate. Internal
+    # test users (#827) are the one other synthetic kind with a live
+    # account row, and they authenticate on exactly the same terms.
+    if not user:
+        return False
+    if not user.is_synthetic and user.provider_name != PROVIDER:
+        return True
+    if active(db, user):
+        return True
+    from scaffold.test_users import active as test_user_active
+    return test_user_active(db, user)
 
 
 def state(row):

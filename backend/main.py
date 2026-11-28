@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 import database
 
-from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding, reviewers, public_privacy
+from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads, mcp_setup, onboarding, reviewers, test_users, public_privacy
 from app.routers import demo, interest_checkpoints, changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
@@ -110,6 +110,18 @@ def _bootstrap_system():
         seed_mcp_defaults(db)
     except Exception:
         logger.exception("Failed to seed AI connection settings")
+    try:
+        # A restore replaces the database wholesale; the deletion tombstones
+        # live outside it (#819). Re-applying them here means a resurrected
+        # account is re-deleted before the service opens, not discovered
+        # later. OPERATIONS.md's restore procedure runs the same check
+        # explicitly via `python -m tombstone_reapply`.
+        from services.tombstones import apply_tombstones
+        if apply_tombstones(db):
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to apply deletion tombstones")
     finally:
         db.close()
 
@@ -754,6 +766,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 _fastapi_app.include_router(auth_router.router)
 _fastapi_app.include_router(reviewers.router)
+_fastapi_app.include_router(test_users.router)
 _fastapi_app.include_router(grants.router)
 _fastapi_app.include_router(loans.router)
 _fastapi_app.include_router(prices.router)
@@ -845,6 +858,17 @@ def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_
                 'is_admin': False, 'is_content_admin': False, 'shared_accounts': [],
                 'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
                 'reviewer_account': status,
+                'staging_account': {'initialized': True, 'synthetic': True,
+                                    'scenario': row.scenario, 'generation': row.generation}}
+    from scaffold.test_users import identity as test_user_identity
+    if test_user_identity(user):
+        from scaffold.test_users import account as test_user_binding, state as test_user_state
+        row = test_user_binding(db, user)
+        status = test_user_state(row)
+        return {'id': user.id, 'email': user.email, 'name': user.name,
+                'is_admin': False, 'is_content_admin': False, 'shared_accounts': [],
+                'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+                'test_user_account': status,
                 'staging_account': {'initialized': True, 'synthetic': True,
                                     'scenario': row.scenario, 'generation': row.generation}}
     if requires_synthetic() and not reviewer_identity(user):

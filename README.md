@@ -2231,6 +2231,10 @@ page and their own admin list, are excluded from user lists and metrics,
 cannot administer, share, or receive notifications or email, and expire
 and revoke like reviewer accounts; provisioning, rotation, reset,
 revocation and deletion are journaled through the admin action journal.
+The admin MCP exposes the same management (`admin_list_test_users`,
+`admin_request_test_user_access`, `admin_reset_test_user`,
+`admin_revoke_test_user`, `admin_delete_test_user`); widening access
+follows the existing human approval queue.
 Implementation: `scaffold/test_users.py`,
 `scaffold/routers/test_users.py`, the `InternalTestAccount` model and its
 Alembic migration. No new production environment variables.

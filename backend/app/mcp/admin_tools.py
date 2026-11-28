@@ -1060,3 +1060,39 @@ for _action in ('reset', 'revoke', 'delete'):
         description='Preview this action on one fictional reviewer, ask for explicit confirmation, then repeat with the returned confirm token. Reset erases fictional modifications only; revocation invalidates all sessions and OAuth tokens; deletion removes this fictional identity and its data.',
         input_schema=object_schema({'reviewer_id': _ID, 'confirm': _CONFIRM}, ['reviewer_id']),
         scope=ADMIN_WRITE, handler=_reviewer_manage(_action), read_only=False, destructive=True, idempotent=False))
+
+
+def _test_users(ctx, args):
+    from scaffold.models import InternalTestAccount
+    from scaffold.test_users import state, login_activity
+    return {'test_users': [{**state(r), 'login_activity_last_7_days': login_activity(ctx.db, r.user_id)} for r in ctx.db.query(InternalTestAccount).order_by(InternalTestAccount.id).all()]}
+
+
+def _test_user_access(ctx, args):
+    from scaffold.test_users import credentials
+    raw, digest = credentials()
+    result = _request(admin_requests.TEST_USER_ACCESS)(ctx, {**args, 'credential_hash': digest})
+    return {**result, 'password': raw, 'notice': 'Save this password securely now; it is not retrievable. It works only after human approval. Never paste it into a public issue or repository.'}
+
+
+def _test_user_manage(action):
+    def handler(ctx, args):
+        from scaffold.routers.test_users import manage
+        return manage(ctx.db, _id(args, 'test_user_id'), action, args.get('confirm'), _actor(ctx))
+    return handler
+
+
+register(Tool(name='admin_list_test_users', title='List internal test users',
+    description='List internal test identities (the operator’s own fictional accounts for production validation), purpose label, fixture scenario, expiration and last login. A separate kind from directory reviewers. No financial values or credentials.',
+    input_schema=object_schema({}), scope=ADMIN_READ, handler=_test_users))
+register(Tool(name='admin_request_test_user_access', title='Request internal test user access',
+    description='Provision an internal test user for operator-run production validation, or rotate/extend an existing one. A short purpose label is required. Returns a generated password once. No access is granted until the existing human approval code or browser approval completes. Keep the password private.',
+    input_schema=object_schema({'label': {'type': 'string', 'maxLength': 80},
+        'scenario': {'type': 'string', 'enum': ['early', 'established', 'exit', 'empty']},
+        'days': {'type': 'integer', 'minimum': 1, 'maximum': 90}, 'test_user_id': _ID, 'reason': _REASON}, ['label']),
+    scope=ADMIN_WRITE, handler=_test_user_access, read_only=False, idempotent=False))
+for _action in ('reset', 'revoke', 'delete'):
+    register(Tool(name='admin_' + _action + '_test_user', title=_action.capitalize() + ' internal test user',
+        description='Preview this action on one internal test user, ask for explicit confirmation, then repeat with the returned confirm token. Reset erases fictional modifications only; revocation invalidates all sessions and OAuth tokens; deletion removes this fictional identity and its data.',
+        input_schema=object_schema({'test_user_id': _ID, 'confirm': _CONFIRM}, ['test_user_id']),
+        scope=ADMIN_WRITE, handler=_test_user_manage(_action), read_only=False, destructive=True, idempotent=False))

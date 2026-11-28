@@ -30,6 +30,7 @@ from .settings import (
 logger = logging.getLogger(__name__)
 
 REVIEWER_ACCESS = "reviewer_access"
+TEST_USER_ACCESS = "test_user_access"
 RESUME_ONBOARDING = "resume_onboarding"
 ADD_RULE = "add_redirect_rule"
 ENABLE_RULE = "enable_redirect_rule"
@@ -40,8 +41,8 @@ SET_FLEXIBLE_PAYOFF = "set_flexible_payoff"
 GRANT_CONTENT_ADMIN = "grant_content_admin"
 PURGE_REPORT_MATERIAL = "purge_report_material"
 ACTIONS = (ADD_RULE, ENABLE_RULE, UNBLOCK_EMAIL, UNBLOCK_SENDING, END_MAINTENANCE,
-           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, REVIEWER_ACCESS, PURGE_REPORT_MATERIAL)
-TARGET_TYPES = {REVIEWER_ACCESS: "reviewer", RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
+           SET_FLEXIBLE_PAYOFF, GRANT_CONTENT_ADMIN, RESUME_ONBOARDING, REVIEWER_ACCESS, TEST_USER_ACCESS, PURGE_REPORT_MATERIAL)
+TARGET_TYPES = {REVIEWER_ACCESS: "reviewer", TEST_USER_ACCESS: "test_user", RESUME_ONBOARDING: "setting", ADD_RULE: "redirect_rule", ENABLE_RULE: "redirect_rule",
                 UNBLOCK_EMAIL: "blocked_email", UNBLOCK_SENDING: "user",
                 END_MAINTENANCE: "setting", SET_FLEXIBLE_PAYOFF: "setting",
                 GRANT_CONTENT_ADMIN: "user", PURGE_REPORT_MATERIAL: "report"}
@@ -117,6 +118,7 @@ def expire_stale(db: Session) -> None:
 
 CONSEQUENCES = {
     REVIEWER_ACCESS: "Creates or rotates restricted fictional reviewer access for up to 90 days. Existing sessions and connections are invalidated on rotation.",
+    TEST_USER_ACCESS: "Creates or rotates an internal test identity for up to 90 days, for operator-run production validation against fictional data only. Existing sessions and connections are invalidated on rotation.",
     RESUME_ONBOARDING: "Resumes optional onboarding attempt collection for users who explicitly opt in; existing opt-outs and Do Not Track still apply.",
     ADD_RULE: ("Assistants that register this redirect address can be sent sign-in codes "
                "after a user approves the consent screen."),
@@ -136,6 +138,9 @@ def describe(row: AdminActionRequest) -> str:
     if row.action == REVIEWER_ACCESS:
         target = f"rotate reviewer #{payload['reviewer_id']}" if payload.get('reviewer_id') else 'provision a new reviewer'
         return f"{payload['platform']}: {target}, {payload['scenario']} fictional data, {payload['days']} days"
+    if row.action == TEST_USER_ACCESS:
+        target = f"rotate test user #{payload['test_user_id']}" if payload.get('test_user_id') else 'provision a new test user'
+        return f"Internal test user “{payload['label']}”: {target}, {payload['scenario']} fictional data, {payload['days']} days"
     if row.action == PURGE_REPORT_MATERIAL:
         return f"Delete all sensitive material for report #{payload['report_id']}"
     if row.action == RESUME_ONBOARDING:
@@ -188,6 +193,9 @@ def _validate(db: Session, action: str, args: dict) -> dict:
 
     if action == REVIEWER_ACCESS:
         from scaffold.reviewers import validate_access
+        return validate_access(db, args)
+    if action == TEST_USER_ACCESS:
+        from scaffold.test_users import validate_access
         return validate_access(db, args)
     if action == PURGE_REPORT_MATERIAL:
         from scaffold.sensitive_reports import available_ids
@@ -382,6 +390,10 @@ def _apply(db: Session, row: AdminActionRequest) -> tuple[str, dict | None, dict
         from scaffold.reviewers import grant_access
         result = grant_access(db, payload)
         return "Reviewer access granted", None, result
+    if row.action == TEST_USER_ACCESS:
+        from scaffold.test_users import grant_access
+        result = grant_access(db, payload)
+        return "Test user access granted", None, result
     if row.action == PURGE_REPORT_MATERIAL:
         from scaffold.sensitive_reports import erase_material
         report_id = payload["report_id"]

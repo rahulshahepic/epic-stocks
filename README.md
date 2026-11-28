@@ -2235,6 +2235,9 @@ Implementation: `scaffold/test_users.py`,
 `scaffold/routers/test_users.py`, the `InternalTestAccount` model and its
 Alembic migration. No new production environment variables.
 
+![Internal test user sign-in](screenshots/internal-test-user-login-light-mobile.png)
+![Internal test user administration](screenshots/internal-test-user-admin-light-mobile.png)
+
 ## Publication packages
 
 Open the [submission control center](submissions/README.md) for separate ChatGPT

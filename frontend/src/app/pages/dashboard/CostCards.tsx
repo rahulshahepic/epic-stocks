@@ -15,7 +15,7 @@ export function CostCards({ cv, activeLoans, breakdowns, hasInterestDeduction, o
   return (
     <section className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Costs</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 md:grid-cols-3">
         <Card
           label="Loan Principal"
           value={fmt$(cv.total_loan_principal)}

@@ -23,7 +23,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
   return (
     <section className="space-y-3">
       <Heading className="text-sm font-semibold text-cs-muted">Your shares</Heading>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 md:grid-cols-3">
         {showValue && totalValue !== null && <Card
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
           value={totalValue !== null ? fmt$(totalValue) : '—'}
@@ -32,7 +32,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           subtitle="Vested at FMV + unvested at cost basis"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
-          className="col-span-2 min-h-36 bg-gradient-to-br from-cs-surface to-cs-brand-subtle sm:col-span-2"
+          className="min-h-36 bg-gradient-to-br from-cs-surface to-cs-brand-subtle min-[360px]:col-span-2"
         />}
         <Card
           label="Total Cost Basis"
@@ -72,7 +72,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
             : 'Your next vesting or price date'}
           onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
           expanded={openBreakdowns.has('nextEvent')}
-          className="col-span-2 sm:col-span-1"
+          className="min-[360px]:col-span-2 md:col-span-1"
         />}
       </div>
       <InlineTerm term="vesting" />

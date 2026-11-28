@@ -32,6 +32,7 @@ import { HeroCard, IconTile } from '../../scaffold/components/ui/Card.tsx'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
+import { StatFigure } from '../components/StatFigure.tsx'
 import { StockJourney } from '../components/StockJourney.tsx'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
 
@@ -390,6 +391,10 @@ export default function Dashboard() {
   const hasExitSection = hasPrice && showExitPreview
   const showExitFigure = hasExitSection && (datedExit !== null || exitPreview === 'loading')
 
+  const stockFigure = totalValue === null ? fmtNum(cv?.total_shares) : fmt$(totalValue)
+  const exitFigure = datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)
+  const headlineFigureLength = Math.max(stockFigure.length, exitFigure.length)
+
   const headline = cv && grantHoldings && (
     <section aria-labelledby="dashboard-summary" className="space-y-2">
       <HeroCard className="campus-hero p-4 sm:p-6">
@@ -397,19 +402,19 @@ export default function Dashboard() {
         <div className="relative z-10 space-y-3">
           <h2 id="dashboard-summary" className="text-base font-semibold text-white">Your stock at a glance</h2>
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:gap-6">
-            <div>
+            <div className="@container">
               <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">
                 {totalValue === null ? 'Vested shares' : cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
               </h3>
-              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
-                {totalValue === null ? <Link to="/grants" className="underline underline-offset-2" aria-label={`${fmtNum(cv.total_shares)} vested shares`}>{fmtNum(cv.total_shares)}</Link> : fmt$(totalValue)}
+              <p className="mt-1 text-2xl font-bold tabular-nums sm:text-4xl">
+                {totalValue === null ? <Link to="/grants" className="underline underline-offset-2" aria-label={`${stockFigure} vested shares`}><StatFigure value={stockFigure} /></Link> : <StatFigure value={stockFigure} minLength={headlineFigureLength} />}
               </p>
               {totalValue !== null && <p className="mt-1 text-xs text-white">{stockValueLabel}</p>}
             </div>
-            {showExitFigure && <div>
+            {showExitFigure && <div className="@container">
               <h3 className="min-h-10 text-sm font-semibold text-white sm:min-h-0">{exitCashLabel(cardDate === today)}</h3>
-              <p className="mt-1 text-2xl font-bold tabular-nums [overflow-wrap:anywhere] sm:text-4xl">
-                {datedExit?.liquidation_net_cash == null ? '—' : fmt$(datedExit.liquidation_net_cash)}
+              <p className="mt-1 text-2xl font-bold tabular-nums sm:text-4xl">
+                <StatFigure value={exitFigure} minLength={headlineFigureLength} />
               </p>
               <p className="mt-1 text-xs text-white">
                 {exitPreview === 'loading' ? 'Calculating exit…' : 'After estimated taxes and loan repayment. Excludes earlier sales.'}
@@ -651,11 +656,11 @@ export default function Dashboard() {
                 <p className="text-xs text-cs-muted">Calculating…</p>
               ) : exitPreview && exitPreview.date === cardDate ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 md:grid-cols-4">
                     <button
                       onClick={() => setExitBreakdownOpen(o => !o)}
                       aria-expanded={exitBreakdownOpen}
-                      className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+                      className={cardClass('md', '@container min-[360px]:col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
                     >
                       <div className="flex items-center justify-between">
                         <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
@@ -666,7 +671,7 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <p className="mt-2.5 text-xs font-medium text-cs-text-2">Cash from exit plus earlier activity</p>
-                      <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
+                      <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text"><StatFigure value={fmt$(exitPreview.net_cash)} /></p>
                       <p className="mt-1 text-xs text-cs-muted">Includes prior sales and modeled deduction savings</p>
                     </button>
                     <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" explanation="gross_proceeds" subtitle="Liquidated shares × price" />

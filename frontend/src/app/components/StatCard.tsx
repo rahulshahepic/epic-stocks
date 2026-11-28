@@ -1,6 +1,7 @@
 import { Card, IconTile, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp, IconPieChart, IconDocument, IconCompass } from '../../scaffold/components/ui/icons.tsx'
+import { StatFigure } from './StatFigure.tsx'
 import { InlineTerm } from './EquityTerms.tsx'
 import type { EquityTerm } from '../equityTerms.ts'
 
@@ -42,8 +43,8 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
         )}
       </div>
       <p className="mt-2.5 text-xs font-medium text-cs-text-2">{label}</p>
-      <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{value}</p>
-      {subvalue && <p className="mt-0.5 text-sm font-medium tabular-nums text-cs-text-2">{subvalue}</p>}
+      <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text"><StatFigure value={value} /></p>
+      {subvalue && <p className="mt-0.5 text-sm font-medium tabular-nums text-cs-text-2"><StatFigure value={subvalue} /></p>}
       {subtitle && <p className="mt-1 text-xs text-cs-muted">{subtitle}</p>}
     </>
   )
@@ -52,11 +53,11 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
       type="button"
       onClick={onClick}
       aria-expanded={!!expanded}
-      className={cardClass('md', 'w-full text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+      className={cardClass('md', '@container w-full text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
     >
       {content}
     </button>
-  ) : <Card pad="md">{content}</Card>
+  ) : <Card pad="md" className="@container">{content}</Card>
   return <div className={`min-w-0 ${className}`} data-equity-card={term}>
     {card}
     {term && showExplanation && <InlineTerm term={term} figure={value} />}
